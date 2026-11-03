@@ -1,6 +1,6 @@
 # Despliegue en host Node.js
 
-Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `package.json`, `package-lock.json` y este instructivo. No incluye `.env`, `data/` ni `node_modules/`.
+Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `assets/rpg/` con las ilustraciones del módulo RPG, `package.json`, `package-lock.json`, la plantilla [`ECONOMY-MYSQL.env.example`](ECONOMY-MYSQL.env.example) y este instructivo. No incluye `.env`, `ECONOMY-MYSQL.env`, `data/` ni `node_modules/`.
 
 ## Instalación
 
@@ -16,24 +16,63 @@ Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya co
 | `DISCORD_CLIENT_ID` | Application ID de la aplicación. |
 | `LAVALINK_HOST` | Host o IP del nodo Lavalink, sin `http://`. |
 | `LAVALINK_PORT` | Puerto del nodo Lavalink. |
-| `LAVALINK_PASSWORD` | Contraseña configurada en el nodo Lavalink. |
+| `LAVALINK_PASSWORD` | Contraseña configurada en el nodo Lavalink. Si está vacía, música se desactiva y economía/RPG siguen funcionando. |
 | `LAVALINK_SECURE` | `true` si Lavalink usa TLS; de lo contrario `false`. |
 | `DATABASE_PATH` | Opcional. Por defecto `./data/bot.sqlite`; conserva esta carpeta entre reinicios. |
+| `ECONOMY_DB_DRIVER` | `sqlite` para el modo local o `mysql` para guardar la economía en MySQL/MariaDB. |
+| `ECONOMY_DB_ENDPOINT` | Endpoint completo que muestra la base, por ejemplo `servidor:3306`. También acepta `ECONOMY_DB_HOST` y `ECONOMY_DB_PORT` separados. |
+| `ECONOMY_DB_USER` | Usuario de la base de datos. |
+| `ECONOMY_DB_PASSWORD` | Contraseña nueva de la base. Guárdala solo como variable privada del host. |
+| `ECONOMY_DB_NAME` | Nombre de la base/esquema, no el usuario. |
+
+El bot añade automáticamente las columnas de gemas premium y nombre gratuito al esquema SQLite o MySQL existente. No borres la base para actualizar. `/economia admin_moneda` exige **Gestionar servidor** y deja registro de cada ajuste; las monedas normales siguen siendo las que se obtienen jugando. `/admin` está bloqueado por defecto y solo ejecuta acciones si quien lo invoca tiene el ID propietario `931978822323159111`. Tras registrar los comandos, permite esa cuenta en cada servidor desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos**. Discord puede seguir mostrando el comando a miembros con permiso Administrador, pero el bot rechaza sus acciones si el ID no coincide. Todas las acciones quedan en `admin_audit_log`; los ajustes administrativos de moneda muestran un ID que puede usarse con `/admin rollback`. La tienda premium se muestra vacía hasta que se publiquen productos.
 
 No configures `DISCORD_DEV_GUILD_ID` en producción salvo que quieras registrar los comandos únicamente en ese servidor de pruebas.
+
+### Activar MySQL/MariaDB para la economía
+
+En Pterodactyl, detén el **servidor del bot** y abre **Files** en la raíz del servidor. Puedes crear `.env` o dejar el archivo dedicado con el nombre exacto `ECONOMY-MYSQL.env`; el bot carga ambos. Usa el contenido de [`ECONOMY-MYSQL.env.example`](ECONOMY-MYSQL.env.example) y completa los datos con **Database connection details**:
+
+```dotenv
+ECONOMY_DB_DRIVER=mysql
+ECONOMY_DB_ENDPOINT=servidor:3306
+ECONOMY_DB_USER=usuario-de-tu-base
+ECONOMY_DB_PASSWORD=tu-clave-nueva
+ECONOMY_DB_NAME=nombre-de-tu-base
+```
+
+`ECONOMY_DB_ENDPOINT` recibe el campo **Endpoint completo**, incluido el puerto. `ECONOMY_DB_USER` recibe **Username** y `ECONOMY_DB_NAME` el nombre del esquema/base que te asignó el host. `ECONOMY_DB_PASSWORD` debe ser la contraseña nueva. No cambies ni borres las variables de Discord/Lavalink que ya están en **Startup**: el `.env` de economía se suma a ellas sin reemplazarlas. También puedes configurar estas cinco variables directamente en **Startup** si tu egg permite agregarlas. La contraseña que se compartió en una captura debe rotarse antes de usar la conexión; no la copies al repositorio ni a mensajes.
+
+Guarda el archivo, vuelve a **Startup** y comprueba que `BOT_JS_FILE=dist/index.js`; inicia el servidor. En la consola debe aparecer `Base de economía MySQL conectada: servidor:3306/base.`. Al iniciar, el bot crea y actualiza sus tablas de economía, incluyendo banco, inventario apilable y registro de artículos. Si la consola muestra un error de conexión, revisa endpoint, puerto, usuario, contraseña nueva y permisos del usuario de la base. Las listas y favoritos de música siguen usando SQLite en `DATABASE_PATH`, por lo que conserva `data/` al reemplazar el ZIP.
+
+Si ya tienes saldos o inventario en el SQLite del servidor, migra una sola vez antes de volver a encender el bot:
+
+1. Detén el servidor del bot y conserva una copia del archivo configurado en `DATABASE_PATH` (por defecto `data/bot.sqlite`).
+2. En **Startup**, establece las variables MySQL anteriores y cambia temporalmente `BOT_JS_FILE` a `dist/scripts/migrate-economy.js`.
+3. Inicia el servidor una vez. En la consola debe aparecer `Migración idempotente terminada` y un conteo de cuentas, movimientos y artículos.
+4. Detén el proceso, restaura `BOT_JS_FILE=dist/index.js` y arranca el bot.
+5. Cambia temporalmente `BOT_JS_FILE` a `dist/deploy-commands.js`, inicia una vez y confirma en la consola `Comandos globales registrados`. Detén el proceso y vuelve a poner `BOT_JS_FILE=dist/index.js`.
+
+La migración se puede repetir sin insertar dos veces movimientos o artículos; las cuentas que ya existan en MySQL se conservan. Si la economía empieza desde cero, omite los pasos de migración. No arranques bot y migrador simultáneamente.
 
 ### Egg Generic Discord.js con instalación desde Git
 
 Este egg ejecuta `npm install` y luego `node /home/container/${BOT_JS_FILE}`; no ejecuta automáticamente el script de compilación de TypeScript. El repositorio incluye `dist/` para este flujo. Configura `BOT_JS_FILE=dist/index.js`. Cuando actualices el código fuente, vuelve a compilar con `npm run build` y sube juntos `src/` y `dist/`.
 
-Si `USER UPLOADED FILES=1`, el instalador omite la clonación y el servidor puede no tener `.git`; en ese caso `AUTO_UPDATE=1` no tiene nada que actualizar. Instala una nueva versión extrayendo el ZIP de release en la raíz del servidor. El ZIP no incluye `.env` ni `data/`; conserva ambos en el servidor.
+Si `USER UPLOADED FILES=1`, el instalador omite la clonación y el servidor puede no tener `.git`; en ese caso `AUTO_UPDATE=1` no tiene nada que actualizar. Instala una nueva versión extrayendo el ZIP de release en la raíz del servidor. El ZIP no incluye `.env`, `ECONOMY-MYSQL.env` ni `data/`; conserva los archivos de configuración y datos del servidor.
 
-## Lavalink
+## Lavalink y Spotify
 
-El bot y Lavalink son procesos separados. El egg **Generic Discord.js** ejecuta el bot Node.js y no inicia automáticamente el servicio Lavalink de `docker-compose.yml`. Para que Música funcione, contrata o despliega un nodo Lavalink v4 por separado y configura sus valores de conexión en el panel. Sin Lavalink, Discord y Economía pueden iniciar, pero los comandos de reproducción responderán que el nodo no está disponible.
+El bot y Lavalink son procesos separados. El egg **Generic Discord.js** ejecuta el bot Node.js y no inicia automáticamente el servicio Lavalink de `docker-compose.yml`. Para que Música funcione, contrata o despliega un nodo Lavalink v4 por separado y configura sus valores de conexión en el panel. Sin `LAVALINK_PASSWORD`, el bot omite la conexión al nodo y deja disponibles Discord, economía y RPG; con una clave configurada pero un nodo inaccesible, música permanece sin servicio hasta que el host lo conecte.
 
-El archivo `lavalink/application.yml` se incluye como referencia para un servidor Lavalink propio. Usa la misma contraseña en `LAVALINK_PASSWORD` del bot y `LAVALINK_SERVER_PASSWORD` del nodo. No expongas un nodo Lavalink público sin protegerlo.
+El archivo `lavalink/application.yml` se incluye como referencia para un servidor Lavalink propio. Usa la misma contraseña en `LAVALINK_PASSWORD` del bot y `LAVALINK_SERVER_PASSWORD` del nodo. El YAML instala LavaSrc 4.8.3 y admite Spotify. En Docker Compose, agrega `SPOTIFY_CLIENT_ID` y `SPOTIFY_CLIENT_SECRET` al `.env` privado del proyecto. En Pterodactyl, configura esas variables para el proceso Lavalink o reemplaza los dos valores `${SPOTIFY_CLIENT_ID:}` y `${SPOTIFY_CLIENT_SECRET:}` en el `application.yml` de Lavalink con tus credenciales privadas. Reinicia Lavalink después de editar la configuración. No pegues esos valores en Discord, Git o `.env` del bot de música. Spotify aporta metadatos; LavaSrc encuentra el audio en YouTube, por lo que una pista puede no estar disponible si no existe una coincidencia reproducible. Los enlaces de playlists y álbumes añaden como máximo 50 canciones por solicitud. No expongas un nodo Lavalink público sin protegerlo.
 
 ## Comandos de aplicación
 
-Para publicar nuevos comandos desde un paquete compilado, configura las variables de entorno y ejecuta `npm run commands:deploy:built` una vez. Esto registra los atajos globales (`/play`, `/p`, `/q`, etc.) en Discord. Si `DISCORD_DEV_GUILD_ID` está configurado, los registra únicamente en ese servidor de desarrollo.
+Para publicar comandos nuevos o actualizados desde un paquete compilado, configura las variables de entorno y ejecuta `dist/deploy-commands.js` una vez (en Pterodactyl, cambia temporalmente `BOT_JS_FILE` a esa ruta, inicia y después restaura `dist/index.js`). Esto registra `/admin` junto con los comandos RPG, atajos de economía y música. En cada servidor, permite la cuenta propietaria desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos** para que los miembros sin Administrador no vean `/admin`. Discord mantiene acceso visual para administradores del servidor; el guard del bot impide que cualquiera salvo la cuenta propietaria ejecute acciones. Si `DISCORD_DEV_GUILD_ID` está configurado, los registra solo en ese servidor de desarrollo.
+
+### Prefijo alternativo `a!`
+
+El paquete activa `GuildMessages`, `DirectMessages` y el intent privilegiado `MessageContent`. En [Discord Developer Portal → aplicación → Bot](https://discord.com/developers/applications), activa **Privileged Gateway Intents → Message Content Intent** y guarda el cambio; si falta, los comandos con prefijo no podrán leer el texto aunque el bot aparezca conectado. Reinicia el proceso después de actualizar el ZIP. Usa `a!help` en un servidor para ver los alias. El grupo `a!admin` requiere DM, ID de servidor e ID de usuario, y se valida contra el ID propietario configurado en el código.
+
+`a!happy`, `a!sip`, `a!slap @persona` y expresiones relacionadas obtienen GIFs SFW desde `https://nekos.best/api/v2/<categoria>`. No requieren otra variable secreta; cada solicitud envía un User-Agent de Bot Manzanita, limita repeticiones y valida el dominio/GIF antes de publicar. `/catalogo`, `a!catalog` y `a!help` muestran el catálogo por secciones y el selector funciona en el propio mensaje.

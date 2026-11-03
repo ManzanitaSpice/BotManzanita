@@ -1,8 +1,8 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { addTrack, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
+import { addTrack, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
 import { componentUpdate, musicPanel, queuePanel, searchResultsPanel } from '../ui/panels.js';
 export const musicShortcutCommands = [
-    createPlayCommand('play', 'Busca una canción y la añade a la cola.'),
+    createPlayCommand('play', 'Reproduce música o enlaces de YouTube, SoundCloud y Spotify.'),
     createPlayCommand('p', 'Atajo de /play.'),
     createSearchCommand('search', 'Busca canciones y deja elegir el resultado.'),
     createSearchCommand('buscar', 'Busca canciones y deja elegir el resultado.'),
@@ -42,7 +42,9 @@ function createPlayCommand(name, description) {
                     user: interaction.user,
                     query: interaction.options.getString('cancion', true).trim(),
                 });
-                const added = result.playlist ? `Añadí **${result.count} canciones** de la lista.` : `Añadí **${result.title}** a la cola.`;
+                const added = result.playlist
+                    ? `Añadí **${result.count} canciones** de la lista${result.truncated ? ' (límite de 50 por solicitud)' : ''}.`
+                    : `Añadí **${result.title}** a la cola.`;
                 await interaction.editReply(`🎶 ${added}`);
                 await refreshMusicPanel(interaction.client, context.guildId);
             }
@@ -151,8 +153,7 @@ function createControlCommand(name, description, action) {
                     message = '⏹️ Reproducción detenida y cola vaciada.';
                 }
                 else {
-                    await player.stopPlaying(true);
-                    await player.destroy('requested disconnect');
+                    await disconnectPlayer(player);
                     message = '👋 Me desconecté del canal de voz.';
                 }
                 await interaction.editReply(message);

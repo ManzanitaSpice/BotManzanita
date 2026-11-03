@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { RepeatMode } from 'lavalink-client';
 import type { BotCommand } from '../types.js';
-import { addSavedTracks, addTrack, applyMusicEffect, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
+import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getPlaylist, getPlaylists, removeFavorite, removePlaylistTrack, saveTrackToPlaylist } from '../services/music-library.js';
 import { componentUpdate, favoritesPanel, musicPanel, playlistDetailPanel, playlistsPanel, queuePanel, searchResultsPanel } from '../ui/panels.js';
 
@@ -216,7 +216,9 @@ export const musicCommand: BotCommand = {
           user: interaction.user,
           query,
         });
-        const description = result.playlist ? `Añadí **${result.count} canciones** de la lista.` : `Añadí **${result.title}** a la cola.`;
+        const description = result.playlist
+          ? `Añadí **${result.count} canciones** de la lista${result.truncated ? ' (límite de 50 por solicitud)' : ''}.`
+          : `Añadí **${result.title}** a la cola.`;
         await interaction.editReply(`🎶 ${description}`);
         await refreshMusicPanel(interaction.client, guildId);
       } catch (error) {
@@ -275,8 +277,7 @@ export const musicCommand: BotCommand = {
         await player.stopPlaying(true);
         await interaction.editReply('⏹️ Reproducción detenida y cola vaciada.');
       } else if (action === 'desconectar') {
-        await player.stopPlaying(true);
-        await player.destroy('requested disconnect');
+        await disconnectPlayer(player);
         await interaction.editReply('👋 Me desconecté del canal de voz.');
       } else if (action === 'mezclar') {
         if (player.queue.tracks.length < 2) {

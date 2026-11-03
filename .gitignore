@@ -1,5 +1,6 @@
 node_modules/
 .env
+ECONOMY-MYSQL.env
 data/
 npm-debug.log*
 releases/**/host-package/

@@ -4,7 +4,11 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:b33460b38ad13b5cd07da75e46444397cf0ea2df"
+      snapshot: true
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
+      snapshot: false
   server:
     password: "${LAVALINK_SERVER_PASSWORD}"
     sources:
@@ -29,6 +33,19 @@ lavalink:
       lowPass: true
 
 plugins:
+  lavasrc:
+    providers:
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID:}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
+      countryCode: "MX"
+      playlistLoadLimit: 1
+      albumLoadLimit: 1
+      resolveArtistsInSearch: false
   youtube:
     enabled: true
     allowSearch: true
@@ -36,5 +53,8 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
+      - TV
       - WEB
-      - ANDROID_VR
+    remoteCipher:
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "BotManzanita"

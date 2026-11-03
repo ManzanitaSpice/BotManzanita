@@ -45,9 +45,17 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
   search: (identifier: string) => Promise<T>,
   query: string,
 ): Promise<T | undefined> {
-  const trimmed = query.trim();
-  const isUrl = /^https?:\/\//i.test(trimmed);
-  const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch):/i.test(trimmed);
+  const trimmed = query.trim().replace(/^<(.+)>$/, '$1');
+  const youtubeVideoId = youtubeVideoIdFromUrl(trimmed);
+  if (youtubeVideoId) {
+    const result = await search(`ytsearch:${youtubeVideoId}`);
+    if (!result) return undefined;
+    const exactTracks = result.tracks.filter((track) => track.info.identifier === youtubeVideoId);
+    return { ...result, tracks: exactTracks } as T;
+  }
+
+  const isUrl = isHttpUrl(trimmed);
+  const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch|spsearch):/i.test(trimmed);
   const identifiers = isUrl || hasSourcePrefix
     ? [trimmed]
     : [`ytmsearch:${trimmed}`, `ytsearch:${trimmed}`, `scsearch:${trimmed}`];
@@ -67,6 +75,36 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
   if (emptyResult) return emptyResult;
   if (lastError) throw lastError;
   return undefined;
+}
+
+function youtubeVideoIdFromUrl(value: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  let videoId: string | null = null;
+  if (host === 'youtu.be') {
+    videoId = url.pathname.split('/').filter(Boolean)[0] ?? null;
+  } else if (['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+    videoId = url.searchParams.get('v');
+    if (!videoId) videoId = url.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/?]+)/)?.[1] ?? null;
+  }
+
+  return videoId && /^[\w-]{11}$/.test(videoId) ? videoId : undefined;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export function rememberSearch(guildId: string, userId: string, tracks: Track[]): string {
@@ -106,6 +144,11 @@ export async function addSelectedTrack(
   if (!player.connected) await player.connect();
   await player.queue.add(track);
   if (!player.playing && !player.paused) await player.play();
+}
+
+export async function disconnectPlayer(player: Player): Promise<void> {
+  await player.stopPlaying(true);
+  await player.destroy('requested disconnect');
 }
 
 export async function applyMusicEffect(player: Player, effect: MusicEffect): Promise<void> {
@@ -152,7 +195,7 @@ export async function addSavedTracks(
 export async function addTrack(
   client: Client,
   input: { guildId: string; voiceChannelId: string; textChannelId: string; user: TrackRequester; query: string },
-): Promise<{ title: string; count: number; playlist: boolean }> {
+): Promise<{ title: string; count: number; playlist: boolean; truncated: boolean }> {
   if (!input.query.trim()) throw new Error('Escribe el nombre de una canción o pega un enlace.');
   if (!client.lavalink.useable) throw new Error('El nodo de audio aún no está disponible.');
   let player = client.lavalink.getPlayer(input.guildId);
@@ -166,7 +209,12 @@ export async function addTrack(
   try {
     if (!player.connected) await player.connect();
     const result = await searchWithFallback((identifier) => player.search(identifier, input.user, true), input.query);
-    if (!result?.tracks.length) throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
+    if (!result?.tracks.length) {
+      if (youtubeVideoIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
+        throw new Error('No encontré ese video exacto en la búsqueda de YouTube. Prueba con el nombre de la canción y el artista.');
+      }
+      throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
+    }
 
     const first = result.tracks[0];
     if (!first) throw new Error('La búsqueda no devolvió una canción reproducible.');
@@ -180,6 +228,7 @@ export async function addTrack(
       title: first.info.title,
       count: selectedTracks.length,
       playlist: result.loadType === 'playlist',
+      truncated: result.loadType === 'playlist' && result.tracks.length > selectedTracks.length,
     };
   } catch (error) {
     if (created) await player.destroy('search failed').catch(() => undefined);
