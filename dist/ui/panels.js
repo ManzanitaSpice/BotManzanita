@@ -1,10 +1,49 @@
-import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder, } from 'discord.js';
-import { resolve } from 'node:path';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder, } from 'discord.js';
 import { bankAction, getAccountBalances, getBalance, getInventory, storeItems } from '../services/economy.js';
-import { getLatestExpeditionLog, getLearnableRpgMoves, getPetSpeciesMetadata, getRpgInventory, getRpgMove, getRpgPet, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones } from '../services/rpg.js';
+import { getLatestExpeditionLog, getLearnableRpgMoves, getRpgInventory, getRpgMove, getRpgPet, getRpgQuests, rpgItems, rpgZones } from '../services/rpg.js';
+import { renderEggCard, renderPetCard, rpgEggOptions } from './rpg-art.js';
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
-function rpgAsset(filename) { return new AttachmentBuilder(resolve(process.cwd(), 'assets', 'rpg', filename)).setName(filename); }
+export function listPanel(title, subtitle, entries, accent = colors.economy, emptyMessage = 'Todavía no hay elementos para mostrar.', ephemeral = true) {
+    const rows = entries.length ? entries.map((entry) => `›  ${entry}`).join('\n') : `_ ${emptyMessage} _`;
+    const container = new ContainerBuilder().setAccentColor(accent)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}\n${subtitle}`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(rows));
+    return { components: [container], flags: ephemeral ? ['IsComponentsV2', 'Ephemeral'] : ['IsComponentsV2'] };
+}
+export function balancePanel(username, account, ephemeral = true) {
+    const container = new ContainerBuilder().setAccentColor(colors.economy)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 💰 BALANCE\nPatrimonio de **${username}**`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`👛 **Billetera**\n${money.format(account.wallet)} monedas\n\n🏦 **Banco**\n${money.format(account.bank)} monedas\n\n✨ **Patrimonio total**\n${money.format(account.total)} monedas\n\n💎 **Gemas premium**\n${money.format(account.premium)}`));
+    return { components: [container], flags: ephemeral ? ['IsComponentsV2', 'Ephemeral'] : ['IsComponentsV2'] };
+}
+export function economyActionPanel(title, narrative, amount, balance, ephemeral = true) {
+    const won = amount > 0;
+    const lost = amount < 0;
+    const outcome = amount > 0
+        ? `## +${money.format(amount)} monedas\nGanancia`
+        : amount < 0
+            ? `## −${money.format(Math.abs(amount))} monedas\nPérdida`
+            : '## Sin ganancia esta vez';
+    const container = new ContainerBuilder().setAccentColor(won ? 0x22c55e : lost ? 0xef4444 : 0x38bdf8)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}\n${narrative}`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${outcome}\n\n💰 **Saldo actual**　${money.format(balance)} monedas`));
+    return { components: [container], flags: ephemeral ? ['IsComponentsV2', 'Ephemeral'] : ['IsComponentsV2'] };
+}
+export function leaderboardPanel(title, subtitle, entries, accent = colors.economy, emptyMessage = 'Todavía no hay resultados para mostrar.', ephemeral = false) {
+    const rows = entries.length ? entries.map((entry, index) => {
+        const medal = ['🥇', '🥈', '🥉'][index] ?? `**${String(index + 1).padStart(2, '0')}.**`;
+        return `${medal}  ${entry}`;
+    }).join('\n') : `_ ${emptyMessage} _`;
+    const container = new ContainerBuilder().setAccentColor(accent)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}\n${subtitle}`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(rows));
+    return { components: [container], flags: ephemeral ? ['IsComponentsV2', 'Ephemeral'] : ['IsComponentsV2'] };
+}
 export function componentUpdate(panel) {
     return { components: panel.components, ...(panel.files ? { files: panel.files, attachments: [] } : {}), flags: ['IsComponentsV2'] };
 }
@@ -17,25 +56,6 @@ export async function economyPanel(guildId, userId) {
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:premium-store').setLabel('Tienda premium').setEmoji('💎').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
-export async function economyProfilePanel(guildId, userId, username) {
-    const [account, inventory, pet] = await Promise.all([
-        getAccountBalances(guildId, userId),
-        getInventory(guildId, userId),
-        getRpgPet(guildId, userId),
-    ]);
-    const units = inventory.reduce((sum, item) => sum + item.quantity, 0);
-    const container = new ContainerBuilder()
-        .setAccentColor(0x14b8a6)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 👤 ${username.toLocaleUpperCase()}\n💰 ${money.format(account.wallet)} · 🏦 ${money.format(account.bank)} · 💎 ${money.format(account.premium)} gemas\n🎒 ${units} objetos en ${inventory.length} tipos\n\n${pet ? `## ${petCardLine(pet)}\nNv. ${pet.level} · ${pet.rarity} · ${pet.element} · ❤️ ${pet.hp}/${pet.maxHp}` : '## 🐾 Sin mascota RPG'}`));
-    if (pet)
-        container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://pets-atlas.png').setDescription('Bestiario pixel art de las mascotas RPG'), new MediaGalleryItemBuilder().setURL('attachment://pets-atlas-2.png').setDescription('Nuevas criaturas pixel art del bestiario')));
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:bank').setLabel('Abrir banco').setEmoji('🏦').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:inventory').setLabel('Inventario').setEmoji('🎒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:panel').setLabel('Aventura RPG').setEmoji('🧭').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:premium-store').setLabel('Premium').setEmoji('💎').setStyle(ButtonStyle.Secondary)));
-    return { components: [container], ...(pet ? { files: [rpgAsset('pets-atlas.png'), rpgAsset('pets-atlas-2.png')] } : {}), flags: ['IsComponentsV2', 'Ephemeral'] };
-}
-function petCardLine(pet) {
-    const speciesEmoji = getPetSpeciesMetadata(pet.species)?.emoji ?? '🐾';
-    return `${speciesEmoji} **${pet.name}** · ${pet.species}`;
-}
 function statBar(value, max, width = 10) {
     const filled = Math.max(0, Math.min(width, Math.round((value / Math.max(1, max)) * width)));
     return `${'▰'.repeat(filled)}${'▱'.repeat(width - filled)}`;
@@ -43,32 +63,40 @@ function statBar(value, max, width = 10) {
 export async function rpgPanel(guildId, userId, username, requestedZoneId) {
     const [pet, inventory, quests, latestLog] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId), getRpgQuests(guildId, userId), getLatestExpeditionLog(guildId, userId)]);
     const container = new ContainerBuilder().setAccentColor(pet ? { 'Común': 0x94a3b8, 'Poco común': 0x22c55e, 'Raro': 0x3b82f6, 'Épico': 0xa855f7, 'Legendario': 0xf59e0b }[pet.rarity] : 0x14b8a6);
-    if (!pet) {
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🧭 GREMIO DE AVENTUREROS\n## Elige a tu compañera, ${username}\n\n48 especies · 10 elementos · 5 especialidades\n⚪ 58% · 🟢 25% · 🔵 11% · 🟣 5% · 🟠 1%`))
-            .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://eggs.png').setDescription('Huevos de adopción según rareza'), new MediaGalleryItemBuilder().setURL('attachment://world-map.png').setDescription('Mapa pixel art de las zonas de aventura')))
-            .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:adopt').setLabel('Adoptar mascota').setEmoji('🐾').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('rpg:bestiary:page:0').setLabel('Ver bestiario').setEmoji('📖').setStyle(ButtonStyle.Primary)));
-        return { components: [container], files: [rpgAsset('eggs.png'), rpgAsset('world-map.png')], flags: ['IsComponentsV2', 'Ephemeral'] };
-    }
+    if (!pet)
+        return rpgAdoptionPanel(username, 'Fuego');
     const xpNext = 100 + (pet.level - 1) * 45;
     const selectedZone = rpgZones.find((zone) => zone.id === requestedZoneId) ?? rpgZones.find((zone) => zone.id === latestLog?.zoneId) ?? rpgZones[0];
     const questLines = quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} ${quest.title} ${quest.progress}/${quest.target}`).join(' · ');
     const inventoryLines = inventory.length ? inventory.slice(0, 4).map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return `${item?.emoji ?? '📦'} ${item?.name ?? entry.itemId} ×${entry.quantity}`; }).join(' · ') : 'Vacía';
     const logLines = latestLog?.events.slice(0, 2).map((event) => `${event.emoji} ${event.title} · ${event.detail}`).join('\n') ?? '_Sin expediciones todavía._';
     const exploreReady = !pet.lastExploreAt || pet.lastExploreAt + 1800 <= Math.floor(Date.now() / 1000);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🧭 ${pet.name} · ${pet.species}\n${pet.rarity} · Nv. **${pet.level}** · ${pet.xp}/${xpNext} XP · ${pet.element} ${pet.specialization}\n❤️ ${statBar(pet.hp, pet.maxHp)} ${pet.hp}/${pet.maxHp}　⚡ ${statBar(pet.energy, pet.maxEnergy)} ${pet.energy}/${pet.maxEnergy}\n⚔️ ${pet.strength}　🛡️ ${pet.defense}　💨 ${pet.agility}　📘 ${pet.movePoints} pts · ${pet.equippedMoves.length}/4\n\n## 🗺️ ${selectedZone.emoji} ${selectedZone.name} · ${selectedZone.difficulty}\nNv. ${selectedZone.minLevel}+ · peligro ${selectedZone.danger}% · 🪙 ${selectedZone.reward[0]}–${selectedZone.reward[1]} · 🎒 ${selectedZone.lootChance}%\n👑 ${selectedZone.boss.name} · aparición ${selectedZone.boss.spawnChance}% · botín ${selectedZone.boss.dropChance}%\n${exploreReady ? '🟢 Lista para salir' : '🕒 En descanso'} · equipo ${Object.keys(pet.equipment).length ? Object.values(pet.equipment).map((id) => rpgItems.find((item) => item.id === id)?.name ?? id).join(' · ') : 'vacío'}\n\n## 🎒 Mochila · 📜 Misiones\n${inventoryLines}\n${questLines}\n\n## 📖 ${latestLog ? `Bitácora · ${latestLog.zoneName}` : 'Bitácora'}\n${logLines}`))
-        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${selectedZone.background}`).setDescription(`Fondo pixel art de ${selectedZone.name}`)))
+    const petCard = await renderPetCard(pet, selectedZone.background);
+    container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name}, ${pet.species} · tarjeta de mascota`)))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`❤️ ${statBar(pet.hp, pet.maxHp)} **${pet.hp}/${pet.maxHp} PV**　⚡ ${statBar(pet.energy, pet.maxEnergy)} **${pet.energy}/${pet.maxEnergy} energía** · ${pet.xp}/${xpNext} XP para subir\n\n## 🗺️ ${selectedZone.emoji} ${selectedZone.name} · ${selectedZone.difficulty}\nNv. ${selectedZone.minLevel}+ · peligro ${selectedZone.danger}% · 🪙 ${selectedZone.reward[0]}–${selectedZone.reward[1]} · 🎒 ${selectedZone.lootChance}%\n👑 ${selectedZone.boss.name} · aparición ${selectedZone.boss.spawnChance}% · botín ${selectedZone.boss.dropChance}%\n${exploreReady ? '🟢 Lista para salir' : '🕒 En descanso'} · equipo ${Object.keys(pet.equipment).length ? Object.values(pet.equipment).map((id) => rpgItems.find((item) => item.id === id)?.name ?? id).join(' · ') : 'vacío'}\n\n## 🎒 Mochila · 📜 Misiones\n${inventoryLines}\n${questLines}\n\n## 📖 ${latestLog ? `Bitácora · ${latestLog.zoneName}` : 'Bitácora'}\n${logLines}`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:zone:preview').setPlaceholder('Elegir zona y ver su fondo').addOptions(rpgZones.map((zone) => ({ label: `${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id, emoji: zone.emoji, description: `${zone.difficulty} · botín ${zone.lootChance}% · jefe ${zone.boss.spawnChance}%` })))));
     if (inventory.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:use').setPlaceholder('Usar o equipar artículo').addOptions(inventory.slice(0, 25).map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return { label: `${item?.name ?? entry.itemId} · x${entry.quantity}`, value: entry.itemId, emoji: item?.emoji ?? '📦', description: (item?.description ?? 'Objeto de aventura').slice(0, 100) }; }))));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:battle').setLabel('Combate PvE').setEmoji('⚔️').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('rpg:train').setLabel('Entrenar · 180').setEmoji('🏋️').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:quests').setLabel('Cobrar misión').setEmoji('📜').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(`Explorar ${selectedZone.name}`).setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20), new ButtonBuilder().setCustomId('rpg:bestiary:page:0').setLabel('Abrir bestiario').setEmoji('📖').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rpg:build').setLabel('Build de combate').setEmoji('⚔️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:name').setLabel(pet.freeNameUsed ? 'Nombre usado' : 'Nombrar gratis').setEmoji('🏷️').setStyle(ButtonStyle.Secondary).setDisabled(pet.freeNameUsed)));
-    return { components: [container], files: [rpgAsset(selectedZone.background)], flags: ['IsComponentsV2', 'Ephemeral'] };
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(`Explorar ${selectedZone.name}`).setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20), new ButtonBuilder().setCustomId('rpg:build').setLabel('Build de combate').setEmoji('⚔️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:name').setLabel(pet.freeNameUsed ? 'Nombre usado' : 'Nombrar gratis').setEmoji('🏷️').setStyle(ButtonStyle.Secondary).setDisabled(pet.freeNameUsed)));
+    return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] };
+}
+export async function rpgAdoptionPanel(username, selectedElement = 'Fuego') {
+    const option = rpgEggOptions.find((entry) => entry.element === selectedElement) ?? rpgEggOptions[0];
+    const card = await renderEggCard(username, option.element);
+    const container = new ContainerBuilder().setAccentColor(0x14b8a6)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥚 INCUBADORA DEL GREMIO\nElige una afinidad. La mascota sale al azar entre las especies de ese elemento.`))
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rpg-egg-selection.png').setDescription(`${option.title} · afinidad ${option.element}`)))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:egg:element').setPlaceholder('Selecciona un huevo elemental')
+        .addOptions(rpgEggOptions.map((entry) => ({ label: `${entry.title} · ${entry.element}`, value: entry.element, emoji: entry.emoji, description: entry.flavor, default: entry.element === option.element })))))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:hatch:${option.element}`).setLabel(`Eclosionar · ${option.element}`).setEmoji('🐾').setStyle(ButtonStyle.Success)));
+    return { components: [container], files: [card], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function rpgBuildPanel(guildId, userId) {
     const pet = await getRpgPet(guildId, userId);
     const container = new ContainerBuilder().setAccentColor(0x7c3aed);
     if (!pet)
-        return { components: [container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📘 BUILD DE COMBATE\nPrimero adopta una mascota con `/rpg adoptar`.'))], flags: ['IsComponentsV2', 'Ephemeral'] };
+        return { components: [container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📘 BUILD DE COMBATE\nPrimero elige un huevo en `/rpg panel`.'))], flags: ['IsComponentsV2', 'Ephemeral'] };
     const moves = pet.knownMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move));
     const learnable = getLearnableRpgMoves(pet);
     const equippedNames = pet.equippedMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move)).map((move) => `**${move.name}** · ${move.element} · poder ${move.power} · precisión ${move.accuracy}% · ⚡${move.energy}`).join('\n') || 'Sin ataques equipados';
@@ -82,21 +110,17 @@ export async function rpgBuildPanel(guildId, userId) {
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
-export function rpgBestiaryPanel(requestedPage = 0) {
-    const catalog = getSpeciesCatalog();
-    const pageSize = 12;
-    const pageCount = Math.ceil(catalog.length / pageSize);
-    const page = Math.max(0, Math.min(pageCount - 1, Math.floor(requestedPage)));
-    const entries = catalog.slice(page * pageSize, (page + 1) * pageSize);
-    const rarityCounts = ['Común', 'Poco común', 'Raro', 'Épico', 'Legendario'].map((rarity) => `${rarity}: ${catalog.filter((pet) => pet.rarity === rarity).length}`).join(' · ');
-    const listing = entries.map((pet) => `${pet.emoji} **${pet.name}** · ${pet.rarity}\n${pet.element} · ${pet.specialization} · ⚔️${pet.base[0]} 🛡️${pet.base[1]} 💨${pet.base[2]}`).join('\n\n');
-    const container = new ContainerBuilder().setAccentColor(0x8b5cf6)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📖 BESTIARIO DEL GREMIO · ${page + 1}/${pageCount}\n**${catalog.length} especies** · rareza natural, elemento, especialidad y atributos base\n${rarityCounts}\nAdopción: ⚪ 58% · 🟢 25% · 🔵 11% · 🟣 5% · 🟠 1%`))
+export function expeditionPanel(events, summary, hp, maxHp, energy, maxEnergy) {
+    const journal = events.length
+        ? events.map((event, index) => `**${String(index + 1).padStart(2, '0')} · ${event.emoji} ${event.title}**\n${event.detail}`).join('\n\n')
+        : '_La expedición terminó sin incidentes._';
+    const container = new ContainerBuilder().setAccentColor(0x14b8a6)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🧭 BITÁCORA DE EXPEDICIÓN\nCada parada del viaje, en orden.'))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(listing))
-        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://pets-atlas.png').setDescription('Primer atlas pixel art de criaturas'), new MediaGalleryItemBuilder().setURL('attachment://pets-atlas-2.png').setDescription('Segundo atlas pixel art de criaturas')))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:bestiary:page:${Math.max(0, page - 1)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`rpg:bestiary:page:${Math.min(pageCount - 1, page + 1)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount), new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('↩️').setStyle(ButtonStyle.Primary)));
-    return { components: [container], files: [rpgAsset('pets-atlas.png'), rpgAsset('pets-atlas-2.png')], flags: ['IsComponentsV2', 'Ephemeral'] };
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(journal))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏁 Regreso\n${summary}\n\n❤️ **${hp}/${maxHp} PV**  ·  ⚡ **${energy}/${maxEnergy} energía**`));
+    return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 function pvpFighterCard(match, fighter) {
     const active = match.turnUserId === fighter.userId && match.status === 'active';
@@ -147,12 +171,12 @@ export async function inventoryPanel(guildId, userId) {
     const descriptions = new Map(storeItems.map((item) => [item.id, `${item.emoji} **${item.name}** — ${item.description}`]));
     const legacyNames = new Map([['marco_neon', 'Marco Neón'], ['tema_nocturno', 'Tema Nocturno'], ['insignia_dj', 'Insignia DJ']]);
     const listing = ownedItems.length
-        ? ownedItems.map((item) => `${descriptions.get(item.itemId) ?? `📦 **${legacyNames.get(item.itemId) ?? item.itemId}** · coleccionable anterior`}${item.quantity > 1 ? ` · x${item.quantity}` : ''}`).join('\n')
-        : '_Todavía no tienes artículos. Visita la tienda para conseguir el primero._';
+        ? ownedItems.map((item, index) => `${String(index + 1).padStart(2, '0')}  ${descriptions.get(item.itemId) ?? `📦 **${legacyNames.get(item.itemId) ?? item.itemId}** · coleccionable anterior`}${item.quantity > 1 ? `  **×${item.quantity}**` : ''}`).join('\n')
+        : '_Tu mochila está vacía. Abre la tienda para encontrar tu primer artículo._';
     const usableItems = ownedItems.filter((item) => item.quantity > 0 && storeItems.some((entry) => entry.id === item.itemId && entry.usable));
     const container = new ContainerBuilder()
         .setAccentColor(colors.economy)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎒 TU INVENTARIO\nUnidades: **${ownedItems.reduce((sum, item) => sum + item.quantity, 0)}** · Tipos: **${ownedItems.length}**\n\n${listing}`));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎒 MOCHILA\n**${ownedItems.reduce((sum, item) => sum + item.quantity, 0)} unidades** · ${ownedItems.length} tipos de artículo\n\n${listing}`));
     if (usableItems.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('eco:use').setPlaceholder('Usar un artículo')
             .addOptions(usableItems.map((item) => {
@@ -281,9 +305,16 @@ function isHttpUrl(value) {
     }
 }
 export function searchResultsPanel(searchId, tracks) {
+    const preview = tracks.slice(0, 5).map((track, index) => {
+        const duration = track.info.isStream ? '🔴 EN VIVO' : time(track.info.duration ?? 0);
+        return `**${String(index + 1).padStart(2, '0')}  ${truncate(track.info.title, 72)}**\n${truncate(track.info.author || 'Artista desconocido', 48)}  ·  ${duration}`;
+    }).join('\n\n');
     const container = new ContainerBuilder()
         .setAccentColor(colors.music)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔎 RESULTADOS DE BÚSQUEDA\nEncontré ${tracks.length} resultados. Elige cuál quieres añadir a la cola.`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔎 RESULTADOS\nEncontré **${tracks.length} canciones**. Vista rápida de las primeras ${Math.min(5, tracks.length)}:`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(preview))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent('Elige una opción del menú para añadirla a la cola.'))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`music:choose:${searchId}`).setPlaceholder('Selecciona una canción')
         .addOptions(tracks.slice(0, 25).map((track, index) => ({
         label: truncate(track.info.title, 100),

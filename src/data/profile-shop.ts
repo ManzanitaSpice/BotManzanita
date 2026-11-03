@@ -1,0 +1,40 @@
+export type ProfileItemType = 'profile_bg' | 'rank_bg' | 'wallet_bg' | 'levelup_bg' | 'badge' | 'tag' | 'frame' | 'sticker' | 'pet' | 'housing';
+export type ProfileShopItem = { id: string; type: ProfileItemType; category: string; name: string; description: string; price: number; color: string; rarity: string; emoji: string };
+
+export const profileShopCategories = [
+  { id: 'all', label: 'Todo', emoji: '🛍️' },
+  { id: 'profile_bg', label: 'Fondos de perfil', emoji: '🖼️' },
+  { id: 'pets', label: 'Mascotas', emoji: '🐾' },
+  { id: 'housing', label: 'Housing', emoji: '🏠' },
+  { id: 'rank_bg', label: 'Fondos de rank', emoji: '🏆' },
+  { id: 'levelup_bg', label: 'Fondos de level-up', emoji: '⬆️' },
+  { id: 'wallet_bg', label: 'Fondos de wallet', emoji: '💰' },
+  { id: 'badge', label: 'Badges', emoji: '🏅' },
+  { id: 'tag', label: 'Tags', emoji: '🔖' },
+  { id: 'frame', label: 'Marcos', emoji: '💠' },
+  { id: 'sticker', label: 'Stickers', emoji: '✨' },
+] as const;
+
+export const profileShopItems: ProfileShopItem[] = [
+  { id: 'bg_moonlit', type: 'profile_bg', category: 'profile_bg', name: 'Noche lunar', description: 'Cielo índigo con destellos suaves.', price: 350, color: '#394b8c', rarity: 'Común', emoji: '🌙' },
+  { id: 'bg_sakura', type: 'profile_bg', category: 'profile_bg', name: 'Jardín sakura', description: 'Rosa pastel, pétalos y luz cálida.', price: 500, color: '#a94878', rarity: 'Poco común', emoji: '🌸' },
+  { id: 'bg_nebula', type: 'profile_bg', category: 'profile_bg', name: 'Nebulosa', description: 'Nubes cósmicas violetas y cian.', price: 900, color: '#6545a4', rarity: 'Raro', emoji: '🌌' },
+  { id: 'rank_aurora', type: 'rank_bg', category: 'rank_bg', name: 'Aurora boreal', description: 'Tema verde azulado para tu tarjeta de rango.', price: 450, color: '#167b78', rarity: 'Poco común', emoji: '🌌' },
+  { id: 'rank_ember', type: 'rank_bg', category: 'rank_bg', name: 'Ascua', description: 'Brillo cálido para la tarjeta de rank.', price: 650, color: '#a34e34', rarity: 'Raro', emoji: '🔥' },
+  { id: 'wallet_mint', type: 'wallet_bg', category: 'wallet_bg', name: 'Menta', description: 'Cartera clara en tonos menta.', price: 300, color: '#23806b', rarity: 'Común', emoji: '🍃' },
+  { id: 'wallet_gold', type: 'wallet_bg', category: 'wallet_bg', name: 'Oro suave', description: 'Acentos dorados para el wallet.', price: 700, color: '#9c7021', rarity: 'Raro', emoji: '🪙' },
+  { id: 'levelup_stars', type: 'levelup_bg', category: 'levelup_bg', name: 'Lluvia de estrellas', description: 'Una celebración cósmica al subir de nivel.', price: 550, color: '#58469b', rarity: 'Poco común', emoji: '⭐' },
+  { id: 'levelup_flame', type: 'levelup_bg', category: 'levelup_bg', name: 'Llama ascendente', description: 'Destellos ardientes para tus niveles.', price: 800, color: '#a44b2c', rarity: 'Raro', emoji: '🔥' },
+  { id: 'badge_earlybird', type: 'badge', category: 'badge', name: 'Madrugador', description: 'Badge de constancia y primeras horas.', price: 250, color: '#3e8c83', rarity: 'Común', emoji: '🌅' },
+  { id: 'badge_stargazer', type: 'badge', category: 'badge', name: 'Observaestrellas', description: 'Un emblema para exploradores del cielo.', price: 400, color: '#7561b5', rarity: 'Poco común', emoji: '🔭' },
+  { id: 'badge_veteran', type: 'badge', category: 'badge', name: 'Veterano', description: 'Insignia de perfil con acabado bronce.', price: 750, color: '#a06a3a', rarity: 'Raro', emoji: '🛡️' },
+  { id: 'tag_chill', type: 'tag', category: 'tag', name: 'Modo chill', description: 'Tag corto debajo de tu título.', price: 180, color: '#4d8a91', rarity: 'Común', emoji: '🫧' },
+  { id: 'tag_creator', type: 'tag', category: 'tag', name: 'Creador', description: 'Tag decorativo para tu tarjeta.', price: 400, color: '#8a5bad', rarity: 'Poco común', emoji: '🎨' },
+  { id: 'frame_prism', type: 'frame', category: 'frame', name: 'Marco prisma', description: 'Borde iridiscente para el avatar.', price: 800, color: '#7471d8', rarity: 'Raro', emoji: '💎' },
+  { id: 'frame_obsidian', type: 'frame', category: 'frame', name: 'Marco obsidiana', description: 'Borde oscuro con brillo violeta.', price: 950, color: '#50416e', rarity: 'Épico', emoji: '🔮' },
+  { id: 'sticker_heart', type: 'sticker', category: 'sticker', name: 'Corazón flotante', description: 'Sticker de perfil en rosa suave.', price: 220, color: '#b94c77', rarity: 'Común', emoji: '💗' },
+  { id: 'sticker_comet', type: 'sticker', category: 'sticker', name: 'Cometa', description: 'Sticker celeste con cola luminosa.', price: 360, color: '#4e83bd', rarity: 'Poco común', emoji: '☄️' },
+  { id: 'house_cabin', type: 'housing', category: 'housing', name: 'Cabaña musgo', description: 'Tema de hogar acogedor para tu room card.', price: 600, color: '#467658', rarity: 'Poco común', emoji: '🏡' },
+  { id: 'house_sky', type: 'housing', category: 'housing', name: 'Loft celeste', description: 'Decoración azul y luminosa para tu room card.', price: 900, color: '#4974a9', rarity: 'Raro', emoji: '🏙️' },
+  { id: 'pet_rpg_link', type: 'pet', category: 'pets', name: 'Compañero RPG', description: 'Las mascotas se adoptan y entrenan en el módulo RPG.', price: 0, color: '#4a8762', rarity: 'Progreso RPG', emoji: '🐾' },
+];

@@ -1,6 +1,6 @@
 # Bot Manzanita
 
-Versión **1.16.1**.
+Versión **1.17.0**.
 
 Bot multiusos para Discord con economía persistente, paneles Components V2 y música en canales de voz mediante Lavalink.
 
@@ -29,6 +29,12 @@ La estructura del proyecto y el orden de configuración están resumidos en [`AR
 Los comandos también aceptan prefijo `a!` como alternativa al slash. Atajos comunes: `a!p`/`a!play`, `a!s`/`a!search`, `a!q`/`a!queue`, `a!bal`/`a!b`, `a!d`/`a!daily`, `a!w`/`a!work`, `a!f`/`a!fish`, `a!c`/`a!crime`, `a!r`/`a!rob`, `a!rl`/`a!roulette`, `a!bj`/`a!21`. Los paneles conservan sus botones; música, economía y RPG usan las mismas reglas y datos que los slash. Por ser mensajes normales, las respuestas `a!` aparecen en el canal. Las acciones `a!admin` solo se aceptan en DM desde el ID propietario; ahí debes indicar el ID del servidor y del usuario.
 
 Los GIFs de expresiones se solicitan a NEKOS.BEST, que publica endpoints SFW sin API key y requiere un encabezado User-Agent válido. Todas aceptan `@persona` para una escena compartida; `sip`, `slap`, `punch`, `kick` y `bite` tienen textos especiales aleatorios en esa modalidad. Hay un cooldown por persona y límite compartido local para respetar su cuota; si el servicio no responde, el bot avisa para reintentar. La imagen incluye la fuente y el anime cuando los metadatos lo proporcionan.
+
+### Perfil, progreso y cosméticos
+
+`/perfil [usuario]` o `a!perfil [@persona]` muestra una Profile Card PNG global con nivel, rango, XP, actividad, reputación, about, badges, mascota RPG y tema equipado. Sus botones abren personalización, inventario, tienda, progreso, Wallet Card, Rank Card y Room Card. `/wallet` muestra la tarjeta de billetera; el XP de chat se acredita como máximo una vez por minuto por usuario y servidor, y el aviso de nivel incluye su propia Level-up Card.
+
+La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, mascotas RPG, housing, fondos de rank, level-up y wallet, badges, tags, marcos y stickers. Puedes previsualizar, comprar con monedas, equipar y retirar decoración desde los paneles. `/rep @persona` concede un punto de reputación al día. El esquema de perfil e inventario se crea automáticamente en SQLite o en la base MySQL configurada; no hay que subir secretos ni ejecutar una migración manual.
 
 - Atajos de economía: `/bal` y `/balance` muestran billetera, banco y patrimonio; `/top` y `/baltop` muestran el ranking; `/profile` abre tu perfil y `/eco` el panel rápido.
 - Acciones directas: `/fish`, `/21` o `/bj`, `/daily`, `/work`, `/crime`, `/rob`, `/roulette`, `/bank`, `/shop`, `/inventory` y `/pay` evitan escribir `/economia`.

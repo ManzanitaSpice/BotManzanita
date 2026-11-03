@@ -1,3 +1,4 @@
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import type { RowDataPacket } from 'mysql2/promise';
 import { db } from '../storage/database.js';
 import { economyPool, withEconomyTransaction } from '../storage/economy-database.js';
@@ -11,6 +12,7 @@ function timestamp(): number { return Math.floor(Date.now() / 1000); }
 export async function adjustAdminCurrency(guildId: string, targetId: string, currency: AdminCurrency, amount: number, actorId: string, reference: string): Promise<
   { ok: true; balance: number; ledgerId: number } | { ok: false; reason: 'invalid_amount' | 'insufficient'; balance: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000_000) return { ok: false, reason: 'invalid_amount', balance: 0 };
   const column = currencyColumn[currency]; const at = timestamp();
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -39,6 +41,7 @@ export async function adjustAdminCurrency(guildId: string, targetId: string, cur
 export async function rollbackAdminCurrency(guildId: string, ledgerId: number, actorId: string): Promise<
   { ok: true; amount: number; currency: AdminCurrency; targetId: string; balance: number } | { ok: false; reason: 'not_found' | 'not_reversible' | 'already_reversed' | 'insufficient' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isSafeInteger(ledgerId) || ledgerId < 1) return { ok: false, reason: 'not_found' };
   const at = timestamp();
   const perform = async (connection: import('mysql2/promise').PoolConnection) => {
@@ -76,6 +79,7 @@ export async function rollbackAdminCurrency(guildId: string, ledgerId: number, a
 }
 
 export async function grantAdminRpgItem(guildId: string, userId: string, itemId: string, amount: number): Promise<number | undefined> {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 1_000) return undefined;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     await connection.execute('INSERT IGNORE INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,0)', [guildId, userId, itemId]);
@@ -97,6 +101,7 @@ export async function grantAdminRpgItem(guildId: string, userId: string, itemId:
 }
 
 export async function resetAdminCooldown(guildId: string, userId: string, cooldown: 'all' | 'daily' | 'work' | 'fish' | 'rob' | 'crime' | 'explore'): Promise<void> {
+  guildId = GLOBAL_SCOPE_ID;
   const columns: Record<Exclude<typeof cooldown, 'all'>, string> = { daily: 'last_daily_at', work: 'last_work_at', fish: 'last_fish_at', rob: 'last_rob_at', crime: 'last_crime_at', explore: 'last_explore_at' };
   const clearPet = cooldown === 'all' || cooldown === 'explore';
   const accountColumns = cooldown === 'all' ? Object.values(columns).filter((column) => column !== 'last_explore_at') : cooldown === 'explore' ? [] : [columns[cooldown]];
@@ -112,6 +117,7 @@ export async function resetAdminCooldown(guildId: string, userId: string, cooldo
 }
 
 export async function setAdminRobberyShield(guildId: string, userId: string, hours: number): Promise<number> {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new Error('invalid_hours');
   const until = timestamp() + hours * 3600; const at = timestamp();
   if (economyPool) await withEconomyTransaction(async (connection) => {
@@ -123,11 +129,13 @@ export async function setAdminRobberyShield(guildId: string, userId: string, hou
 }
 
 export async function inspectAdminUser(guildId: string, userId: string): Promise<{ wallet: number; bank: number; premium: number; pet: RpgPet | undefined; inventory: Array<{ itemId: string; quantity: number }> }> {
+  guildId = GLOBAL_SCOPE_ID;
   const [account, pet, inventory] = await Promise.all([getAccountBalances(guildId, userId), getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
   return { wallet: account.wallet, bank: account.bank, premium: account.premium, pet, inventory };
 }
 
 export async function addAdminAudit(guildId: string, actorId: string, targetId: string | null, action: string, details: Record<string, unknown>): Promise<void> {
+  guildId = GLOBAL_SCOPE_ID;
   const at = timestamp(); const payload = JSON.stringify(details);
   if (economyPool) {
     await economyPool.execute('INSERT INTO admin_audit_log (guild_id,actor_id,target_id,action,details_json,created_at) VALUES (?,?,?,?,?,?)', [guildId, actorId, targetId, action, payload, at]);
@@ -137,6 +145,7 @@ export async function addAdminAudit(guildId: string, actorId: string, targetId: 
 }
 
 export async function getAdminAudit(guildId: string, limit = 10): Promise<Array<{ id: number; actorId: string; targetId: string | null; action: string; details: string; createdAt: number }>> {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) {
     const [rows] = await economyPool.execute<RowDataPacket[]>('SELECT id,actor_id AS actorId,target_id AS targetId,action,details_json AS details,created_at AS createdAt FROM admin_audit_log WHERE guild_id=? ORDER BY id DESC LIMIT ?', [guildId, limit]);
     return rows.map((row) => ({ id: Number(row.id), actorId: String(row.actorId), targetId: row.targetId == null ? null : String(row.targetId), action: String(row.action), details: String(row.details), createdAt: Number(row.createdAt) }));

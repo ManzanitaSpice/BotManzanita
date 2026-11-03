@@ -1,3 +1,4 @@
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import type { Track } from 'lavalink-client';
 import { db } from '../storage/database.js';
 
@@ -37,6 +38,7 @@ function trackValues(track: Track) {
 }
 
 export function addFavorite(guildId: string, userId: string, track: Track): 'saved' | 'exists' | 'full' {
+  guildId = GLOBAL_SCOPE_ID;
   const values = trackValues(track);
   const save = db.transaction(() => {
     const existing = db.prepare('SELECT 1 FROM music_favorites WHERE guild_id = ? AND user_id = ? AND track_uri = ?')
@@ -54,6 +56,7 @@ export function addFavorite(guildId: string, userId: string, track: Track): 'sav
 }
 
 export function getFavorites(guildId: string, userId: string): FavoriteTrack[] {
+  guildId = GLOBAL_SCOPE_ID;
   return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt
     FROM music_favorites WHERE guild_id = ? AND user_id = ? ORDER BY saved_at DESC, id DESC LIMIT ?`)
@@ -61,6 +64,7 @@ export function getFavorites(guildId: string, userId: string): FavoriteTrack[] {
 }
 
 export function getFavorite(guildId: string, userId: string, id: number): FavoriteTrack | undefined {
+  guildId = GLOBAL_SCOPE_ID;
   return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt
     FROM music_favorites WHERE guild_id = ? AND user_id = ? AND id = ?`)
@@ -68,6 +72,7 @@ export function getFavorite(guildId: string, userId: string, id: number): Favori
 }
 
 export function removeFavorite(guildId: string, userId: string, id: number): boolean {
+  guildId = GLOBAL_SCOPE_ID;
   return db.prepare('DELETE FROM music_favorites WHERE guild_id = ? AND user_id = ? AND id = ?')
     .run(guildId, userId, id).changes > 0;
 }
@@ -84,6 +89,7 @@ export function saveTrackToPlaylist(
   name: string,
   track: Track,
 ): { state: 'added' | 'exists' | 'playlist_limit' | 'track_limit'; name: string; count: number } {
+  guildId = GLOBAL_SCOPE_ID;
   const playlistName = normalizePlaylistName(name);
   const values = trackValues(track);
   const save = db.transaction(() => {
@@ -113,6 +119,7 @@ export function saveTrackToPlaylist(
 }
 
 export function getPlaylists(guildId: string, userId: string): SavedPlaylist[] {
+  guildId = GLOBAL_SCOPE_ID;
   return db.prepare(`SELECT p.id, p.name, p.created_at AS createdAt, COUNT(t.id) AS trackCount
     FROM music_playlists p LEFT JOIN music_playlist_tracks t ON t.playlist_id = p.id
     WHERE p.guild_id = ? AND p.user_id = ? GROUP BY p.id ORDER BY p.name COLLATE NOCASE`)
@@ -120,6 +127,7 @@ export function getPlaylists(guildId: string, userId: string): SavedPlaylist[] {
 }
 
 export function getPlaylist(guildId: string, userId: string, name: string): { playlist: SavedPlaylist; tracks: SavedPlaylistTrack[] } | undefined {
+  guildId = GLOBAL_SCOPE_ID;
   const { normalizedName } = normalizePlaylistName(name);
   const row = db.prepare(`SELECT p.id, p.name, p.created_at AS createdAt, COUNT(t.id) AS trackCount
     FROM music_playlists p LEFT JOIN music_playlist_tracks t ON t.playlist_id = p.id
@@ -134,6 +142,7 @@ export function getPlaylist(guildId: string, userId: string, name: string): { pl
 }
 
 export function removePlaylistTrack(guildId: string, userId: string, name: string, position: number): boolean {
+  guildId = GLOBAL_SCOPE_ID;
   const playlist = getPlaylist(guildId, userId, name);
   if (!playlist || !Number.isSafeInteger(position) || position < 1) return false;
   const track = playlist.tracks[position - 1];
@@ -142,6 +151,7 @@ export function removePlaylistTrack(guildId: string, userId: string, name: strin
 }
 
 export function deletePlaylist(guildId: string, userId: string, name: string): boolean {
+  guildId = GLOBAL_SCOPE_ID;
   const { normalizedName } = normalizePlaylistName(name);
   return db.prepare('DELETE FROM music_playlists WHERE guild_id = ? AND user_id = ? AND normalized_name = ?')
     .run(guildId, userId, normalizedName).changes > 0;

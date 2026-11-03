@@ -1,10 +1,10 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { adjustPremiumCurrency, claimDaily, crime, fish, formatCooldown, getBalance, getInventory, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
-import { bankPanel, blackjackPanel, casinoPanel, economyPanel, premiumStorePanel } from '../ui/panels.js';
+import { adjustPremiumCurrency, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel, premiumStorePanel } from '../ui/panels.js';
 export const economyCommand = {
     data: new SlashCommandBuilder()
         .setName('economia')
-        .setDescription('Tu economía y recompensas del servidor')
+        .setDescription('Tu economía y recompensas globales')
         .addSubcommand((subcommand) => subcommand.setName('panel').setDescription('Abre tu panel privado de economía'))
         .addSubcommand((subcommand) => subcommand.setName('tienda_premium').setDescription('Abre la tienda de gemas administradas'))
         .addSubcommand((subcommand) => subcommand.setName('casino').setDescription('Abre el casino de monedas virtuales'))
@@ -74,8 +74,8 @@ export const economyCommand = {
             return;
         }
         if (action === 'saldo') {
-            const balance = await getBalance(interaction.guildId, interaction.user.id);
-            await interaction.reply({ content: `💰 Tienes **${new Intl.NumberFormat('es-MX').format(balance)} monedas**.`, flags: MessageFlags.Ephemeral });
+            const balance = await getAccountBalances(interaction.guildId, interaction.user.id);
+            await interaction.reply(balancePanel(interaction.user.username, balance));
             return;
         }
         if (action === 'trabajar') {
@@ -84,7 +84,7 @@ export const economyCommand = {
                 await interaction.reply({ content: `🧰 Ya trabajaste recientemente. Puedes volver en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `${result.message}\nSaldo: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            await interaction.reply(economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
             return;
         }
         if (action === 'crimen') {
@@ -93,7 +93,7 @@ export const economyCommand = {
                 await interaction.reply({ content: `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `${result.message}\nSaldo: **${new Intl.NumberFormat('es-MX').format(result.balance)} monedas**.`, flags: MessageFlags.Ephemeral });
+            await interaction.reply(economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
             return;
         }
         if (action === 'pescar') {
@@ -102,7 +102,7 @@ export const economyCommand = {
                 await interaction.reply({ content: `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `${result.message}\nSaldo: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            await interaction.reply(economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
             return;
         }
         if (action === 'robar') {
@@ -119,7 +119,7 @@ export const economyCommand = {
                 await interaction.reply({ content: `🕵️ ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `${result.message}\nTu saldo: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            await interaction.reply(economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
             return;
         }
         if (action === 'ruleta') {
@@ -129,8 +129,8 @@ export const economyCommand = {
                 await interaction.reply({ content: `🎰 ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            const colorEmoji = result.result === 'rojo' ? '🔴' : result.result === 'negro' ? '⚫' : '🟢';
-            await interaction.reply({ content: `🎰 Salió **${result.number} ${colorEmoji} ${result.result}**.\n${result.message}\nSaldo: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            const ball = result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde';
+            await interaction.reply(economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance));
             return;
         }
         if (action === 'apostar_objeto') {
@@ -140,7 +140,8 @@ export const economyCommand = {
                 await interaction.reply({ content: `🎒 ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `🎰 ${result.message}\nTu saldo: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            const itemCost = storeItems.find((item) => item.name === result.itemName)?.cost ?? 0;
+            await interaction.reply(economyActionPanel('🎒 Apuesta de objeto', result.message, result.payout ? result.payout : -itemCost, result.balance));
             return;
         }
         if (action === 'usar') {
@@ -153,7 +154,7 @@ export const economyCommand = {
                 await interaction.reply({ content: `🎒 ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: result.kind === 'fish' ? `${result.message}\nSaldo: **${result.balance} monedas**.` : result.message, flags: MessageFlags.Ephemeral });
+            await interaction.reply(result.kind === 'fish' ? economyActionPanel('🎣 Cebo utilizado', result.message, result.amount, result.balance) : { content: result.message, flags: MessageFlags.Ephemeral });
             return;
         }
         if (action === 'blackjack') {
@@ -185,18 +186,13 @@ export const economyCommand = {
             return;
         }
         if (action === 'inventario') {
-            const inventory = await getInventory(interaction.guildId, interaction.user.id);
-            const names = new Map(storeItems.map((item) => [item.id, `${item.emoji} ${item.name}`]));
-            const listing = inventory.length ? inventory.map((item) => `${names.get(item.itemId) ?? item.itemId}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`).join('\n') : 'Tu inventario está vacío.';
-            await interaction.reply({ content: `🎒 **Inventario de ${interaction.user.username}**\n${listing}`, flags: MessageFlags.Ephemeral });
+            await interaction.reply({ ...(await inventoryPanel(interaction.guildId, interaction.user.id)), flags: ['IsComponentsV2', 'Ephemeral'] });
             return;
         }
         if (action === 'ranking') {
             const ranking = await getLeaderboard(interaction.guildId);
-            const listing = ranking.length
-                ? ranking.map((account, index) => `**${index + 1}.** <@${account.userId}> · ${new Intl.NumberFormat('es-MX').format(account.balance)} monedas`).join('\n')
-                : 'Aún no hay cuentas en este servidor.';
-            await interaction.reply({ content: `# 🏆 TOP DE ECONOMÍA\n${listing}` });
+            const listing = ranking.map((account) => `<@${account.userId}>  ·  **${new Intl.NumberFormat('es-MX').format(account.balance)}** monedas`);
+            await interaction.reply({ ...leaderboardPanel('🏆 TOP DE ECONOMÍA', 'Las mayores fortunas globales', listing, 0x22c55e, 'Aún no hay cuentas registradas.'), allowedMentions: { parse: [] } });
             return;
         }
         const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
@@ -204,6 +200,6 @@ export const economyCommand = {
             await interaction.reply({ content: `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
             return;
         }
-        await interaction.reply({ content: `🎁 Reclamaste **${result.amount} monedas**. Tu saldo es **${result.balance}**.`, flags: MessageFlags.Ephemeral });
+        await interaction.reply(economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
     },
 };

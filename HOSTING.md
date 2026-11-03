@@ -27,6 +27,10 @@ Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya co
 
 El bot añade automáticamente las columnas de gemas premium y nombre gratuito al esquema SQLite o MySQL existente. No borres la base para actualizar. `/economia admin_moneda` exige **Gestionar servidor** y deja registro de cada ajuste; las monedas normales siguen siendo las que se obtienen jugando. `/admin` está bloqueado por defecto y solo ejecuta acciones si quien lo invoca tiene el ID propietario `931978822323159111`. Tras registrar los comandos, permite esa cuenta en cada servidor desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos**. Discord puede seguir mostrando el comando a miembros con permiso Administrador, pero el bot rechaza sus acciones si el ID no coincide. Todas las acciones quedan en `admin_audit_log`; los ajustes administrativos de moneda muestran un ID que puede usarse con `/admin rollback`. La tienda premium se muestra vacía hasta que se publiquen productos.
 
+### Datos globales de jugador
+
+Las monedas, banco, inventario, mascotas RPG, misiones, progreso, perfil, cosméticos, reputación, favoritos y listas guardadas de música usan un único espacio global por ID de Discord. En el primer arranque de esta versión, la base suma los saldos e inventarios que antes estaban separados, conserva el progreso acumulado y elige la mascota activa más recientemente actualizada si una cuenta tenía mascotas en varios servidores. La migración se marca y no se repite. Las colas/reproductores de voz y sus paneles activos siguen siendo propios de cada servidor porque Discord los mantiene en canales de voz distintos.
+
 No configures `DISCORD_DEV_GUILD_ID` en producción salvo que quieras registrar los comandos únicamente en ese servidor de pruebas.
 
 ### Activar MySQL/MariaDB para la economía
@@ -70,6 +74,12 @@ El archivo `lavalink/application.yml` se incluye como referencia para un servido
 ## Comandos de aplicación
 
 Para publicar comandos nuevos o actualizados desde un paquete compilado, configura las variables de entorno y ejecuta `dist/deploy-commands.js` una vez (en Pterodactyl, cambia temporalmente `BOT_JS_FILE` a esa ruta, inicia y después restaura `dist/index.js`). Esto registra `/admin` junto con los comandos RPG, atajos de economía y música. En cada servidor, permite la cuenta propietaria desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos** para que los miembros sin Administrador no vean `/admin`. Discord mantiene acceso visual para administradores del servidor; el guard del bot impide que cualquiera salvo la cuenta propietaria ejecute acciones. Si `DISCORD_DEV_GUILD_ID` está configurado, los registra solo en ese servidor de desarrollo.
+
+## Tarjetas de perfil y cosméticos (1.17.0)
+
+El perfil renderiza imágenes PNG con `@napi-rs/canvas`; `npm install` instala el binario nativo correspondiente al sistema del host. No requiere ImageMagick, fuentes subidas ni servicio externo de renderizado. Al primer arranque crea las tablas `user_profiles`, `user_progress`, `user_server_progress`, `items`, `shop_categories`, `user_inventory`, `user_equipped_badges` y `user_reputation_log`, tanto en SQLite como en la base MySQL de economía. No cambies ni migres el esquema a mano.
+
+`/perfil [usuario]` muestra la tarjeta global; `/wallet` y `/rank` muestran tarjetas separadas. La actividad de mensajes suma XP con un límite de una concesión por minuto por usuario y servidor. Los botones del perfil abren personalización, inventario, tienda con preview y progreso; about, título, acento y equipamiento se guardan en la base. El comando `rep` permite dar un reconocimiento diario por persona. En el paquete Pterodactyl conserva `BOT JS FILE=dist/index.js` y deja que el arranque ejecute `npm install` para instalar el renderizador.
 
 ### Prefijo alternativo `a!`
 

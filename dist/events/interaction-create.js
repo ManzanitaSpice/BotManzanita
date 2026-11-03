@@ -1,11 +1,15 @@
 import { LabelBuilder, MessageFlags, ModalBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle, } from 'discord.js';
-import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgBestiaryPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
 import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, storeItems, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, trainRpgPet, useRpgItem } from '../services/rpg.js';
+import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack } from '../services/music.js';
 import { getFavorite, getFavorites, removeFavorite } from '../services/music-library.js';
 import { ADMIN_OWNER_ID, adminAutocomplete } from '../commands/admin.js';
 import { catalogPanel } from '../ui/catalog.js';
+import { profileCardPanel, profileCustomizePanel, profileInventoryPanel, profileProgressPanel, profileRoomPanel, profileShopPanel } from '../ui/profile.js';
+import { buyProfileItem, equipProfileItem, updateProfileField, unequipProfileType } from '../services/profile.js';
+import { profileShopItems } from '../data/profile-shop.js';
 export function registerInteractionHandler(client) {
     client.on('interactionCreate', async (interaction) => {
         try {
@@ -37,6 +41,8 @@ export function registerInteractionHandler(client) {
                     await command.execute(interaction);
                 return;
             }
+            if (await handleProfileInteraction(interaction))
+                return;
             if (interaction.isModalSubmit() && interaction.customId === 'rpg:name:submit') {
                 if (!interaction.guildId) {
                     await interaction.reply({ content: 'El RPG solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -206,10 +212,23 @@ export function registerInteractionHandler(client) {
                     await interaction.followUp({ content: result.ok ? `⚔️ Build equipada con ${result.pet.equippedMoves.length} técnica(s).` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : 'Elige entre una y cuatro técnicas que ya conozca tu mascota.', flags: MessageFlags.Ephemeral });
                     return;
                 }
-                if (interaction.customId === 'rpg:adopt') {
-                    const adopted = await adoptRpgPet(guildId, interaction.user.id, '');
+                if (interaction.customId === 'rpg:egg:element' && interaction.isStringSelectMenu()) {
+                    const selected = rpgEggOptions.find((entry) => entry.element === interaction.values[0]);
+                    await interaction.update(componentUpdate(await rpgAdoptionPanel(interaction.user.username, selected?.element ?? 'Fuego')));
+                    return;
+                }
+                if (interaction.customId.startsWith('rpg:hatch:') && interaction.isButton()) {
+                    const element = interaction.customId.slice('rpg:hatch:'.length);
+                    if (!rpgEggOptions.some((entry) => entry.element === element)) {
+                        await interaction.reply({ content: 'Ese huevo no existe.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+                    const adopted = await adoptRpgPet(guildId, interaction.user.id, '', element);
+                    if (!adopted.ok) {
+                        await interaction.reply({ content: 'Ya tienes una mascota; tu colección se comparte entre servidores.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
                     await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
-                    await interaction.followUp({ content: adopted.ok ? `🐾 ¡Adoptaste a **${adopted.pet.name}**, ${adopted.pet.rarity.toLowerCase()} ${adopted.pet.species}!` : 'Ya tienes una mascota en este servidor.', flags: MessageFlags.Ephemeral });
                     return;
                 }
                 if (interaction.customId === 'rpg:shop') {
@@ -221,11 +240,6 @@ export function registerInteractionHandler(client) {
                     await interaction.update(componentUpdate(await rpgShopPanel(guildId, interaction.user.id, Number.isSafeInteger(page) ? page : 0)));
                     return;
                 }
-                if (interaction.customId.startsWith('rpg:bestiary:page:') && interaction.isButton()) {
-                    const page = Number(interaction.customId.slice('rpg:bestiary:page:'.length));
-                    await interaction.update(componentUpdate(rpgBestiaryPanel(Number.isSafeInteger(page) ? page : 0)));
-                    return;
-                }
                 if (interaction.customId === 'rpg:zone:preview' && interaction.isStringSelectMenu()) {
                     await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username, interaction.values[0])));
                     return;
@@ -233,7 +247,7 @@ export function registerInteractionHandler(client) {
                 if (interaction.customId.startsWith('rpg:explore:') && interaction.isButton()) {
                     const zoneId = interaction.customId.slice('rpg:explore:'.length);
                     const result = await exploreRpg(guildId, interaction.user.id, zoneId, interaction.id);
-                    const message = !result.ok ? result.reason === 'no_pet' ? 'Primero adopta una mascota con `/rpg adoptar`.'
+                    const message = !result.ok ? result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
                         : result.reason === 'zone_locked' ? 'Tu mascota aún no tiene nivel para esa zona.'
                             : result.reason === 'low_energy' ? 'Le falta energía. Usa éter o bayas.' : `Está descansando; vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`
                         : `${result.message}\n❤️ ${result.pet.hp}/${result.pet.maxHp} PV · ⚡ ${result.pet.energy}/${result.pet.maxEnergy} energía.`;
@@ -309,10 +323,10 @@ export function registerInteractionHandler(client) {
                 if (interaction.customId === 'eco:daily') {
                     const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
                     const message = result.ok
-                        ? `🎁 Reclamaste **${result.amount} monedas**. Tu saldo ahora es **${result.balance}**.`
-                        : `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
+                        ? economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance)
+                        : { content: `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await economyPanel(interaction.guildId, interaction.user.id)));
-                    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+                    await interaction.followUp(message);
                     return;
                 }
                 if (interaction.customId === 'eco:casino') {
@@ -326,10 +340,10 @@ export function registerInteractionHandler(client) {
                 if (interaction.customId === 'eco:casino:fish') {
                     const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
                     const message = result.ok
-                        ? `${result.message}\nSaldo: **${result.balance} monedas**.`
-                        : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
+                        ? economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance)
+                        : { content: `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await casinoPanel(interaction.guildId, interaction.user.id)));
-                    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+                    await interaction.followUp(message);
                     return;
                 }
                 if (interaction.customId === 'eco:use' && interaction.isStringSelectMenu()) {
@@ -340,10 +354,10 @@ export function registerInteractionHandler(client) {
                     }
                     const result = await useShopItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
                     const message = !result.ok
-                        ? result.reason === 'cooldown' ? `⏳ Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.` : 'No tienes ese consumible o ya no está disponible.'
-                        : result.kind === 'fish' ? `${result.message}\nSaldo: **${result.balance} monedas**.` : result.message;
+                        ? { content: result.reason === 'cooldown' ? `⏳ Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.` : 'No tienes ese consumible o ya no está disponible.', flags: ['Ephemeral'] }
+                        : result.kind === 'fish' ? economyActionPanel('🎣 Cebo utilizado', result.message, result.amount, result.balance) : { content: result.message, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id)));
-                    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+                    await interaction.followUp(message);
                     return;
                 }
                 if (interaction.customId.startsWith('eco:blackjack:') && interaction.isButton()) {
@@ -664,4 +678,145 @@ export function registerInteractionHandler(client) {
             }
         }
     });
+}
+async function handleProfileInteraction(interaction) {
+    if (!interaction.isModalSubmit() && !interaction.isMessageComponent())
+        return false;
+    if (!interaction.customId.startsWith('profile:'))
+        return false;
+    const [prefix, ownerId, ...parts] = interaction.customId.split(':');
+    if (prefix !== 'profile' || !ownerId)
+        return false;
+    if (ownerId !== interaction.user.id) {
+        if (interaction.isRepliable())
+            await interaction.reply({ content: 'Este panel de perfil pertenece a otra persona.', flags: MessageFlags.Ephemeral });
+        return true;
+    }
+    const action = parts[0] ?? '';
+    const guildId = interaction.guildId;
+    if (!guildId) {
+        if (interaction.isRepliable())
+            await interaction.reply({ content: 'Este panel solo funciona dentro de un servidor.', flags: MessageFlags.Ephemeral });
+        return true;
+    }
+    if (interaction.isModalSubmit()) {
+        if (action === 'edit' && (parts[1] === 'about' || parts[1] === 'title')) {
+            const field = parts[1];
+            await updateProfileField(ownerId, field, interaction.fields.getTextInputValue(field));
+            await interaction.reply({ content: field === 'about' ? 'About guardado. Abre `/perfil` para ver la tarjeta actualizada.' : 'Título actualizado. Abre `/perfil` para ver el cambio.', flags: MessageFlags.Ephemeral });
+            return true;
+        }
+        if (action === 'search-submit') {
+            const query = interaction.fields.getTextInputValue('query').trim();
+            await interaction.reply(await profileShopPanel(guildId, ownerId, 'all', query, undefined, interaction.user));
+            return true;
+        }
+        return false;
+    }
+    if (!interaction.isMessageComponent())
+        return false;
+    if (interaction.isStringSelectMenu()) {
+        if (action === 'accent') {
+            await updateProfileField(ownerId, 'accent', interaction.values[0] ?? '#8b75dc');
+            await interaction.reply(await profileCustomizePanel(guildId, ownerId, interaction.user));
+            return true;
+        }
+        if (action === 'shop-category') {
+            await interaction.reply(await profileShopPanel(guildId, ownerId, interaction.values[0] ?? 'all', '', undefined, interaction.user));
+            return true;
+        }
+        if (action === 'shop-item') {
+            const category = parts[1] ?? 'all';
+            const query = decodeURIComponent(parts.slice(2).join(':') ?? '');
+            await interaction.reply(await profileShopPanel(guildId, ownerId, category, query, interaction.values[0], interaction.user));
+            return true;
+        }
+        if (action === 'inventory-category') {
+            await interaction.reply(await profileInventoryPanel(guildId, ownerId, interaction.values[0] ?? 'all', undefined, interaction.user));
+            return true;
+        }
+        if (action === 'inventory-item') {
+            await interaction.reply(await profileInventoryPanel(guildId, ownerId, parts[1] ?? 'all', interaction.values[0], interaction.user));
+            return true;
+        }
+        return false;
+    }
+    if (!interaction.isButton())
+        return false;
+    if (action === 'edit' && (parts[1] === 'about' || parts[1] === 'title')) {
+        const field = parts[1];
+        const about = field === 'about';
+        const modal = new ModalBuilder().setCustomId(`profile:${ownerId}:edit:${field}`).setTitle(about ? 'Editar about' : 'Cambiar título')
+            .addLabelComponents(new LabelBuilder().setLabel(about ? 'Sobre ti (máximo 180 caracteres)' : 'Título (máximo 40 caracteres)').setTextInputComponent(new TextInputBuilder().setCustomId(field).setStyle(about ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(!about).setMaxLength(about ? 180 : 40).setPlaceholder(about ? 'Cuéntale algo a la comunidad…' : 'Explorador/a')));
+        await interaction.showModal(modal);
+        return true;
+    }
+    if (action === 'search') {
+        const modal = new ModalBuilder().setCustomId(`profile:${ownerId}:search-submit`).setTitle('Búsqueda avanzada de la tienda')
+            .addLabelComponents(new LabelBuilder().setLabel('Buscar por nombre, rareza o descripción').setTextInputComponent(new TextInputBuilder().setCustomId('query').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(64).setPlaceholder('ej. sakura, raro, marco')));
+        await interaction.showModal(modal);
+        return true;
+    }
+    if (action === 'buy') {
+        const itemId = parts[1] ?? '';
+        const item = profileShopItems.find((entry) => entry.id === itemId);
+        const result = await buyProfileItem(guildId, ownerId, itemId, interaction.id);
+        const response = result.ok ? `Compraste **${item?.name ?? itemId}**. Saldo restante: **${result.balance.toLocaleString('es-MX')} monedas**.` : result.reason === 'insufficient' ? `Te faltan monedas. Saldo: **${result.balance.toLocaleString('es-MX')}**.` : result.reason === 'already_owned' ? 'Ya tienes ese artículo.' : 'Ese artículo no se puede comprar.';
+        await interaction.reply({ content: response, flags: MessageFlags.Ephemeral });
+        if (result.ok)
+            await interaction.followUp(await profileShopPanel(guildId, ownerId, item?.category ?? 'all', '', itemId, interaction.user));
+        return true;
+    }
+    if (action === 'equip') {
+        const itemId = parts[1] ?? '';
+        const result = await equipProfileItem(guildId, ownerId, itemId);
+        await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
+        if (result.ok)
+            await interaction.followUp(await profileInventoryPanel(guildId, ownerId, profileShopItems.find((item) => item.id === itemId)?.category ?? 'all', itemId, interaction.user));
+        return true;
+    }
+    if (action === 'unequip') {
+        const result = await unequipProfileType(ownerId, parts[1] ?? '');
+        await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
+        if (result.ok)
+            await interaction.followUp(await profileInventoryPanel(guildId, ownerId, 'all', undefined, interaction.user));
+        return true;
+    }
+    if (action === 'home') {
+        await interaction.reply(await profileCardPanel(guildId, interaction.user));
+        return true;
+    }
+    if (action === 'wallet') {
+        await interaction.reply(await profileCardPanel(guildId, interaction.user, ownerId, 'wallet'));
+        return true;
+    }
+    if (action === 'rank') {
+        await interaction.reply(await profileCardPanel(guildId, interaction.user, ownerId, 'rank'));
+        return true;
+    }
+    if (action === 'customize') {
+        await interaction.reply(await profileCustomizePanel(guildId, ownerId, interaction.user));
+        return true;
+    }
+    if (action === 'inventory') {
+        await interaction.reply(await profileInventoryPanel(guildId, ownerId, 'all', undefined, interaction.user));
+        return true;
+    }
+    if (action === 'shop') {
+        await interaction.reply(await profileShopPanel(guildId, ownerId, 'all', '', undefined, interaction.user));
+        return true;
+    }
+    if (action === 'progress') {
+        await interaction.reply(await profileProgressPanel(guildId, interaction.user));
+        return true;
+    }
+    if (action === 'room') {
+        await interaction.reply(await profileRoomPanel(guildId, ownerId, interaction.user));
+        return true;
+    }
+    if (action === 'rpg') {
+        await interaction.reply(await rpgPanel(guildId, ownerId, interaction.user.username));
+        return true;
+    }
+    return false;
 }

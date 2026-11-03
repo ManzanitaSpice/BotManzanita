@@ -5,16 +5,23 @@ import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, getFavorites, getPlaylist, getPlaylists, removeFavorite, saveTrackToPlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgInventory, getRpgLeaderboard, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { bankPanel, blackjackPanel, casinoPanel, economyPanel, economyProfilePanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, queuePanel, rpgBestiaryPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel, searchResultsPanel, storePanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
 import { catalogPanel } from '../ui/catalog.js';
+import { profileCardPanel, levelUpCardMessage } from '../ui/profile.js';
+import { giveReputation, recordChatActivity } from '../services/profile.js';
 
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
 export function registerMessageCommandHandler(client: import('discord.js').Client): void {
   client.on('messageCreate', (message) => {
-    if (message.author.bot || !message.content.toLocaleLowerCase().startsWith(PREFIX)) return;
+    if (message.author.bot) return;
+    if (message.guildId) void recordChatActivity(message.guildId,message.author.id).then(async (result)=>{
+      if(result?.levelUp) await message.reply({content:`🎉 **${message.author.username} subió al nivel ${result.level}!**`,files:[await levelUpCardMessage(message.guildId!,message.author,result.level)],allowedMentions:{repliedUser:false}});
+    }).catch((error:unknown)=>console.error('No pude registrar la actividad de perfil:',error));
+    if (!message.content.toLocaleLowerCase().startsWith(PREFIX)) return;
     void routeMessage(message).catch(async (error: unknown) => {
       console.error(`Error procesando comando ${PREFIX} de ${message.author.id}:`, error);
       await message.reply({ content: `⚠️ ${error instanceof Error ? error.message : 'No pude completar el comando.'}`, allowedMentions: { repliedUser: false } }).catch(() => undefined);
@@ -35,7 +42,7 @@ async function routeMessage(message: Message): Promise<void> {
   }
   if (!message.guild || !message.guildId) { await say(message, 'Este comando funciona dentro de un servidor.'); return; }
   const guildId = message.guildId;
-  if (['adopt', 'adoptar', 'name', 'nombrar', 'bestiary', 'bestiario', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'rpgshop', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) { args.unshift(command); command = 'rpg'; }
+  if (['adopt', 'adoptar', 'name', 'nombrar', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'rpgshop', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) { args.unshift(command); command = 'rpg'; }
 
   const reactionId = findAnimeReaction(command);
   if (reactionId) {
@@ -95,24 +102,49 @@ async function routeMessage(message: Message): Promise<void> {
   }
   if (['lists', 'listas', 'playlist'].includes(command)) {
     const action = args[0]?.toLowerCase();
-    if (!action || action === 'list') { const lists = getPlaylists(guildId, userId); return say(message, lists.length ? lists.map((list) => `**${list.name}** · ${list.trackCount} canciones`).join('\n') : 'Aún no tienes listas. Usa `a!lists save nombre de lista` con una canción activa.'); }
+    if (!action || action === 'list') { const lists = getPlaylists(guildId, userId); await sendPanel(message, playlistsPanel(lists)); return; }
     if (action === 'save' || action === 'guardar') { const name = args.slice(1).join(' '); const current = client.lavalink.getPlayer(guildId)?.queue.current; if (!name || !current) return say(message, 'Uso: `a!lists save nombre` mientras hay una canción activa.'); const result = saveTrackToPlaylist(guildId, userId, name, current); return say(message, result.state === 'added' ? `💾 Guardada en **${result.name}** (${result.count}).` : result.state === 'exists' ? 'Esa canción ya está en la lista.' : 'La lista llegó a su límite.'); }
     if (action === 'play' || action === 'reproducir') { const name = args.slice(1).join(' '); const saved = getPlaylist(guildId, userId, name); const voiceChannelId = message.guild!.voiceStates.cache.get(userId)?.channelId; if (!saved) return say(message, 'No encontré esa lista.'); if (!voiceChannelId) return say(message, 'Entra a un canal de voz primero.'); const result = await addSavedTracks(client, { guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message), uris: saved.tracks.map((track) => track.trackUri) }); return say(message, `🎶 Añadí ${result.added} canción(es) de **${saved.playlist.name}**${result.unavailable ? ` · ${result.unavailable} no disponibles` : ''}.`); }
     return say(message, 'Usa `a!lists`, `a!lists save nombre` o `a!lists play nombre`.');
   }
 
   // ECONOMY
-  if (['bal', 'b', 'balance', 'saldo'].includes(command)) { const target = message.mentions.users.first() ?? message.author; const account = await getAccountBalances(guildId, target.id); return say(message, `💰 **${target.username}** · cartera ${money.format(account.wallet)} · banco ${money.format(account.bank)} · total **${money.format(account.total)}**`); }
-  if (['top', 'baltop', 'rich'].includes(command)) { const rows = await getLeaderboard(guildId); return say(message, `# 🏆 TOP ECONOMÍA\n${rows.length ? rows.map((row, i) => `**${i + 1}.** <@${row.userId}> · ${money.format(row.balance)}`).join('\n') : 'Aún no hay cuentas.'}`); }
-  if (command === 'profile') { await sendPanel(message, await economyProfilePanel(guildId, userId, message.author.username)); return; }
+  if (['bal', 'b', 'balance', 'saldo'].includes(command)) { const target = message.mentions.users.first() ?? message.author; const account = await getAccountBalances(guildId, target.id); await sendPanel(message, balancePanel(target.username, account, false)); return; }
+  if (['top', 'baltop', 'rich'].includes(command)) { const rows = await getLeaderboard(guildId); const listing = rows.map((row) => `<@${row.userId}>  ·  **${money.format(row.balance)}** monedas`); await sendPanel(message, leaderboardPanel('🏆 TOP DE ECONOMÍA', 'Las mayores fortunas globales', listing, 0x22c55e, 'Aún no hay cuentas.', false)); return; }
+  if (['profile','perfil'].includes(command)) { const target=message.mentions.users.first()??message.author; await sendPanel(message, await profileCardPanel(guildId,target,userId)); return; }
+  if (command === 'wallet') { await sendPanel(message, await profileCardPanel(guildId,message.author,userId,'wallet')); return; }
+  if (command === 'rankcard') { await sendPanel(message, await profileCardPanel(guildId,message.author,userId,'rank')); return; }
+  if (command === 'rep') { const target=message.mentions.users.first(); if(!target)return say(message,'Uso: `a!rep @persona`.'); const result=await giveReputation(userId,target.id); return say(message,result.ok?`✨ Le diste reputación a **${target.username}**. Ahora tiene **${result.reputation}**.`:target.id===userId?'No puedes darte reputación a ti.':'Ya reconociste a esa persona hoy.'); }
   if (['eco', 'economy'].includes(command)) { await sendPanel(message, await economyPanel(guildId, userId)); return; }
-  if (['daily', 'd', 'diaria'].includes(command)) { const result = await claimDaily(guildId, userId, message.id); return say(message, result.ok ? `🎁 +${result.amount} monedas · saldo ${money.format(result.balance)}.` : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining)}.`); }
-  if (['work', 'w', 'trabajar'].includes(command)) { const result = await work(guildId, userId, message.id); return say(message, result.ok ? `${result.message} · saldo ${money.format(result.balance)}.` : `🧰 Vuelve en ${formatCooldown(result.secondsRemaining)}.`); }
-  if (['fish', 'f', 'pescar'].includes(command)) { const result = await fish(guildId, userId, message.id); return say(message, result.ok ? `${result.message} · saldo ${money.format(result.balance)}.` : `🎣 Vuelve en ${formatCooldown(result.secondsRemaining)}.`); }
-  if (['crime', 'c', 'crimen'].includes(command)) { const result = await crime(guildId, userId, message.id); return say(message, result.ok ? `${result.message} · saldo ${money.format(result.balance)}.` : `🚨 Vuelve en ${formatCooldown(result.secondsRemaining)}.`); }
-  if (['rob', 'r', 'robar'].includes(command)) { const target = message.mentions.users.first(); if (!target || target.bot) return say(message, 'Uso: `a!rob @persona`.'); const result = await robPlayer(guildId, userId, target.id, target.username, message.id); return say(message, result.ok ? `${result.message} · saldo ${money.format(result.balance)}.` : result.reason === 'target_empty' ? 'Esa persona no tiene monedas para robar.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`); }
-  if (['roulette', 'rl', 'ruleta'].includes(command)) { const amount = Number(args[0]); const color = normalizeColor(args[1]); if (!Number.isInteger(amount) || !color) return say(message, 'Uso: `a!roulette cantidad rojo|negro|verde`.'); const result = await playRoulette(guildId, userId, amount, color, message.id); return say(message, result.ok ? `🎰 ${result.number} ${result.result} · ${result.message} · saldo ${money.format(result.balance)}.` : 'Apuesta inválida o saldo insuficiente.'); }
-  if (['itemroulette', 'itembet', 'apostar_objeto'].includes(command)) { const itemQuery = args.slice(0, -1).join('_').toLowerCase(); const color = normalizeColor(args.at(-1)); const item = storeItems.find((entry) => entry.id === itemQuery || entry.name.toLowerCase() === args.slice(0, -1).join(' ').toLowerCase()); if (!item || !color) return say(message, 'Uso: a!itembet cebo_premium rojo|negro|verde.'); const result = await playItemRoulette(guildId, userId, item.id, color, message.id); return say(message, result.ok ? `🎰 ${result.message}` : result.reason === 'missing_item' ? 'No tienes ese artículo.' : 'Ese artículo no se puede apostar.'); }
+  if (['daily', 'd', 'diaria'].includes(command)) {
+    const result = await claimDaily(guildId, userId, message.id);
+    if (!result.ok) return say(message, `⏳ Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    return sendPanel(message, economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
+  }
+  if (['work', 'w', 'trabajar'].includes(command)) {
+    const result = await work(guildId, userId, message.id);
+    if (!result.ok) return say(message, `🧰 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    return sendPanel(message, economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
+  }
+  if (['fish', 'f', 'pescar'].includes(command)) {
+    const result = await fish(guildId, userId, message.id);
+    if (!result.ok) return say(message, `🎣 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    return sendPanel(message, economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
+  }
+  if (['crime', 'c', 'crimen'].includes(command)) {
+    const result = await crime(guildId, userId, message.id);
+    if (!result.ok) return say(message, `🚨 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    return sendPanel(message, economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
+  }
+  if (['rob', 'r', 'robar'].includes(command)) {
+    const target = message.mentions.users.first();
+    if (!target || target.bot) return say(message, 'Uso: `a!rob @persona`.');
+    const result = await robPlayer(guildId, userId, target.id, target.username, message.id);
+    if (!result.ok) return say(message, result.reason === 'target_empty' ? 'Esa persona no tiene monedas para robar.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+    return sendPanel(message, economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance, false));
+  }
+  if (['roulette', 'rl', 'ruleta'].includes(command)) { const amount = Number(args[0]); const color = normalizeColor(args[1]); if (!Number.isInteger(amount) || !color) return say(message, 'Uso: `a!roulette cantidad rojo|negro|verde`.'); const result = await playRoulette(guildId, userId, amount, color, message.id); const ball = result.ok ? (result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde') : ''; return result.ok ? sendPanel(message, economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance)) : say(message, 'Apuesta inválida o saldo insuficiente.'); }
+  if (['itemroulette', 'itembet', 'apostar_objeto'].includes(command)) { const itemQuery = args.slice(0, -1).join('_').toLowerCase(); const color = normalizeColor(args.at(-1)); const item = storeItems.find((entry) => entry.id === itemQuery || entry.name.toLowerCase() === args.slice(0, -1).join(' ').toLowerCase()); if (!item || !color) return say(message, 'Uso: a!itembet cebo_premium rojo|negro|verde.'); const result = await playItemRoulette(guildId, userId, item.id, color, message.id); return result.ok ? sendPanel(message, economyActionPanel('🎒 Apuesta de objeto', result.message, result.payout ? result.payout : -item.cost, result.balance)) : say(message, result.reason === 'missing_item' ? 'No tienes ese artículo.' : 'Ese artículo no se puede apostar.'); }
   if (['21', 'bj', 'blackjack'].includes(command)) { const bet = Number(args[0]); if (!Number.isInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!21 apuesta` (1–100000).'); const result = await startBlackjack(guildId, userId, bet, message.id); return result.ok ? sendPanel(message, blackjackPanel(result.view)) : say(message, result.reason === 'invalid_bet' ? 'Apuesta inválida.' : 'Saldo insuficiente.'); }
   if (['bank', 'banco'].includes(command)) {
     const action = args[0]?.toLowerCase(); const amount = Number(args[1]);
@@ -133,13 +165,12 @@ async function routeMessage(message: Message): Promise<void> {
   // RPG
   if (['rpg', 'pet', 'mascota'].includes(command)) { const action = (args.shift() ?? 'panel').toLowerCase();
     if (['panel', 'profile', 'perfil'].includes(action)) { await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
-    if (['adopt', 'adoptar'].includes(action)) { const { adoptRpgPet } = await import('../services/rpg.js'); const result = await adoptRpgPet(guildId, userId, args.join(' ')); return say(message, result.ok ? `🐾 Adoptaste **${result.pet.name}**, ${result.pet.rarity} ${result.pet.species}.` : result.reason === 'invalid_name' ? 'Nombre inválido.' : 'Ya tienes mascota.'); }
+    if (['adopt', 'adoptar'].includes(action)) { const element = rpgEggOptions.find((entry) => entry.element.toLocaleLowerCase() === (args[0] ?? '').toLocaleLowerCase()); if (!element) { await sendPanel(message, await rpgAdoptionPanel(message.author.username)); return; } const { adoptRpgPet } = await import('../services/rpg.js'); const result = await adoptRpgPet(guildId, userId, args.slice(1).join(' '), element.element); if (!result.ok) return say(message, result.reason === 'invalid_name' ? 'Nombre inválido.' : 'Ya tienes mascota.'); await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
     if (['name', 'nombrar'].includes(action)) { const { renameRpgPet } = await import('../services/rpg.js'); const result = await renameRpgPet(guildId, userId, args.join(' ')); return say(message, result.ok ? `🏷️ Ahora se llama **${result.pet.name}**.` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'already_used' ? 'Ya usaste el cambio gratuito.' : 'Nombre inválido.'); }
-    if (['bestiary', 'bestiario'].includes(action)) { await sendPanel(message, rpgBestiaryPanel()); return; }
     if (['attacks', 'ataques', 'build'].includes(action)) { await sendPanel(message, await rpgBuildPanel(guildId, userId)); return; }
     if (['shop', 'tienda', 'rpgshop'].includes(action)) { await sendPanel(message, await rpgShopPanel(guildId, userId)); return; }
-    if (['inventory', 'inv', 'mochila'].includes(action)) { const items = await getRpgInventory(guildId, userId); return say(message, items.length ? items.map((entry) => `${rpgItems.find((item) => item.id === entry.itemId)?.name ?? entry.itemId} ×${entry.quantity}`).join('\n') : 'Tu mochila RPG está vacía.'); }
-    if (['explore', 'explorar'].includes(action)) { const zoneInput = args.join(' ').toLowerCase(); const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput); if (!zone) return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`); const result = await exploreRpg(guildId, userId, zone.id, message.id); return say(message, result.ok ? `# 🧭 ${zone.name}\n${result.events.map((event) => `${event.emoji} **${event.title}:** ${event.detail}`).join('\n')}\n${result.message}` : result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.'); }
+    if (['inventory', 'inv', 'mochila'].includes(action)) { const items = await getRpgInventory(guildId, userId); const rows = items.map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return `${item?.emoji ?? '📦'} **${item?.name ?? entry.itemId}**  ·  ${item?.rarity ?? 'Objeto'}  ·  ×${entry.quantity}`; }); await sendPanel(message, listPanel('🎒 MOCHILA RPG', `${items.reduce((sum, item) => sum + item.quantity, 0)} unidades · ${items.length} tipos`, rows, 0x8b5cf6, 'Tu mochila está vacía. Visita el bazar para prepararte.')); return; }
+    if (['explore', 'explorar'].includes(action)) { const zoneInput = args.join(' ').toLowerCase(); const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput); if (!zone) return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`); const result = await exploreRpg(guildId, userId, zone.id, message.id); if (!result.ok) return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.'); await sendPanel(message, expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy)); return; }
     if (['fight', 'battle', 'combatir'].includes(action)) { const result = await battleRpg(guildId, userId, message.id); return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : 'Tu mascota está debilitada.'); }
     if (['train', 'entrenar'].includes(action)) { const stat = ({ fuerza: 'strength', strength: 'strength', defensa: 'defense', defense: 'defense', agilidad: 'agility', agility: 'agility' } as const)[(args[0] ?? '').toLowerCase()]; if (!stat) return say(message, 'Uso: `a!rpg train fuerza|defensa|agilidad`.'); const result = await trainRpgPet(guildId, userId, stat, message.id); return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : 'Necesitas 180 monedas.'); }
     if (['buy', 'comprar'].includes(action)) { const item = findRpgItem(args.join(' ')); if (!item) return say(message, 'Indica el nombre del objeto: `a!rpg buy nombre`.'); const result = await buyRpgItem(guildId, userId, item.id, message.id); return say(message, result.ok ? `🛒 Compraste **${item.name}** · mochila x${result.quantity}.` : 'No tienes monedas suficientes.'); }
@@ -147,11 +178,11 @@ async function routeMessage(message: Message): Promise<void> {
     if (['quests', 'misiones'].includes(action)) {
       const quests = await getRpgQuests(guildId, userId);
       if (args[0]?.toLowerCase() === 'claim' || args[0]?.toLowerCase() === 'cobrar') { const query = args.slice(1).join(' ').toLowerCase(); const quest = quests.find((entry) => entry.id === query || entry.title.toLowerCase() === query); if (!quest) return say(message, `Misiones: ${quests.map((entry) => entry.id).join(', ')}.`); const result = await claimRpgQuest(guildId, userId, quest.id, message.id); return say(message, result.ok ? `🎁 Cobraste ${quest.reward} monedas.` : result.reason === 'incomplete' ? 'Aún no completas esa misión.' : result.reason === 'claimed' ? 'Ya la cobraste.' : 'No encontré esa misión.'); }
-      return say(message, quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} **${quest.title}** ${quest.progress}/${quest.target} · ${quest.reward} monedas`).join('\n') || 'No hay misiones.');
+      const rows = quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} **${quest.title}**  ·  ${quest.progress}/${quest.target}  ·  ${money.format(quest.reward)} monedas${quest.claimed ? ' · cobrada' : quest.progress >= quest.target ? ' · lista para cobrar' : ''}`); await sendPanel(message, listPanel('📜 ENCARGOS DEL GREMIO', 'Avance y recompensas de tus misiones', rows, 0x14b8a6, 'No hay misiones disponibles.')); return;
     }
-    if (['rank', 'ranking'].includes(action)) { const rows = await getRpgLeaderboard(guildId); return say(message, `# 🏆 RANKING RPG\n${rows.length ? rows.map((pet, i) => `**${i + 1}.** <@${pet.userId}> · ${pet.name} · Nv. ${pet.level}`).join('\n') : 'Aún no hay mascotas.'}`); }
+    if (['rank', 'ranking'].includes(action)) { const rows = await getRpgLeaderboard(guildId); const listing = rows.map((pet) => `<@${pet.userId}>  ·  **${pet.name}**  ·  ${pet.rarity}  ·  Nv. ${pet.level}`); await sendPanel(message, leaderboardPanel('🐾 RANKING GLOBAL', 'Mascotas con mayor nivel', listing, 0x8b5cf6, 'Aún no hay mascotas.', false)); return; }
     if (['challenge', 'retar', 'pvp'].includes(action)) { const opponent = message.mentions.users.first(); if (!opponent || opponent.bot) return say(message, 'Uso: a!rpg challenge @persona.'); const result = await createRpgPvpChallenge(guildId, userId, message.author.username, opponent.id, opponent.username, message.id); if (!result.ok) return say(message, 'No se pudo iniciar el reto; revisa que ambos tengan mascota y no estén en otro duelo.'); await message.reply({ ...rpgPvpPanel(result.match), allowedMentions: { repliedUser: false } }); return; }
-    return say(message, 'Subcomandos: `panel`, `adopt`, `name`, `bestiary`, `explore zona`, `fight`, `train stat`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
+    return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `explore zona`, `fight`, `train stat`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
   }
 
   return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
@@ -164,7 +195,9 @@ async function adminDmCommands(message: Message, args: string[]): Promise<void> 
   if (!/^\d{17,20}$/.test(guildId)) return say(message, 'Falta un ID de servidor válido. Usa a!admin help.');
   if (action === 'history') {
     const entries = await getAdminAudit(guildId, 12);
-    return say(message, entries.length ? entries.map((entry) => `#${entry.id} · ${entry.action} · ${entry.targetId ?? '—'} · ${new Date(entry.createdAt * 1000).toLocaleString('es-MX')}`).join('\n') : 'Sin acciones registradas.');
+    const rows = entries.map((entry) => `**#${entry.id} · ${entry.action}**  ·  ${new Date(entry.createdAt * 1000).toLocaleString('es-MX')}\nCuenta: ${entry.targetId ?? '—'}`);
+    await sendPanel(message, listPanel('🛡️ HISTORIAL ADMINISTRATIVO', 'Últimos movimientos · acceso privado', rows, 0x475569, 'Sin acciones registradas.'));
+    return;
   }
   if (action === 'rollback') {
     const ledgerId = Number(targetId); if (!Number.isSafeInteger(ledgerId) || ledgerId < 1) return say(message, 'Uso: a!admin rollback <guildID> <ledgerID>.');
@@ -187,7 +220,7 @@ async function adminDmCommands(message: Message, args: string[]): Promise<void> 
   }
   if (action === 'pet') {
     const query = rest.join(' ').toLocaleLowerCase(); const species = getSpeciesCatalog().find((entry) => entry.name.toLocaleLowerCase() === query);
-    if (!species) return say(message, 'Escribe el nombre exacto de una especie del bestiario.');
+    if (!species) return say(message, 'Escribe el nombre exacto de una especie registrada.');
     const result = await adminGrantRpgPet(guildId, targetId, species.name);
     if (!result.ok) return say(message, result.reason === 'already_has_pet' ? 'La cuenta ya tiene mascota.' : 'No se pudo crear la mascota.');
     await addAdminAudit(guildId, actorId, targetId, 'pet_grant', { species: result.pet.species, rarity: result.pet.rarity });
@@ -232,5 +265,5 @@ function normalizeColor(value: string | undefined): 'rojo' | 'negro' | 'verde' |
 function requester(message: Message) { return { id: message.author.id, username: message.author.username }; }
 async function say(message: Message, content: string) { await message.reply({ content, allowedMentions: { repliedUser: false } }); }
 async function sendPanel(message: Message, panel: { components: import('discord.js').ContainerBuilder[]; files?: import('discord.js').AttachmentBuilder[] }) {
-  await message.reply({ components: panel.components, ...(panel.files ? { files: panel.files } : {}), flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
+  await message.reply({ components: panel.components, ...(panel.files ? { files: panel.files } : {}), flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], repliedUser: false } });
 }

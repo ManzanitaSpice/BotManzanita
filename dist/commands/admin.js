@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { getSpeciesCatalog, adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, rpgItems } from '../services/rpg.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield } from '../services/admin.js';
+import { listPanel } from '../ui/panels.js';
 export const ADMIN_OWNER_ID = '931978822323159111';
 const currencyNames = { wallet: 'monedas', bank: 'monedas del banco', premium: 'gemas premium' };
 export const adminCommand = {
@@ -17,7 +18,7 @@ export const adminCommand = {
         .addIntegerOption((option) => option.setName('cantidad').setDescription('Positivo agrega; negativo retira').setRequired(true).setMinValue(-1_000_000_000).setMaxValue(1_000_000_000)))
         .addSubcommand((sub) => sub.setName('mascota_dar').setDescription('Otorgar una especie RPG específica si no tiene mascota')
         .addUserOption((option) => option.setName('usuario').setDescription('Dueño de la mascota').setRequired(true))
-        .addStringOption((option) => option.setName('especie').setDescription('Especie exacta del bestiario').setRequired(true).setAutocomplete(true))
+        .addStringOption((option) => option.setName('especie').setDescription('Especie registrada del RPG').setRequired(true).setAutocomplete(true))
         .addStringOption((option) => option.setName('nombre').setDescription('Nombre opcional').setMaxLength(24)))
         .addSubcommand((sub) => sub.setName('mascota_quitar').setDescription('Retirar la mascota RPG de una persona')
         .addUserOption((option) => option.setName('usuario').setDescription('Dueño de la mascota').setRequired(true)))
@@ -64,8 +65,8 @@ export const adminCommand = {
         const target = interaction.options.getUser('usuario');
         if (action === 'historial') {
             const entries = await getAdminAudit(guildId, 12);
-            const lines = entries.map((entry) => `<t:${entry.createdAt}:R> · #${entry.id} **${entry.action}**${entry.targetId ? ` → <@${entry.targetId}>` : ''} · ${entry.details.slice(0, 140)}`);
-            await interaction.reply({ content: `# 🛡️ Historial administrativo\n${lines.length ? lines.join('\n') : 'Todavía no hay acciones registradas.'}`, flags: MessageFlags.Ephemeral });
+            const lines = entries.map((entry) => `**#${entry.id} · ${entry.action}**  ·  <t:${entry.createdAt}:R>${entry.targetId ? `  ·  <@${entry.targetId}>` : ''}\n${entry.details.slice(0, 140)}`);
+            await interaction.reply(listPanel('🛡️ HISTORIAL ADMINISTRATIVO', 'Últimos movimientos · acceso privado', lines, 0x475569, 'Todavía no hay acciones registradas.'));
             return;
         }
         if (action === 'rollback') {
@@ -101,7 +102,7 @@ export const adminCommand = {
             const name = interaction.options.getString('nombre') ?? '';
             const result = await adminGrantRpgPet(guildId, target.id, species, name);
             if (!result.ok) {
-                await interaction.reply({ content: result.reason === 'already_has_pet' ? `${target} ya tiene mascota; usa /admin mascota_quitar antes de reemplazarla.` : result.reason === 'invalid_name' ? 'El nombre debe tener 2–24 caracteres y no incluir menciones ni formato.' : 'Especie desconocida; elige una del bestiario.', flags: MessageFlags.Ephemeral });
+                await interaction.reply({ content: result.reason === 'already_has_pet' ? `${target} ya tiene mascota; usa /admin mascota_quitar antes de reemplazarla.` : result.reason === 'invalid_name' ? 'El nombre debe tener 2–24 caracteres y no incluir menciones ni formato.' : 'Especie desconocida; elige una registrada.', flags: MessageFlags.Ephemeral });
                 return;
             }
             await addAdminAudit(guildId, actorId, target.id, 'pet_grant', { species, name: result.pet.name, rarity: result.pet.rarity });

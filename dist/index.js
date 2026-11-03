@@ -7,6 +7,7 @@ import { registerMessageCommandHandler } from './events/message-create.js';
 import './storage/database.js';
 import { initializeEconomyDatabase } from './storage/economy-database.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
+import { initializeProfileStorage } from './services/profile.js';
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] });
 client.commands = new Collection(commands.map((command) => [command.data.name, command]));
 client.lavalink = new LavalinkManager({
@@ -59,6 +60,7 @@ process.on('uncaughtException', (error) => {
     process.exit(1);
 });
 await initializeEconomyDatabase();
+await initializeProfileStorage();
 if (config.economyDatabase.driver === 'mysql') {
     console.log(`Base de economía MySQL conectada: ${config.economyDatabase.host}:${config.economyDatabase.port}/${config.economyDatabase.name}.`);
 }

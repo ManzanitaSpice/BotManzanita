@@ -1,3 +1,4 @@
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { db } from '../storage/database.js';
 import { economyPool, withEconomyTransaction } from '../storage/economy-database.js';
 import { getAccountBalances } from './economy.js';
@@ -5,6 +6,7 @@ import { getRpgInventory, getRpgPet } from './rpg.js';
 const currencyColumn = { wallet: 'balance', bank: 'bank_balance', premium: 'premium_balance' };
 function timestamp() { return Math.floor(Date.now() / 1000); }
 export async function adjustAdminCurrency(guildId, targetId, currency, amount, actorId, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000_000)
         return { ok: false, reason: 'invalid_amount', balance: 0 };
     const column = currencyColumn[currency];
@@ -35,6 +37,7 @@ export async function adjustAdminCurrency(guildId, targetId, currency, amount, a
     return run.immediate();
 }
 export async function rollbackAdminCurrency(guildId, ledgerId, actorId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (!Number.isSafeInteger(ledgerId) || ledgerId < 1)
         return { ok: false, reason: 'not_found' };
     const at = timestamp();
@@ -84,6 +87,7 @@ export async function rollbackAdminCurrency(guildId, ledgerId, actorId) {
     return run.immediate();
 }
 export async function grantAdminRpgItem(guildId, userId, itemId, amount) {
+    guildId = GLOBAL_SCOPE_ID;
     if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 1_000)
         return undefined;
     if (economyPool)
@@ -114,6 +118,7 @@ export async function grantAdminRpgItem(guildId, userId, itemId, amount) {
     return run.immediate();
 }
 export async function resetAdminCooldown(guildId, userId, cooldown) {
+    guildId = GLOBAL_SCOPE_ID;
     const columns = { daily: 'last_daily_at', work: 'last_work_at', fish: 'last_fish_at', rob: 'last_rob_at', crime: 'last_crime_at', explore: 'last_explore_at' };
     const clearPet = cooldown === 'all' || cooldown === 'explore';
     const accountColumns = cooldown === 'all' ? Object.values(columns).filter((column) => column !== 'last_explore_at') : cooldown === 'explore' ? [] : [columns[cooldown]];
@@ -133,6 +138,7 @@ export async function resetAdminCooldown(guildId, userId, cooldown) {
     run.immediate();
 }
 export async function setAdminRobberyShield(guildId, userId, hours) {
+    guildId = GLOBAL_SCOPE_ID;
     if (!Number.isInteger(hours) || hours < 1 || hours > 720)
         throw new Error('invalid_hours');
     const until = timestamp() + hours * 3600;
@@ -147,10 +153,12 @@ export async function setAdminRobberyShield(guildId, userId, hours) {
     return until;
 }
 export async function inspectAdminUser(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     const [account, pet, inventory] = await Promise.all([getAccountBalances(guildId, userId), getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
     return { wallet: account.wallet, bank: account.bank, premium: account.premium, pet, inventory };
 }
 export async function addAdminAudit(guildId, actorId, targetId, action, details) {
+    guildId = GLOBAL_SCOPE_ID;
     const at = timestamp();
     const payload = JSON.stringify(details);
     if (economyPool) {
@@ -160,6 +168,7 @@ export async function addAdminAudit(guildId, actorId, targetId, action, details)
     db.prepare('INSERT INTO admin_audit_log (guild_id,actor_id,target_id,action,details_json,created_at) VALUES (?,?,?,?,?,?)').run(guildId, actorId, targetId, action, payload, at);
 }
 export async function getAdminAudit(guildId, limit = 10) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool) {
         const [rows] = await economyPool.execute('SELECT id,actor_id AS actorId,target_id AS targetId,action,details_json AS details,created_at AS createdAt FROM admin_audit_log WHERE guild_id=? ORDER BY id DESC LIMIT ?', [guildId, limit]);
         return rows.map((row) => ({ id: Number(row.id), actorId: String(row.actorId), targetId: row.targetId == null ? null : String(row.targetId), action: String(row.action), details: String(row.details), createdAt: Number(row.createdAt) }));

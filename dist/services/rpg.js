@@ -1,3 +1,4 @@
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
@@ -225,6 +226,7 @@ export function getLearnableRpgMoves(pet) {
         && (move.element === 'Neutral' || move.element === pet.element || (move.specialization && move.specialization === pet.specialization)));
 }
 export async function learnRpgMove(guildId, userId, moveId) {
+    guildId = GLOBAL_SCOPE_ID;
     const move = getRpgMove(moveId);
     if (!move)
         return { ok: false, reason: 'locked' };
@@ -249,6 +251,7 @@ export async function learnRpgMove(guildId, userId, moveId) {
     return run.immediate();
 }
 export async function equipRpgMoves(guildId, userId, moveIds) {
+    guildId = GLOBAL_SCOPE_ID;
     const equip = (pet) => {
         const unique = [...new Set(moveIds)];
         if (unique.length < 1 || unique.length > 4 || unique.some((id) => !pet.knownMoves.includes(id)))
@@ -268,6 +271,18 @@ export async function equipRpgMoves(guildId, userId, moveIds) {
 const rarityWeights = [
     ['Común', 58, 0], ['Poco común', 25, 1], ['Raro', 11, 2], ['Épico', 5, 3], ['Legendario', 1, 4],
 ];
+function rarityWeightsForElement(element) {
+    return element ? rarityWeights.filter(([rarity]) => species.some((candidate) => candidate.element === element && candidate.rarity === rarity)) : rarityWeights;
+}
+export function getPetRarityOdds(element) {
+    const available = rarityWeightsForElement(element);
+    const total = available.reduce((sum, [, weight]) => sum + weight, 0);
+    const values = available.map(([rarity, weight]) => ({ rarity, odds: Math.round((weight / total) * 100) }));
+    const roundedTotal = values.reduce((sum, entry) => sum + entry.odds, 0);
+    if (values.length)
+        values[0].odds += 100 - roundedTotal;
+    return values;
+}
 const rarityRank = { 'Común': 0, 'Poco común': 1, 'Raro': 2, 'Épico': 3, 'Legendario': 4 };
 const EXPLORE_COOLDOWN = 30 * 60;
 const quests = [
@@ -336,10 +351,12 @@ async function mysqlPet(connection, guildId, userId, lock = false) {
     FROM rpg_pets WHERE guild_id = ? AND user_id = ?${lock ? ' FOR UPDATE' : ''}`, [guildId, userId]);
     return petFromRow(rows[0]);
 }
-function findRarity() {
-    const roll = randomInt(100);
+function findRarity(element) {
+    const weights = rarityWeightsForElement(element);
+    const totalWeight = weights.reduce((sum, [, weight]) => sum + weight, 0);
+    const roll = randomInt(totalWeight);
     let total = 0;
-    for (const entry of rarityWeights) {
+    for (const entry of weights) {
         total += entry[1];
         if (roll < total)
             return { rarity: entry[0], bonus: entry[2] };
@@ -407,6 +424,7 @@ function updateQuestSqlite(guildId, userId, questId, at = now()) {
     ON CONFLICT(guild_id,user_id,quest_date,quest_id) DO UPDATE SET progress=MIN(progress+1,1)`).run(guildId, userId, date, questId);
 }
 export async function getRpgPet(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool) {
         const connection = await economyPool.getConnection();
         try {
@@ -419,6 +437,7 @@ export async function getRpgPet(guildId, userId) {
     return sqlitePet(guildId, userId);
 }
 export async function renameRpgPet(guildId, userId, requestedName) {
+    guildId = GLOBAL_SCOPE_ID;
     const name = requestedName.trim().replace(/\s+/g, ' ');
     if (name.length < 2 || name.length > 24 || /[\r\n@<>`*_~|]/.test(name))
         return { ok: false, reason: 'invalid_name' };
@@ -447,12 +466,13 @@ export async function renameRpgPet(guildId, userId, requestedName) {
     });
     return run.immediate();
 }
-export async function adoptRpgPet(guildId, userId, name) {
+export async function adoptRpgPet(guildId, userId, name, element) {
+    guildId = GLOBAL_SCOPE_ID;
     const normalizedName = name.trim().replace(/\s+/g, ' ');
     if (normalizedName && (normalizedName.length < 2 || normalizedName.length > 24 || /[\r\n@<>`*_~|]/.test(normalizedName)))
         return { ok: false, reason: 'invalid_name' };
-    const rarity = findRarity();
-    const eligibleSpecies = species.filter((candidate) => candidate.rarity === rarity.rarity);
+    const rarity = findRarity(element);
+    const eligibleSpecies = species.filter((candidate) => candidate.rarity === rarity.rarity && (!element || candidate.element === element));
     const chosen = pick(eligibleSpecies);
     const stats = chosen.base.map((n) => n + randomInt(4) + rarity.bonus);
     const pet = { name: normalizedName || chosen.name, species: chosen.name, rarity: rarity.rarity, element: chosen.element, specialization: chosen.specialization, level: 1, xp: 0,
@@ -475,6 +495,7 @@ export async function adoptRpgPet(guildId, userId, name) {
     return adopt.immediate();
 }
 export async function adminGrantRpgPet(guildId, userId, speciesName, name = '') {
+    guildId = GLOBAL_SCOPE_ID;
     const lineage = getPetSpeciesMetadata(speciesName);
     if (!lineage)
         return { ok: false, reason: 'unknown_species' };
@@ -506,6 +527,7 @@ export async function adminGrantRpgPet(guildId, userId, speciesName, name = '') 
     return adopt.immediate();
 }
 export async function adminEditRpgPet(guildId, userId, edit) {
+    guildId = GLOBAL_SCOPE_ID;
     if (edit.type === 'xp' && (!Number.isInteger(edit.amount) || edit.amount < 1 || edit.amount > 100_000))
         return { ok: false, reason: 'invalid_value' };
     if (edit.type === 'stat' && (!Number.isInteger(edit.amount) || edit.amount === 0 || Math.abs(edit.amount) > 1_000))
@@ -562,6 +584,7 @@ export async function adminEditRpgPet(guildId, userId, edit) {
     return run.immediate();
 }
 export async function adminRemoveRpgPet(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const [result] = await connection.execute('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?', [guildId, userId]);
@@ -570,6 +593,7 @@ export async function adminRemoveRpgPet(guildId, userId) {
     return db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
 }
 export async function exploreRpg(guildId, userId, zoneId, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const zone = rpgZones.find((candidate) => candidate.id === zoneId);
     if (!zone)
         return { ok: false, reason: 'zone_locked' };
@@ -695,6 +719,7 @@ function rollExpeditionDrop(zone) {
     return pool.length ? pick(pool) : undefined;
 }
 export async function getLatestExpeditionLog(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool) {
         const connection = await economyPool.getConnection();
         try {
@@ -723,6 +748,7 @@ function expeditionLogFromRow(row) {
         coins: Number(row.coins), xp: Number(row.xp), itemId: row.itemId == null ? null : String(row.itemId), createdAt: Number(row.createdAt) };
 }
 export async function battleRpg(guildId, userId, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const enemies = [{ name: 'Slime de bosque', minLevel: 1, power: 8, reward: [35, 60] }, { name: 'Ladrón de ruinas', minLevel: 3, power: 17, reward: [75, 120] }, { name: 'Gólem de obsidiana', minLevel: 6, power: 28, reward: [150, 230] }];
     const at = now();
     const resolve = (pet) => {
@@ -761,6 +787,7 @@ export async function battleRpg(guildId, userId, reference) {
     return run.immediate();
 }
 export async function trainRpgPet(guildId, userId, stat, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const cost = 180;
     const at = now();
     const levelPet = (pet) => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - 15 });
@@ -786,6 +813,7 @@ export async function trainRpgPet(guildId, userId, stat, reference) {
     return run.immediate();
 }
 export async function buyRpgItem(guildId, userId, itemId, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const item = rpgItems.find((candidate) => candidate.id === itemId);
     if (!item)
         return { ok: false, reason: 'invalid_item' };
@@ -798,6 +826,7 @@ export async function buyRpgItem(guildId, userId, itemId, reference) {
     return run.immediate();
 }
 export async function useRpgItem(guildId, userId, itemId, _reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const item = rpgItems.find((candidate) => candidate.id === itemId);
     const at = now();
     if (!item)
@@ -905,6 +934,7 @@ export async function useRpgItem(guildId, userId, itemId, _reference) {
     return run.immediate();
 }
 export async function getRpgInventory(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool) {
         const connection = await economyPool.getConnection();
         try {
@@ -918,6 +948,7 @@ export async function getRpgInventory(guildId, userId) {
     return db.prepare('SELECT item_id AS itemId,quantity FROM rpg_inventory WHERE guild_id=? AND user_id=? AND quantity>0 ORDER BY item_id').all(guildId, userId).map((item) => ({ ...item, quantity: Number(item.quantity) }));
 }
 export async function getRpgQuests(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
     const date = new Date().toISOString().slice(0, 10);
     if (economyPool) {
         const connection = await economyPool.getConnection();
@@ -935,6 +966,7 @@ export async function getRpgQuests(guildId, userId) {
     return quests.map((q) => { const row = map.get(q.id); return { ...q, progress: Number(row?.progress ?? 0), claimed: Boolean(row?.claimed) }; });
 }
 export async function claimRpgQuest(guildId, userId, questId, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     const quest = quests.find((q) => q.id === questId);
     if (!quest)
         return { ok: false, reason: 'no_quest' };
@@ -964,6 +996,7 @@ export async function claimRpgQuest(guildId, userId, questId, reference) {
     return run.immediate();
 }
 export async function getRpgLeaderboard(guildId) {
+    guildId = GLOBAL_SCOPE_ID;
     if (economyPool) {
         const connection = await economyPool.getConnection();
         try {
@@ -1039,6 +1072,7 @@ async function pvpBusyMysql(connection, guildId, userA, userB, at) {
     return rows.length > 0;
 }
 export async function createRpgPvpChallenge(guildId, challengerId, challengerName, defenderId, defenderName, reference) {
+    guildId = GLOBAL_SCOPE_ID;
     if (challengerId === defenderId)
         return { ok: false, reason: 'self' };
     const at = now();
@@ -1080,6 +1114,7 @@ export async function createRpgPvpChallenge(guildId, challengerId, challengerNam
     return run.immediate();
 }
 export async function respondRpgPvpChallenge(guildId, matchId, userId, accept) {
+    guildId = GLOBAL_SCOPE_ID;
     const at = now();
     const resolve = (match) => {
         if (!match || match.guildId !== guildId)
@@ -1125,6 +1160,7 @@ export async function respondRpgPvpChallenge(guildId, matchId, userId, accept) {
     return run.immediate();
 }
 export async function playRpgPvpTurn(guildId, matchId, userId, action, moveId) {
+    guildId = GLOBAL_SCOPE_ID;
     const at = now();
     const resolve = (match) => {
         if (!match || match.guildId !== guildId)

@@ -8,9 +8,12 @@ El proyecto está organizado por responsabilidades para poder añadir funciones 
 - `src/events/interaction-create.ts` enruta comandos, autocompletado, formularios y controles de panel. `src/events/message-create.ts` traduce `a!` y sus abreviaturas a los mismos servicios, incluidos los paneles existentes. Mantén reglas de negocio en el servicio de su función.
 - `src/services/` contiene reglas de negocio. Música administra Lavalink y sus búsquedas; economía y RPG validan operaciones antes de guardarlas; la biblioteca musical administra listas y favoritos.
 - `src/services/reactions.ts` obtiene GIFs SFW del catálogo de NEKOS.BEST, limita frecuencia y valida URLs antes de publicarlas. `src/ui/catalog.ts` describe las categorías y arma el panel interactivo de ayuda.
+- `src/services/profile.ts` mantiene perfiles globales, XP global y por servidor, reputación, inventario de cosméticos y compras; `src/data/profile-shop.ts` es el catálogo declarativo de categorías y artículos.
+- `src/ui/profile.ts` arma los paneles de Profile, Wallet, Rank, progreso, tienda, inventario y Room; `src/ui/profile-cards.ts` renderiza las tarjetas PNG y conserva un cache corto en memoria.
 - `src/ui/panels.ts` construye vistas de Discord. Debe presentar datos y controles; los cambios persistentes pasan por servicios.
 - `src/storage/database.ts` mantiene SQLite local para la biblioteca musical y economía/RPG en modo local. `src/storage/economy-database.ts` crea y actualiza el esquema MySQL opcional de economía y RPG.
 - `src/config.ts` carga configuración y valida puertos y opciones. `src/scripts/migrate-economy.ts` migra saldos e inventario SQLite existentes a MySQL.
+- `initializeProfileStorage()` crea tablas sociales/cosméticas e inserta categorías y catálogo al iniciar; usa SQLite en local y MySQL cuando `ECONOMY_DB_DRIVER=mysql`. No requiere Redis ni un job worker externo.
 - `assets/rpg/` contiene ilustraciones del RPG. `lavalink/application.yml` configura el proceso Lavalink independiente.
 
 ## Configuración

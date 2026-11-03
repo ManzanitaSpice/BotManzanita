@@ -1,6 +1,6 @@
 {
   "name": "bot-manzanita",
-  "version": "1.16.1",
+  "version": "1.17.2",
   "private": true,
   "type": "module",
   "description": "Bot multiusos de Discord con paneles de música y economía.",
@@ -13,9 +13,11 @@
     "build": "tsc -p tsconfig.json",
     "commands:deploy": "tsx src/deploy-commands.ts",
     "commands:deploy:built": "node dist/deploy-commands.js",
-    "economy:migrate:mysql": "node dist/scripts/migrate-economy.js"
+    "economy:migrate:mysql": "node dist/scripts/migrate-economy.js",
+    "assets:rpg:generate": "node scripts/generate-rpg-assets.mjs"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
     "better-sqlite3": "^12.4.1",
     "discord.js": "14.28.0",
     "dotenv": "^16.6.1",

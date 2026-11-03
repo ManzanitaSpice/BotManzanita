@@ -1,12 +1,19 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { balancePanel, economyActionPanel, leaderboardPanel } from '../ui/panels.js';
 import { claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playRoulette, robPlayer, startBlackjack, transferCoins, work, } from '../services/economy.js';
-import { bankPanel, blackjackPanel, economyPanel, economyProfilePanel, inventoryPanel, storePanel, } from '../ui/panels.js';
+import { bankPanel, blackjackPanel, economyPanel, inventoryPanel, storePanel, } from '../ui/panels.js';
+import { profileCardPanel } from '../ui/profile.js';
+import { giveReputation } from '../services/profile.js';
 export const economyShortcutCommands = [
     createBalanceCommand('bal'),
     createBalanceCommand('balance'),
     createTopCommand('top'),
     createTopCommand('baltop'),
-    createProfileCommand(),
+    createProfileCommand('profile'),
+    createProfileCommand('perfil'),
+    createWalletCommand(),
+    createRankCardCommand(),
+    createReputationCommand(),
     createEconomyPanelCommand(),
     createFishCommand(),
     createBlackjackCommand('21'),
@@ -34,41 +41,57 @@ function createBalanceCommand(name) {
             }
             const target = interaction.options.getUser('usuario') ?? interaction.user;
             const account = await getAccountBalances(interaction.guildId, target.id);
-            const money = new Intl.NumberFormat('es-MX');
-            await interaction.reply({
-                content: `💰 **Balance de ${target.username}**\nBilletera: **${money.format(account.wallet)}** · Banco: **${money.format(account.bank)}** · Total: **${money.format(account.total)} monedas**.`,
-                flags: MessageFlags.Ephemeral,
-            });
+            await interaction.reply(balancePanel(target.username, account));
         },
     };
 }
 function createTopCommand(name) {
     return {
-        data: new SlashCommandBuilder().setName(name).setDescription('Muestra el ranking económico del servidor.'),
+        data: new SlashCommandBuilder().setName(name).setDescription('Muestra el ranking económico global.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'El ranking solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
             const ranking = await getLeaderboard(interaction.guildId);
-            const listing = ranking.length
-                ? ranking.map((account, index) => `**${index + 1}.** <@${account.userId}> · ${new Intl.NumberFormat('es-MX').format(account.balance)} monedas`).join('\n')
-                : 'Todavía no hay balances registrados.';
-            await interaction.reply({ content: `# 🏆 TOP ECONOMÍA\n${listing}` });
+            const listing = ranking.map((account) => `<@${account.userId}>  ·  **${new Intl.NumberFormat('es-MX').format(account.balance)}** monedas`);
+            await interaction.reply({ ...leaderboardPanel('🏆 TOP DE ECONOMÍA', 'Las mayores fortunas globales', listing, 0x22c55e, 'Todavía no hay balances registrados.'), allowedMentions: { parse: [] } });
         },
     };
 }
-function createProfileCommand() {
+function createProfileCommand(name) {
     return {
-        data: new SlashCommandBuilder().setName('profile').setDescription('Abre tu perfil económico privado.'),
+        data: new SlashCommandBuilder().setName(name).setDescription('Abre tu tarjeta global de perfil.').addUserOption((option) => option.setName('usuario').setDescription('Perfil que quieres visitar')),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'El perfil solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(await economyProfilePanel(interaction.guildId, interaction.user.id, interaction.user.username));
+            const target = interaction.options.getUser('usuario') ?? interaction.user;
+            await interaction.reply(await profileCardPanel(interaction.guildId, target, interaction.user.id));
         },
     };
+}
+function createWalletCommand() {
+    return {
+        data: new SlashCommandBuilder().setName('wallet').setDescription('Muestra tu tarjeta visual de billetera.'),
+        async execute(interaction) {
+            if (!interaction.guildId) {
+                await interaction.reply({ content: 'La cartera solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(await profileCardPanel(interaction.guildId, interaction.user, interaction.user.id, 'wallet'));
+        },
+    };
+}
+function createRankCardCommand() {
+    return { data: new SlashCommandBuilder().setName('rank').setDescription('Muestra tu tarjeta de rango global.'), async execute(interaction) { if (!interaction.guildId) {
+            await interaction.reply({ content: 'La tarjeta de rango solo funciona dentro de un servidor.', flags: MessageFlags.Ephemeral });
+            return;
+        } await interaction.reply(await profileCardPanel(interaction.guildId, interaction.user, interaction.user.id, 'rank')); } };
+}
+function createReputationCommand() {
+    return { data: new SlashCommandBuilder().setName('rep').setDescription('Reconoce a otra persona con reputación.').addUserOption((option) => option.setName('usuario').setDescription('Persona a reconocer').setRequired(true)), async execute(interaction) { const target = interaction.options.getUser('usuario', true); const result = await giveReputation(interaction.user.id, target.id); await interaction.reply({ content: result.ok ? `✨ Le diste reputación a **${target.username}**. Ahora tiene **${result.reputation}**.` : target.id === interaction.user.id ? 'No puedes darte reputación a ti.' : 'Ya reconociste a esa persona hoy.', flags: MessageFlags.Ephemeral }); } };
 }
 function createEconomyPanelCommand() {
     return {
@@ -91,10 +114,11 @@ function createFishCommand() {
                 return;
             }
             const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
-            const message = result.ok
-                ? `${result.message}\nSaldo: **${result.balance} monedas**.`
-                : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
-            await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+            if (!result.ok) {
+                await interaction.reply({ content: `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
         },
     };
 }
@@ -126,10 +150,11 @@ function createDailyCommand() {
                 return;
             }
             const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
-            const message = result.ok
-                ? `🎁 Reclamaste **${result.amount} monedas**. Tu balance ahora es **${result.balance}**.`
-                : `⏳ Ya reclamaste tu diaria. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
-            await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+            if (!result.ok) {
+                await interaction.reply({ content: `⏳ Ya reclamaste tu diaria. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
         },
     };
 }
@@ -142,10 +167,11 @@ function createWorkCommand() {
                 return;
             }
             const result = await work(interaction.guildId, interaction.user.id, interaction.id);
-            const message = result.ok
-                ? `${result.message}\nBalance: **${result.balance} monedas**.`
-                : `🧰 Ya trabajaste. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
-            await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+            if (!result.ok) {
+                await interaction.reply({ content: `🧰 Ya trabajaste. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
         },
     };
 }
@@ -158,10 +184,11 @@ function createCrimeCommand() {
                 return;
             }
             const result = await crime(interaction.guildId, interaction.user.id, interaction.id);
-            const message = result.ok
-                ? `${result.message}\nBalance: **${new Intl.NumberFormat('es-MX').format(result.balance)} monedas**.`
-                : `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
-            await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+            if (!result.ok) {
+                await interaction.reply({ content: `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
         },
     };
 }
@@ -187,7 +214,7 @@ function createRobCommand() {
                 await interaction.reply({ content: `🕵️ ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply({ content: `${result.message}\nTu balance: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            await interaction.reply(economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
         },
     };
 }
@@ -208,8 +235,8 @@ function createRouletteCommand() {
                 await interaction.reply({ content: `🎰 ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            const emoji = result.result === 'rojo' ? '🔴' : result.result === 'negro' ? '⚫' : '🟢';
-            await interaction.reply({ content: `🎰 Salió **${result.number} ${emoji} ${result.result}**.\n${result.message}\nBalance: **${result.balance} monedas**.`, flags: MessageFlags.Ephemeral });
+            const ball = result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde';
+            await interaction.reply(economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance));
         },
     };
 }

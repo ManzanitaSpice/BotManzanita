@@ -1,7 +1,7 @@
 node_modules/
 .env
 ECONOMY-MYSQL.env
-data/
+/data/
 npm-debug.log*
 releases/**/host-package/
 lavalink-host-v4.2.2/

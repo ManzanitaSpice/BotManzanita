@@ -1,3 +1,4 @@
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomBytes, randomInt } from 'node:crypto';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../storage/database.js';
@@ -57,26 +58,26 @@ type MysqlGameRow = RowDataPacket & { id: string; bet: number; state_json: strin
 const fishCommon = ['mojarra', 'trucha', 'carpa', 'sardina', 'bagre', 'tilapia', 'robalo', 'lisa'];
 const fishRare = ['salmón plateado', 'atún gigante', 'pez dorado', 'lucio legendario', 'carpa koi'];
 const fishCatchLines = [
-  'La caña se dobló y sacaste un **{fish}**. Lo vendiste por **{amount} monedas**.',
-  '¡Buena pesca! Un **{fish}** mordió el anzuelo; ganaste **{amount} monedas**.',
-  'Después de esperar junto al agua, atrapaste un **{fish}**. Mercado: **{amount} monedas**.',
-  'Tu paciencia rindió frutos: **{fish}** vendido por **{amount} monedas**.',
-  'El agua salpicó por todos lados. Vendiste el **{fish}** por **{amount} monedas**.',
-  '¡La suerte estuvo de tu lado! Cambiaste un **{fish}** por **{amount} monedas**.',
-  'El pescador del muelle te compró el **{fish}** por **{amount} monedas**.',
-  'Una captura fresca: **{fish}**. Recibiste **{amount} monedas**.',
-  'La red volvió pesada. Entre la pesca había un **{fish}** que valió **{amount} monedas**.',
-  'El anzuelo encontró dueño: **{fish}**. Ganancia: **{amount} monedas**.',
-  'Tuviste una mañana productiva y vendiste un **{fish}** por **{amount} monedas**.',
-  'El mercado pagó bien por tu **{fish}**: **{amount} monedas**.',
-  '¡Captura limpia! Un **{fish}** te dejó **{amount} monedas**.',
-  'Un **{fish}** saltó directo a la cubeta. Ganaste **{amount} monedas**.',
-  'Volviste del río con un **{fish}** y **{amount} monedas** en el bolsillo.',
-  'El agua estaba tranquila hasta que picó un **{fish}**. Venta: **{amount} monedas**.',
-  'El puesto de la plaza compró tu **{fish}** por **{amount} monedas**.',
-  '¡Qué buen ejemplar! Tu **{fish}** se vendió por **{amount} monedas**.',
-  'Una vuelta más al lago valió la pena: **{fish}**, **{amount} monedas**.',
-  'El pescador vecino te envidió la captura. Vendiste el **{fish}** por **{amount} monedas**.',
+  'La caña se dobló y sacaste un **{fish}**.',
+  '¡Buena pesca! Un **{fish}** mordió el anzuelo.',
+  'Después de esperar junto al agua, atrapaste un **{fish}**.',
+  'Tu paciencia rindió frutos: apareció un **{fish}**.',
+  'El agua salpicó por todos lados cuando sacaste un **{fish}**.',
+  '¡La suerte estuvo de tu lado! Pescaste un **{fish}**.',
+  'El pescador del muelle se quedó con tu **{fish}**.',
+  'Una captura fresca: **{fish}**.',
+  'La red volvió pesada. Entre la pesca había un **{fish}**.',
+  'El anzuelo encontró dueño: un **{fish}**.',
+  'Tuviste una mañana productiva y sacaste un **{fish}**.',
+  'El mercado recibió con gusto tu **{fish}**.',
+  '¡Captura limpia! Un **{fish}** cayó en la cubeta.',
+  'Un **{fish}** saltó directo a la cubeta.',
+  'Volviste del río con un **{fish}** en el cubo.',
+  'El agua estaba tranquila hasta que picó un **{fish}**.',
+  'El puesto de la plaza recibió tu **{fish}**.',
+  '¡Qué buen ejemplar! Sacaste un **{fish}**.',
+  'Una vuelta más al lago valió la pena: apareció un **{fish}**.',
+  'El pescador vecino te envidió la captura: un **{fish}**.',
 ];
 const fishMissLines = [
   'Un pez mordió el anzuelo y escapó justo antes de subirlo. Hoy no hubo venta.',
@@ -93,38 +94,26 @@ const fishMissLines = [
   'El cubo terminó lleno de agua, pero sin pesca que vender.',
 ];
 const robSuccessLines = [
-  'Te moviste entre las sombras y escapaste con **{amount} monedas** de {target}.',
-  'El plan salió perfecto: recuperaste **{amount} monedas** del bolsillo de {target}.',
-  'Un descuido de {target} te dejó **{amount} monedas** en las manos.',
-  'Hiciste el cambio de bolsillo sin que nadie lo notara: **{amount} monedas**.',
-  'La huida fue limpia. Te llevas **{amount} monedas** de {target}.',
-  'Tu disfraz funcionó. {target} perdió **{amount} monedas**.',
-  'El golpe fue rápido y silencioso: **{amount} monedas** para ti.',
-  'Te mezclaste con la multitud y saliste con **{amount} monedas**.',
-  'Una distracción, un paso y listo: ganaste **{amount} monedas**.',
-  'El plan maestro funcionó por una vez. Botín: **{amount} monedas**.',
+  'Te moviste entre las sombras y escapaste sin que {target} lo notara.',
+  'El plan salió perfecto: {target} no alcanzó a reaccionar.',
+  'Un descuido de {target} te dejó vía libre.',
+  'Hiciste el cambio de bolsillo sin que nadie lo notara.',
+  'La huida fue limpia. Te alejaste de {target} a tiempo.',
+  'Tu disfraz funcionó y {target} no sospechó nada.',
+  'El golpe fue rápido y silencioso.', 'Te mezclaste con la multitud y desapareciste.',
+  'Una distracción, un paso y listo.', 'El plan maestro funcionó por una vez.',
 ];
 const robFailLines = [
-  '{target} te vio venir. Pagaste **{amount} monedas** de multa.',
-  'El guardia apareció de la nada. Perdiste **{amount} monedas** al escapar.',
-  'Te resbalaste antes de llegar al botín y pagaste **{amount} monedas** en gastos médicos.',
-  '{target} te atrapó con las manos en la masa. La multa fue de **{amount} monedas**.',
-  'Tu plan falló por un ruido inoportuno. Te costó **{amount} monedas**.',
-  'La bolsa tenía una campanita. Terminaste pagando **{amount} monedas**.',
-  'La alarma sonó y tuviste que soltar **{amount} monedas** para salir del lío.',
-  'Te confundiste de bolsillo y acabaste con una multa de **{amount} monedas**.',
-  'El intento fue detectado. La sanción: **{amount} monedas**.',
-  'La mala suerte ganó esta ronda: perdiste **{amount} monedas**.',
+  '{target} te vio venir. Tocó pagar la multa.', 'El guardia apareció de la nada y la huida salió cara.',
+  'Te resbalaste antes de llegar al botín. Qué timing.', '{target} te atrapó con las manos en la masa.',
+  'Tu plan falló por un ruido inoportuno.', 'La bolsa tenía una campanita. Mala elección.',
+  'La alarma sonó y tuviste que salir corriendo.', 'Te confundiste de bolsillo y todo salió al revés.',
+  'El intento fue detectado.', 'La mala suerte ganó esta ronda.',
 ];
 const rouletteWinLines = [
-  '¡La bola cayó donde dijiste! Cobraste **{payout} monedas**.',
-  'La ruleta te sonrió. Ganancia pagada: **{payout} monedas**.',
-  'Apuesta acertada. El casino te entrega **{payout} monedas**.',
-  'La mesa quedó en silencio: ¡ganaste **{payout} monedas**!',
-  'Tu predicción fue exacta. Recibiste **{payout} monedas**.',
-  'La suerte giró a tu favor. Premio: **{payout} monedas**.',
-  '¡Color ganador! Se acreditaron **{payout} monedas**.',
-  'La bola se detuvo en tu color. Cobraste **{payout} monedas**.',
+  '¡La bola cayó donde dijiste!', 'La ruleta te sonrió.', 'Apuesta acertada. El casino paga.',
+  'La mesa quedó en silencio: ¡acertaste!', 'Tu predicción fue exacta.',
+  'La suerte giró a tu favor.', '¡Color ganador!', 'La bola se detuvo en tu color.',
 ];
 const rouletteLoseLines = [
   'La bola cayó en otro color. Esta ronda se queda en la mesa.',
@@ -204,6 +193,7 @@ async function mysqlAddLedger(connection: PoolConnection, guildId: string, userI
 }
 
 export async function getAccountBalances(guildId: string, userId: string): Promise<{ wallet: number; bank: number; total: number; premium: number }> {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) {
     const connection = await economyPool.getConnection();
     try {
@@ -217,6 +207,7 @@ export async function getAccountBalances(guildId: string, userId: string): Promi
 }
 
 export async function getBalance(guildId: string, userId: string): Promise<number> {
+  guildId = GLOBAL_SCOPE_ID;
   return (await getAccountBalances(guildId, userId)).wallet;
 }
 
@@ -224,6 +215,7 @@ export async function adjustPremiumCurrency(guildId: string, userId: string, amo
   | { ok: true; balance: number }
   | { ok: false; reason: 'invalid_amount' | 'insufficient_premium'; balance: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) return { ok: false, reason: 'invalid_amount', balance: 0 };
   const at = nowSeconds();
   const reason = `premium_admin:${adminId}`;
@@ -296,6 +288,7 @@ function accrueBankInterestSqlite(guildId: string, userId: string, account: Acco
 }
 
 export async function bankAction(guildId: string, userId: string, action: BankAction, amount = 0, reference = ''): Promise<BankResult> {
+  guildId = GLOBAL_SCOPE_ID;
   if (action !== 'view' && (!Number.isSafeInteger(amount) || amount <= 0)) {
     return { ok: false, reason: 'invalid_amount', balance: 0, bankBalance: 0, interestEarned: 0, nextInterestAt: nowSeconds() };
   }
@@ -364,6 +357,7 @@ export async function claimDaily(guildId: string, userId: string, reference: str
   | { ok: true; balance: number; amount: number }
   | { ok: false; secondsRemaining: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
     const now = nowSeconds();
@@ -390,6 +384,7 @@ export async function purchaseItem(guildId: string, userId: string, itemId: stri
   | { ok: true; balance: number; quantity: number }
   | { ok: false; balance: number; reason: 'insufficient_funds' | 'invalid_item' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   const item = storeItems.find((candidate) => candidate.id === itemId);
   if (!item) return { ok: false, balance: 0, reason: 'invalid_item' };
   const cost = item.cost;
@@ -430,18 +425,19 @@ export async function work(guildId: string, userId: string, reference: string): 
   | { ok: true; amount: number; balance: number; message: string }
   | { ok: false; secondsRemaining: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   const amount = 35 + randomInt(46);
   const messages = [
-    `🧰 Reparaste una nave y ganaste **${amount} monedas**.`, `📦 Repartiste paquetes por toda la ciudad: **${amount} monedas**.`,
-    `🍜 Cubriste un turno en el puesto de ramen y recibiste **${amount} monedas**.`, `🪴 Ayudaste en el invernadero: **${amount} monedas**.`,
-    `🧹 Dejaste impecable la plaza. Te pagaron **${amount} monedas**.`, `🐕 Paseaste una jauría y ganaste **${amount} monedas**.`,
-    `🔧 Arreglaste una máquina rebelde. Cobraste **${amount} monedas**.`, `🎨 Pintaste un mural para el barrio: **${amount} monedas**.`,
-    `☕ Cubriste el turno de la cafetería: **${amount} monedas**.`, `🚲 Reparaste bicicletas y saliste con **${amount} monedas**.`,
-    `📚 Ordenaste la biblioteca. Tu recompensa fue **${amount} monedas**.`, `🧁 Vendiste una tanda de postres por **${amount} monedas**.`,
-    `🎟️ Ayudaste en un concierto y ganaste **${amount} monedas**.`, `🪵 Construiste una banca nueva: **${amount} monedas**.`,
-    `🛠️ Terminaste un encargo antes de la hora: **${amount} monedas**.`, `🌱 Plantaste árboles para el servidor y recibiste **${amount} monedas**.`,
-    `📻 Reparaste una radio antigua. Te pagaron **${amount} monedas**.`, `🏪 Cubriste la caja de una tienda y ganaste **${amount} monedas**.`,
-    `🧵 Arreglaste un traje para el festival: **${amount} monedas**.`, `🧭 Guiaste a un grupo perdido y te dieron **${amount} monedas**.`,
+    '🧰 Reparaste una nave en el muelle.', '📦 Repartiste paquetes por toda la ciudad.',
+    '🍜 Cubriste un turno en el puesto de ramen.', '🪴 Ayudaste en el invernadero.',
+    '🧹 Dejaste impecable la plaza.', '🐕 Paseaste una jauría por el barrio.',
+    '🔧 Arreglaste una máquina rebelde.', '🎨 Pintaste un mural para el barrio.',
+    '☕ Cubriste el turno de la cafetería.', '🚲 Reparaste bicicletas en el taller.',
+    '📚 Ordenaste la biblioteca.', '🧁 Vendiste una tanda de postres.',
+    '🎟️ Ayudaste en un concierto.', '🪵 Construiste una banca nueva.',
+    '🛠️ Terminaste un encargo antes de la hora.', '🌱 Plantaste árboles en el parque.',
+    '📻 Reparaste una radio antigua.', '🏪 Cubriste la caja de una tienda.',
+    '🧵 Arreglaste un traje para el festival.', '🧭 Guiaste a un grupo que se había perdido.',
   ];
 
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -467,34 +463,25 @@ export async function work(guildId: string, userId: string, reference: string): 
 }
 
 const crimeSuccessLines = [
-  'El plan salió limpio y encontraste **{amount} monedas** en el botín.',
-  'La operación fue un éxito: escapaste con **{amount} monedas**.',
-  'Nadie sospechó de ti. El golpe dejó **{amount} monedas**.',
-  'Una distracción perfecta y **{amount} monedas** terminaron en tu bolsillo.',
-  'El guardia miró hacia otro lado. Ganancia: **{amount} monedas**.',
-  'El botín estaba mejor de lo esperado: **{amount} monedas**.',
-  'Todo salió según el plan. Recibiste **{amount} monedas**.',
-  'La suerte te acompañó en la huida: **{amount} monedas** para ti.',
-  'Cambiaste de ruta a tiempo y conservaste **{amount} monedas**.',
-  'El golpe fue rápido. Tu parte del botín: **{amount} monedas**.',
+  'El plan salió limpio y encontraste un buen botín.', 'La operación fue un éxito: escapaste a tiempo.',
+  'Nadie sospechó de ti. El golpe salió redondo.', 'Una distracción perfecta y el botín terminó en tus manos.',
+  'El guardia miró hacia otro lado.', 'El botín estaba mejor de lo esperado.',
+  'Todo salió según el plan.', 'La suerte te acompañó durante la huida.',
+  'Cambiaste de ruta a tiempo y saliste a salvo.', 'El golpe fue rápido y limpio.',
 ];
 const crimeFailLines = [
-  'La alarma se activó y la multa fue de **{amount} monedas**.',
-  'Un testigo te reconoció. Pagaste **{amount} monedas** para resolverlo.',
-  'El plan salió mal y perdiste **{amount} monedas** en la huida.',
-  'Te atraparon antes de llegar al botín. La sanción: **{amount} monedas**.',
-  'La puerta estaba vigilada. El intento te costó **{amount} monedas**.',
-  'Tu coartada no convenció a nadie: multa de **{amount} monedas**.',
-  'Un ruido arruinó la operación. Perdiste **{amount} monedas**.',
-  'La patrulla llegó justo a tiempo. Gastaste **{amount} monedas** en la escapada.',
-  'El objetivo estaba vacío y acabaste pagando **{amount} monedas** de multa.',
-  'El plan necesitaba más preparación. La pérdida fue de **{amount} monedas**.',
+  'La alarma se activó y tuviste que pagar una multa.', 'Un testigo te reconoció y tocó negociar.',
+  'El plan salió mal y perdiste parte del botín en la huida.', 'Te atraparon antes de llegar al objetivo.',
+  'La puerta estaba vigilada. El intento salió caro.', 'Tu coartada no convenció a nadie.',
+  'Un ruido arruinó la operación.', 'La patrulla llegó justo a tiempo.',
+  'El objetivo estaba vacío y acabaste pagando una multa.', 'El plan necesitaba más preparación.',
 ];
 
 export async function crime(guildId: string, userId: string, reference: string): Promise<
   | { ok: true; success: boolean; amount: number; balance: number; message: string }
   | { ok: false; secondsRemaining: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   const success = randomInt(100) < 45;
   const now = nowSeconds();
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -534,6 +521,7 @@ export async function transferCoins(guildId: string, fromUserId: string, toUserI
   | { ok: true; fromBalance: number; toBalance: number }
   | { ok: false; reason: 'self' | 'invalid_amount' | 'insufficient_funds' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (fromUserId === toUserId) return { ok: false, reason: 'self' };
   if (!Number.isSafeInteger(amount) || amount <= 0) return { ok: false, reason: 'invalid_amount' };
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -570,6 +558,7 @@ export async function fish(guildId: string, userId: string, reference: string): 
   | { ok: true; amount: number; balance: number; message: string }
   | { ok: false; secondsRemaining: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   const caught = randomInt(100) < 82;
   const rare = caught && randomInt(100) < 12;
   const fishName = pick(rare ? fishRare : fishCommon);
@@ -604,6 +593,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
   | { ok: true; success: boolean; protected?: boolean; amount: number; balance: number; message: string }
   | { ok: false; reason: 'self' | 'cooldown' | 'target_empty'; secondsRemaining?: number }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (userId === targetId) return { ok: false, reason: 'self' };
   const success = randomInt(100) < 40;
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -679,6 +669,7 @@ export async function playRoulette(guildId: string, userId: string, bet: number,
   | { ok: true; balance: number; bet: number; choice: RouletteColor; number: number; result: RouletteColor; payout: number; message: string }
   | { ok: false; reason: 'invalid_bet' | 'insufficient_funds' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isSafeInteger(bet) || bet < 1 || bet > MAX_BET) return { ok: false, reason: 'invalid_bet' };
   const number = randomInt(37);
   const result: RouletteColor = number === 0 ? 'verde' : redNumbers.has(number) ? 'rojo' : 'negro';
@@ -715,14 +706,15 @@ export async function playItemRoulette(guildId: string, userId: string, itemId: 
   | { ok: true; itemName: string; number: number; result: RouletteColor; payout: number; balance: number; message: string }
   | { ok: false; reason: 'invalid_item' | 'missing_item' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   const item = storeItems.find((candidate) => candidate.id === itemId);
   if (!item) return { ok: false, reason: 'invalid_item' };
   const number = randomInt(37);
   const result: RouletteColor = number === 0 ? 'verde' : redNumbers.has(number) ? 'rojo' : 'negro';
   const payout = choice === result ? item.cost * (choice === 'verde' ? 36 : 2) : 0;
   const message = payout
-    ? `La bola cayó en **${number} ${result}**. Tu **${item.name}** ganó **${payout} monedas**.`
-    : `La bola cayó en **${number} ${result}**. Perdiste tu **${item.name}**; esta apuesta no devuelve el artículo.`;
+    ? `La bola cayó en **${number} ${result}**. Tu **${item.name}** acertó la apuesta.`
+    : `La bola cayó en **${number} ${result}**. Perdiste tu **${item.name}**; la apuesta no devuelve el artículo.`;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
     const [items] = await connection.execute<RowDataPacket[]>(
@@ -779,6 +771,7 @@ function consumeItemSqlite(guildId: string, userId: string, itemId: string, refe
 }
 
 export async function useShopItem(guildId: string, userId: string, itemId: string, reference: string): Promise<UseItemResult> {
+  guildId = GLOBAL_SCOPE_ID;
   const item = storeItems.find((candidate) => candidate.id === itemId && candidate.usable);
   if (!item) return { ok: false, reason: 'invalid_item' };
   const caught = randomInt(100) < 82;
@@ -786,7 +779,7 @@ export async function useShopItem(guildId: string, userId: string, itemId: strin
   const fishName = pick(rare ? fishRare : fishCommon);
   const amount = caught ? (rare ? 100 + randomInt(151) : 25 + randomInt(56)) * 2 : 0;
   const fishMessage = caught
-    ? `¡El cebo premium atrajo un **${fishName}**! La venta duplicada te dio **${amount} monedas**.`
+    ? `¡El cebo premium atrajo un **${fishName}**! La captura salió excelente.`
     : 'El cebo premium se gastó, pero los peces no picaron. Inténtalo de nuevo después del enfriamiento.';
 
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -908,6 +901,7 @@ export async function startBlackjack(guildId: string, userId: string, bet: numbe
   | { ok: true; view: BlackjackView; existing: boolean }
   | { ok: false; reason: 'invalid_bet' | 'insufficient_funds' }
 > {
+  guildId = GLOBAL_SCOPE_ID;
   if (!Number.isSafeInteger(bet) || bet < 1 || bet > MAX_BET) return { ok: false, reason: 'invalid_bet' };
   const gameId = randomBytes(12).toString('hex');
 
@@ -968,6 +962,7 @@ export async function startBlackjack(guildId: string, userId: string, bet: numbe
 }
 
 export async function playBlackjackTurn(guildId: string, userId: string, gameId: string, action: 'hit' | 'stand'): Promise<BlackjackView | undefined> {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
     const games = await mysqlRows<MysqlGameRow[]>(connection, 'SELECT id, bet, state_json, status FROM economy_games WHERE id = ? AND guild_id = ? AND user_id = ? FOR UPDATE', [gameId, guildId, userId]);
@@ -1013,6 +1008,7 @@ export async function playBlackjackTurn(guildId: string, userId: string, gameId:
 }
 
 export async function getInventory(guildId: string, userId: string): Promise<Array<{ itemId: string; quantity: number; acquiredAt: number }>> {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) {
     const [rows] = await economyPool.execute<RowDataPacket[]>('SELECT item_id AS itemId, quantity, acquired_at AS acquiredAt FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND quantity > 0 ORDER BY acquired_at DESC', [guildId, userId]);
     return rows.map((row) => ({ itemId: String(row.itemId), quantity: Number(row.quantity), acquiredAt: Number(row.acquiredAt) }));
@@ -1022,6 +1018,7 @@ export async function getInventory(guildId: string, userId: string): Promise<Arr
 }
 
 export async function getLeaderboard(guildId: string, limit = 10): Promise<Array<{ userId: string; balance: number }>> {
+  guildId = GLOBAL_SCOPE_ID;
   if (economyPool) {
     const [rows] = await economyPool.execute<RowDataPacket[]>('SELECT user_id AS userId, balance + bank_balance AS balance FROM economy_accounts WHERE guild_id = ? ORDER BY balance + bank_balance DESC, user_id ASC LIMIT ?', [guildId, limit]);
     return rows.map((row) => ({ userId: String(row.userId), balance: Number(row.balance) }));
