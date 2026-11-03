@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { addTrack, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
 import { componentUpdate, musicPanel, queuePanel, searchResultsPanel } from '../ui/panels.js';
 export const musicShortcutCommands = [
@@ -25,15 +25,15 @@ function createPlayCommand(name, description) {
         async execute(interaction) {
             const context = getGuildContext(interaction);
             if (!context) {
-                await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', ephemeral: true });
+                await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
             const voiceChannelId = context.guild.voiceStates.cache.get(interaction.user.id)?.channelId;
             if (!voiceChannelId) {
-                await interaction.reply({ content: 'Entra a un canal de voz y vuelve a usar el comando.', ephemeral: true });
+                await interaction.reply({ content: 'Entra a un canal de voz y vuelve a usar el comando.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             try {
                 const result = await addTrack(interaction.client, {
                     guildId: context.guildId,
@@ -61,10 +61,10 @@ function createSearchCommand(name, description) {
         async execute(interaction) {
             const context = getGuildContext(interaction);
             if (!context) {
-                await interaction.reply({ content: 'La búsqueda solo está disponible dentro de un servidor.', ephemeral: true });
+                await interaction.reply({ content: 'La búsqueda solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             try {
                 const tracks = (await searchTracks(interaction.client, interaction.options.getString('cancion', true).trim(), interaction.user)).slice(0, 25);
                 if (!tracks.length)
@@ -84,7 +84,7 @@ function createQueueCommand(name) {
         async execute(interaction) {
             const context = getGuildContext(interaction);
             if (!context) {
-                await interaction.reply({ content: 'La cola solo está disponible dentro de un servidor.', ephemeral: true });
+                await interaction.reply({ content: 'La cola solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
             await interaction.reply(queuePanel(interaction.client.lavalink.getPlayer(context.guildId), 0));
@@ -97,20 +97,20 @@ function createControlCommand(name, description, action) {
         async execute(interaction) {
             const context = getGuildContext(interaction);
             if (!context) {
-                await interaction.reply({ content: 'Este comando solo funciona dentro de un servidor.', ephemeral: true });
+                await interaction.reply({ content: 'Este comando solo funciona dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
             const player = interaction.client.lavalink.getPlayer(context.guildId);
             if (!player) {
-                await interaction.reply({ content: 'No hay música activa. Usa `/play` para empezar.', ephemeral: true });
+                await interaction.reply({ content: 'No hay música activa. Usa `/play` para empezar.', flags: MessageFlags.Ephemeral });
                 return;
             }
             const voiceChannelId = context.guild.voiceStates.cache.get(interaction.user.id)?.channelId;
             if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-                await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para controlar la música.', ephemeral: true });
+                await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para controlar la música.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             try {
                 let message;
                 if (action === 'pause') {
@@ -170,7 +170,7 @@ function createPanelCommand() {
         async execute(interaction) {
             const context = getGuildContext(interaction);
             if (!context) {
-                await interaction.reply({ content: 'El panel solo está disponible dentro de un servidor.', ephemeral: true });
+                await interaction.reply({ content: 'El panel solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
             await interaction.reply(musicPanel(context.guildId, interaction.client.lavalink.getPlayer(context.guildId)));

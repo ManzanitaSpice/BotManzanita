@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { RepeatMode } from 'lavalink-client';
 import type { BotCommand } from '../types.js';
 import { addSavedTracks, addTrack, applyMusicEffect, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
@@ -65,7 +65,7 @@ export const musicCommand: BotCommand = {
     const guildId = interaction.guildId;
     const guild = interaction.guild;
     if (!guildId || !guild) {
-      await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', ephemeral: true });
+      await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
       return;
     }
     const action = interaction.options.getSubcommand();
@@ -81,27 +81,27 @@ export const musicCommand: BotCommand = {
         const player = manager.getPlayer(guildId);
         const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;
         if (!player?.queue.current) {
-          await interaction.reply({ content: 'No hay una canción activa para guardar.', ephemeral: true });
+          await interaction.reply({ content: 'No hay una canción activa para guardar.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-          await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para guardar la canción actual.', ephemeral: true });
+          await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para guardar la canción actual.', flags: MessageFlags.Ephemeral });
           return;
         }
         const result = addFavorite(guildId, interaction.user.id, player.queue.current);
         const message = result === 'saved' ? `💜 Guardé **${player.queue.current.info.title}** en tus favoritos.`
           : result === 'exists' ? 'Esa canción ya está en tus favoritos.' : 'Llegaste al límite de 25 favoritos.';
-        await interaction.reply({ content: message, ephemeral: true });
+        await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
         return;
       }
       if (action === 'quitar') {
         const position = interaction.options.getInteger('posicion', true);
         const favorite = getFavorites(guildId, interaction.user.id)[position - 1];
         if (!favorite || !removeFavorite(guildId, interaction.user.id, favorite.id)) {
-          await interaction.reply({ content: 'No hay un favorito en esa posición.', ephemeral: true });
+          await interaction.reply({ content: 'No hay un favorito en esa posición.', flags: MessageFlags.Ephemeral });
           return;
         }
-        await interaction.reply({ content: `🗑️ Quité **${favorite.title}** de tus favoritos.`, ephemeral: true });
+        await interaction.reply({ content: `🗑️ Quité **${favorite.title}** de tus favoritos.`, flags: MessageFlags.Ephemeral });
         return;
       }
     }
@@ -116,24 +116,24 @@ export const musicCommand: BotCommand = {
         const player = manager.getPlayer(guildId);
         const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;
         if (!player?.queue.current) {
-          await interaction.reply({ content: 'No hay una canción activa para guardar.', ephemeral: true });
+          await interaction.reply({ content: 'No hay una canción activa para guardar.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-          await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para guardar la canción actual.', ephemeral: true });
+          await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para guardar la canción actual.', flags: MessageFlags.Ephemeral });
           return;
         }
         const result = saveTrackToPlaylist(guildId, interaction.user.id, name ?? '', player.queue.current);
         const message = result.state === 'added' ? `🎼 Guardé **${player.queue.current.info.title}** en **${result.name}** (${result.count} canciones).`
           : result.state === 'exists' ? `Esa canción ya está en **${result.name}**.`
             : result.state === 'playlist_limit' ? 'Llegaste al límite de 20 listas.' : `**${result.name}** ya tiene 100 canciones.`;
-        await interaction.reply({ content: message, ephemeral: true });
+        await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
         return;
       }
       if (action === 'ver') {
         const result = getPlaylist(guildId, interaction.user.id, name ?? '');
         if (!result) {
-          await interaction.reply({ content: `No encontré la lista **${name}**. Usa /musica lista mislistas para ver las tuyas.`, ephemeral: true });
+          await interaction.reply({ content: `No encontré la lista **${name}**. Usa /musica lista mislistas para ver las tuyas.`, flags: MessageFlags.Ephemeral });
           return;
         }
         await interaction.reply(playlistDetailPanel(result.playlist.name, result.playlist.trackCount, result.tracks));
@@ -142,15 +142,15 @@ export const musicCommand: BotCommand = {
       if (action === 'reproducir') {
         const result = getPlaylist(guildId, interaction.user.id, name ?? '');
         if (!result) {
-          await interaction.reply({ content: `No encontré la lista **${name}**.`, ephemeral: true });
+          await interaction.reply({ content: `No encontré la lista **${name}**.`, flags: MessageFlags.Ephemeral });
           return;
         }
         const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;
         if (!voiceChannelId) {
-          await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir la lista.', ephemeral: true });
+          await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir la lista.', flags: MessageFlags.Ephemeral });
           return;
         }
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
           const playback = await addSavedTracks(interaction.client, {
             guildId,
@@ -170,12 +170,12 @@ export const musicCommand: BotCommand = {
       if (action === 'quitar') {
         const position = interaction.options.getInteger('posicion', true);
         const removed = removePlaylistTrack(guildId, interaction.user.id, name ?? '', position);
-        await interaction.reply({ content: removed ? `🗑️ Quité la canción **${position}** de **${name}**.` : 'No encontré esa lista o esa posición.', ephemeral: true });
+        await interaction.reply({ content: removed ? `🗑️ Quité la canción **${position}** de **${name}**.` : 'No encontré esa lista o esa posición.', flags: MessageFlags.Ephemeral });
         return;
       }
       if (action === 'eliminar') {
         const removed = deletePlaylist(guildId, interaction.user.id, name ?? '');
-        await interaction.reply({ content: removed ? `🗑️ Eliminé la lista **${name}**.` : `No encontré la lista **${name}**.`, ephemeral: true });
+        await interaction.reply({ content: removed ? `🗑️ Eliminé la lista **${name}**.` : `No encontré la lista **${name}**.`, flags: MessageFlags.Ephemeral });
         return;
       }
     }
@@ -187,7 +187,7 @@ export const musicCommand: BotCommand = {
     }
 
     if (action === 'buscar') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const query = interaction.options.getString('consulta', true).trim();
         const tracks = (await searchTracks(interaction.client, query, interaction.user)).slice(0, 25);
@@ -203,10 +203,10 @@ export const musicCommand: BotCommand = {
     if (action === 'agregar') {
       const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;
       if (!voiceChannelId) {
-        await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir música.', ephemeral: true });
+        await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir música.', flags: MessageFlags.Ephemeral });
         return;
       }
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const query = interaction.options.getString('consulta', true).trim();
         const result = await addTrack(interaction.client, {
@@ -231,15 +231,15 @@ export const musicCommand: BotCommand = {
       return;
     }
     if (!player) {
-      await interaction.reply({ content: 'No hay una sesión musical activa. Usa `/play` para empezar.', ephemeral: true });
+      await interaction.reply({ content: 'No hay una sesión musical activa. Usa `/play` para empezar.', flags: MessageFlags.Ephemeral });
       return;
     }
     const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;
     if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-      await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para controlar la música.', ephemeral: true });
+      await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para controlar la música.', flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       if (action === 'pausar') {

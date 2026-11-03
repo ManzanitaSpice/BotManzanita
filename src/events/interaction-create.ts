@@ -23,21 +23,21 @@ export function registerInteractionHandler(client: Client) {
       }
       if (interaction.isModalSubmit() && interaction.customId === 'music:add:modal') {
         if (!interaction.guildId || !interaction.guild) {
-          await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', ephemeral: true });
+          await interaction.reply({ content: 'La música solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
           return;
         }
         const voiceChannelId = interaction.guild.voiceStates.cache.get(interaction.user.id)?.channelId;
         if (!voiceChannelId) {
-          await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir música.', ephemeral: true });
+          await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir música.', flags: MessageFlags.Ephemeral });
           return;
         }
         const textChannelId = interaction.channelId;
         if (!textChannelId) {
-          await interaction.reply({ content: 'No pude identificar el canal donde se inició la solicitud.', ephemeral: true });
+          await interaction.reply({ content: 'No pude identificar el canal donde se inició la solicitud.', flags: MessageFlags.Ephemeral });
           return;
         }
         const query = interaction.fields.getTextInputValue('query').trim();
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
           const result = await addTrack(interaction.client, {
             guildId: interaction.guildId,
@@ -82,7 +82,7 @@ export function registerInteractionHandler(client: Client) {
         if (interaction.customId === 'eco:buy' && interaction.isStringSelectMenu()) {
           const item = storeItems.find((candidate) => candidate.id === interaction.values[0]);
           if (!item) {
-            await interaction.reply({ content: 'Ese artículo ya no está disponible.', ephemeral: true });
+            await interaction.reply({ content: 'Ese artículo ya no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           await interaction.update(componentUpdate(purchaseConfirmPanel(item.id)));
@@ -91,7 +91,7 @@ export function registerInteractionHandler(client: Client) {
         if (interaction.customId.startsWith('eco:confirm:')) {
           const item = storeItems.find((candidate) => candidate.id === interaction.customId.slice('eco:confirm:'.length));
           if (!item) {
-            await interaction.reply({ content: 'Ese artículo ya no está disponible.', ephemeral: true });
+            await interaction.reply({ content: 'Ese artículo ya no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           const result = purchaseItem(interaction.guildId, interaction.user.id, item.id, item.cost, interaction.id);
@@ -113,17 +113,17 @@ export function registerInteractionHandler(client: Client) {
         if (interaction.customId.startsWith('music:favorites:') && interaction.isStringSelectMenu()) {
           const [, , action, panelGuildId, ownerId] = interaction.customId.split(':');
           if (panelGuildId !== interaction.guildId || ownerId !== interaction.user.id) {
-            await interaction.reply({ content: 'Este panel de favoritos le pertenece a otra persona.', ephemeral: true });
+            await interaction.reply({ content: 'Este panel de favoritos le pertenece a otra persona.', flags: MessageFlags.Ephemeral });
             return;
           }
           const favoriteId = Number(interaction.values[0]);
           if (!Number.isSafeInteger(favoriteId) || favoriteId < 1) {
-            await interaction.reply({ content: 'Ese favorito ya no está disponible.', ephemeral: true });
+            await interaction.reply({ content: 'Ese favorito ya no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           const favorite = getFavorite(interaction.guildId, interaction.user.id, favoriteId);
           if (!favorite) {
-            await interaction.reply({ content: 'Ese favorito ya no existe. Vuelve a abrir el panel.', ephemeral: true });
+            await interaction.reply({ content: 'Ese favorito ya no existe. Vuelve a abrir el panel.', flags: MessageFlags.Ephemeral });
             return;
           }
           if (action === 'remove') {
@@ -134,12 +134,12 @@ export function registerInteractionHandler(client: Client) {
           if (action === 'play') {
             const voiceChannelId = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channelId;
             if (!voiceChannelId) {
-              await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir un favorito.', ephemeral: true });
+              await interaction.reply({ content: 'Entra primero a un canal de voz para reproducir un favorito.', flags: MessageFlags.Ephemeral });
               return;
             }
             const textChannelId = interaction.channelId;
             if (!textChannelId) {
-              await interaction.reply({ content: 'No pude identificar el canal donde se inició la solicitud.', ephemeral: true });
+              await interaction.reply({ content: 'No pude identificar el canal donde se inició la solicitud.', flags: MessageFlags.Ephemeral });
               return;
             }
             await interaction.deferUpdate();
@@ -179,13 +179,13 @@ export function registerInteractionHandler(client: Client) {
         if (interaction.customId.startsWith('music:choose:') && interaction.isStringSelectMenu()) {
           const voiceChannelId = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channelId;
           if (!voiceChannelId) {
-            await interaction.reply({ content: 'Entra a un canal de voz y vuelve a usar `/musica buscar`.', ephemeral: true });
+            await interaction.reply({ content: 'Entra a un canal de voz y vuelve a usar `/musica buscar`.', flags: MessageFlags.Ephemeral });
             return;
           }
           const searchId = interaction.customId.slice('music:choose:'.length);
           const track = takeSearchTrack(searchId, interaction.guildId, interaction.user.id, Number(interaction.values[0]));
           if (!track) {
-            await interaction.reply({ content: 'Esta búsqueda ya venció. Usa `/musica buscar` para intentarlo otra vez.', ephemeral: true });
+            await interaction.reply({ content: 'Esta búsqueda ya venció. Usa `/musica buscar` para intentarlo otra vez.', flags: MessageFlags.Ephemeral });
             return;
           }
           await interaction.deferUpdate();
@@ -234,7 +234,7 @@ export function registerInteractionHandler(client: Client) {
           }
           const voiceChannelId = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channelId;
           if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-            await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para modificar la cola.', ephemeral: true });
+            await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para modificar la cola.', flags: MessageFlags.Ephemeral });
             return;
           }
           const index = Number(interaction.values[0]);
@@ -248,11 +248,11 @@ export function registerInteractionHandler(client: Client) {
             const removed = await player.queue.remove(index);
             await interaction.editReply(componentUpdate(queuePanel(player, page)));
             if (removed?.removed[0]) {
-              await interaction.followUp({ content: `🗑️ Quité **${removed.removed[0].info.title}** de la cola.`, ephemeral: true });
+              await interaction.followUp({ content: `🗑️ Quité **${removed.removed[0].info.title}** de la cola.`, flags: MessageFlags.Ephemeral });
             }
           } catch (error) {
             const message = error instanceof Error ? error.message : 'No pude modificar la cola.';
-            await interaction.followUp({ content: `⚠️ ${message}`, ephemeral: true });
+            await interaction.followUp({ content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral });
           }
           return;
         }
@@ -261,19 +261,19 @@ export function registerInteractionHandler(client: Client) {
           return;
         }
         if (!player) {
-          await interaction.reply({ content: 'No hay una sesión musical activa.', ephemeral: true });
+          await interaction.reply({ content: 'No hay una sesión musical activa.', flags: MessageFlags.Ephemeral });
           return;
         }
         const voiceChannelId = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channelId;
         if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
-          await interaction.reply({ content: 'Para controlar la música, entra al mismo canal de voz que el bot.', ephemeral: true });
+          await interaction.reply({ content: 'Para controlar la música, entra al mismo canal de voz que el bot.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (interaction.customId === 'music:effect' && interaction.isStringSelectMenu()) {
           const effect = interaction.values[0] as MusicEffect | undefined;
           const effects: MusicEffect[] = ['normal', 'bass', 'rock', 'pop', 'nightcore', 'vaporwave'];
           if (!effect || !effects.includes(effect)) {
-            await interaction.reply({ content: 'Ese efecto no está disponible.', ephemeral: true });
+            await interaction.reply({ content: 'Ese efecto no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           await interaction.deferUpdate();
@@ -282,7 +282,7 @@ export function registerInteractionHandler(client: Client) {
             await interaction.editReply(musicPanel(interaction.guildId, player));
           } catch (error) {
             const message = error instanceof Error ? error.message : 'No pude aplicar el efecto.';
-            await interaction.followUp({ content: `⚠️ ${message}`, ephemeral: true });
+            await interaction.followUp({ content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral });
           }
           return;
         }
@@ -290,11 +290,11 @@ export function registerInteractionHandler(client: Client) {
           const offset = Number(interaction.customId.slice('music:seek:'.length));
           const current = player.queue.current;
           if (!current || current.info.isStream || current.info.duration <= 0) {
-            await interaction.reply({ content: 'Esta reproducción no permite buscar una posición.', ephemeral: true });
+            await interaction.reply({ content: 'Esta reproducción no permite buscar una posición.', flags: MessageFlags.Ephemeral });
             return;
           }
           if (offset !== -15 && offset !== 15) {
-            await interaction.reply({ content: 'Ese salto de tiempo no está disponible.', ephemeral: true });
+            await interaction.reply({ content: 'Ese salto de tiempo no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           const target = Math.min(current.info.duration - 1_000, Math.max(0, player.position + offset * 1_000));
@@ -304,20 +304,20 @@ export function registerInteractionHandler(client: Client) {
             await interaction.editReply(musicPanel(interaction.guildId, player));
           } catch (error) {
             const message = error instanceof Error ? error.message : 'No pude cambiar la posición.';
-            await interaction.followUp({ content: `⚠️ ${message}`, ephemeral: true });
+            await interaction.followUp({ content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral });
           }
           return;
         }
         if (interaction.customId === 'music:skip' && !player.queue.current) {
-          await interaction.reply({ content: 'No hay una canción activa que se pueda saltar.', ephemeral: true });
+          await interaction.reply({ content: 'No hay una canción activa que se pueda saltar.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (interaction.customId === 'music:previous' && !player.queue.previous.length) {
-          await interaction.reply({ content: 'No hay canciones anteriores en el historial.', ephemeral: true });
+          await interaction.reply({ content: 'No hay canciones anteriores en el historial.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (interaction.customId === 'music:shuffle' && player.queue.tracks.length < 2) {
-          await interaction.reply({ content: 'Añade al menos dos canciones pendientes para mezclarlas.', ephemeral: true });
+          await interaction.reply({ content: 'Añade al menos dos canciones pendientes para mezclarlas.', flags: MessageFlags.Ephemeral });
           return;
         }
         await interaction.deferUpdate();
@@ -345,13 +345,13 @@ export function registerInteractionHandler(client: Client) {
           await interaction.editReply(musicPanel(interaction.guildId, interaction.client.lavalink.getPlayer(interaction.guildId)));
         } catch (error) {
           const message = error instanceof Error ? error.message : 'No pude completar esa acción.';
-          await interaction.followUp({ content: `⚠️ ${message}`, ephemeral: true });
+          await interaction.followUp({ content: `⚠️ ${message}`, flags: MessageFlags.Ephemeral });
         }
       }
     } catch (error) {
       console.error('Error procesando interacción:', error);
       if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'Ocurrió un error al procesar esta acción.', ephemeral: true }).catch(() => undefined);
+        await interaction.reply({ content: 'Ocurrió un error al procesar esta acción.', flags: MessageFlags.Ephemeral }).catch(() => undefined);
       }
     }
   });

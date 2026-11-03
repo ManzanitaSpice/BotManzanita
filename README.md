@@ -1,6 +1,6 @@
 # Bot Manzanita
 
-Versión **1.0.2**.
+Versión **1.0.3**.
 
 Bot multiusos para Discord con economía persistente, paneles Components V2 y música en canales de voz mediante Lavalink.
 
