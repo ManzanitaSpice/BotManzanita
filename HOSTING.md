@@ -22,6 +22,10 @@ Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya co
 
 No configures `DISCORD_DEV_GUILD_ID` en producción salvo que quieras registrar los comandos únicamente en ese servidor de pruebas.
 
+### Egg Generic Discord.js con instalación desde Git
+
+Este egg ejecuta `npm install` y luego `node /home/container/${BOT_JS_FILE}`; no ejecuta automáticamente el script de compilación de TypeScript. El repositorio incluye `dist/` para este flujo. Configura `BOT_JS_FILE=dist/index.js`. Cuando actualices el código fuente, vuelve a compilar con `npm run build` y sube juntos `src/` y `dist/`.
+
 ## Lavalink
 
 El bot y Lavalink son procesos separados. El egg **Generic Discord.js** ejecuta el bot Node.js y no inicia automáticamente el servicio Lavalink de `docker-compose.yml`. Para que Música funcione, contrata o despliega un nodo Lavalink v4 por separado y configura sus valores de conexión en el panel. Sin Lavalink, Discord y Economía pueden iniciar, pero los comandos de reproducción responderán que el nodo no está disponible.
