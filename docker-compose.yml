@@ -1,0 +1,12 @@
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.0.8
+    container_name: manzanita-lavalink
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 2333
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?Define LAVALINK_PASSWORD in .env}"
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    ports:
+      - "127.0.0.1:2333:2333"
