@@ -3,14 +3,13 @@ import { LavalinkManager } from 'lavalink-client';
 import { config } from './config.js';
 import { economyCommand } from './commands/economy.js';
 import { musicCommand } from './commands/music.js';
+import { musicShortcutCommands } from './commands/music-shortcuts.js';
 import { registerInteractionHandler } from './events/interaction-create.js';
 import './storage/database.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-client.commands = new Collection([
-    [economyCommand.data.name, economyCommand],
-    [musicCommand.data.name, musicCommand],
-]);
+const commands = [economyCommand, musicCommand, ...musicShortcutCommands];
+client.commands = new Collection(commands.map((command) => [command.data.name, command]));
 client.lavalink = new LavalinkManager({
     nodes: [{
             id: 'manzanita-local',
@@ -32,7 +31,7 @@ client.lavalink = new LavalinkManager({
 });
 registerInteractionHandler(client);
 client.on('raw', ((packet) => client.lavalink.sendRawData(packet)));
-client.once('ready', async (readyClient) => {
+client.once('clientReady', async (readyClient) => {
     console.log(`Conectado como ${readyClient.user.tag}.`);
     client.lavalink.on('trackStart', (player) => void refreshMusicPanel(client, player.guildId));
     client.lavalink.on('trackEnd', (player) => void refreshMusicPanel(client, player.guildId));

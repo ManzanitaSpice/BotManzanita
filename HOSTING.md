@@ -34,4 +34,4 @@ El archivo `lavalink/application.yml` se incluye como referencia para un servido
 
 ## Comandos de aplicación
 
-Los comandos ya están registrados globalmente para esta aplicación. Para publicar cambios futuros de comandos desde un paquete compilado, configura las variables de entorno y ejecuta `npm run commands:deploy:built` una vez. Este comando actualiza los comandos globales de Discord.
+Para publicar nuevos comandos desde un paquete compilado, configura las variables de entorno y ejecuta `npm run commands:deploy:built` una vez. Esto registra los atajos globales (`/play`, `/p`, `/q`, etc.) en Discord. Si `DISCORD_DEV_GUILD_ID` está configurado, los registra únicamente en ese servidor de desarrollo.

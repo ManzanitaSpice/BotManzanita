@@ -33,8 +33,34 @@ export async function searchTracks(client, query, user) {
     const node = client.lavalink.nodeManager.leastUsedNodes('memory').find((candidate) => candidate.connected);
     if (!node)
         throw new Error('No hay nodos de audio conectados.');
-    const result = await node.search(query, user, true);
-    return result.tracks;
+    const result = await searchWithFallback((identifier) => node.search(identifier, user, true), query);
+    return result?.tracks ?? [];
+}
+async function searchWithFallback(search, query) {
+    const trimmed = query.trim();
+    const isUrl = /^https?:\/\//i.test(trimmed);
+    const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch):/i.test(trimmed);
+    const identifiers = isUrl || hasSourcePrefix
+        ? [trimmed]
+        : [`ytmsearch:${trimmed}`, `ytsearch:${trimmed}`, `scsearch:${trimmed}`];
+    let emptyResult;
+    let lastError;
+    for (const identifier of identifiers) {
+        try {
+            const result = await search(identifier);
+            if (result.tracks.length)
+                return result;
+            emptyResult ??= result;
+        }
+        catch (error) {
+            lastError = error;
+        }
+    }
+    if (emptyResult)
+        return emptyResult;
+    if (lastError)
+        throw lastError;
+    return undefined;
 }
 export function rememberSearch(guildId, userId, tracks) {
     const now = Date.now();
@@ -104,8 +130,8 @@ export async function addSavedTracks(client, input) {
         while (nextIndex < input.uris.length) {
             const index = nextIndex++;
             try {
-                const result = await player.search(input.uris[index], input.user, true);
-                const track = result.tracks[0];
+                const result = await searchWithFallback((identifier) => player.search(identifier, input.user, true), input.uris[index]);
+                const track = result?.tracks[0];
                 resolved[index] = track && !('resolve' in track) ? track : undefined;
             }
             catch {
@@ -136,9 +162,9 @@ export async function addTrack(client, input) {
     try {
         if (!player.connected)
             await player.connect();
-        const result = await player.search(input.query, input.user, true);
-        if (!result.tracks.length)
-            throw new Error('No encontré canciones para esa consulta.');
+        const result = await searchWithFallback((identifier) => player.search(identifier, input.user, true), input.query);
+        if (!result?.tracks.length)
+            throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
         const first = result.tracks[0];
         if (!first)
             throw new Error('La búsqueda no devolvió una canción reproducible.');

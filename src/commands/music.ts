@@ -220,7 +220,7 @@ export const musicCommand: BotCommand = {
         await interaction.editReply(`🎶 ${description}`);
         await refreshMusicPanel(interaction.client, guildId);
       } catch (error) {
-        await interaction.editReply(`⚠️ ${errorText(error, 'No pude añadir esa canción.')}`);
+          await interaction.editReply(`⚠️ ${errorText(error, 'No pude añadir esa canción. Prueba /play o /search.')}`);
       }
       return;
     }
@@ -231,7 +231,7 @@ export const musicCommand: BotCommand = {
       return;
     }
     if (!player) {
-      await interaction.reply({ content: 'No hay una sesión musical activa. Usa `/musica agregar` para empezar.', ephemeral: true });
+      await interaction.reply({ content: 'No hay una sesión musical activa. Usa `/play` para empezar.', ephemeral: true });
       return;
     }
     const voiceChannelId = guild.voiceStates.cache.get(interaction.user.id)?.channelId;

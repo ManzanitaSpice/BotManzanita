@@ -21,6 +21,8 @@ Bot multiusos para Discord con economía persistente, paneles Components V2 y m�
 
 ## Comandos incluidos
 
+- Atajos directos: `/play`, `/p`, `/search`, `/buscar`, `/queue`, `/q`, `/pause`, `/resume`, `/skip`, `/prev`, `/stop`, `/leave` y `/np`. Así no hace falta escribir `/musica` para las acciones comunes.
+- La búsqueda de texto prueba YouTube Music, YouTube y SoundCloud en ese orden. También acepta enlaces directos y conserva los comandos avanzados de `/musica`.
 - `/economia panel`: abre el panel privado de economía.
 - `/economia saldo`: consulta el saldo.
 - `/economia diaria`: reclama la recompensa diaria (una vez cada 24 horas).
