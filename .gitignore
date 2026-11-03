@@ -3,3 +3,5 @@ node_modules/
 data/
 npm-debug.log*
 releases/**/host-package/
+lavalink-host-v4.2.2/
+lavalink-host-v4.2.2.zip
