@@ -145,7 +145,15 @@ db.exec(`
     max_hp INTEGER NOT NULL,
     energy INTEGER NOT NULL DEFAULT 100,
     max_energy INTEGER NOT NULL DEFAULT 100,
+    hunger INTEGER NOT NULL DEFAULT 80,
+    affection INTEGER NOT NULL DEFAULT 60,
+    needs_updated_at INTEGER NOT NULL DEFAULT 0,
+    last_care_at INTEGER,
     last_explore_at INTEGER,
+    last_battle_at INTEGER,
+    last_train_at INTEGER,
+    daily_xp INTEGER NOT NULL DEFAULT 0,
+    daily_xp_date TEXT NOT NULL DEFAULT '',
     equipment_json TEXT NOT NULL DEFAULT '{}',
     expedition_effects_json TEXT NOT NULL DEFAULT '{}',
     known_moves_json TEXT NOT NULL DEFAULT '[]',
@@ -207,7 +215,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_rpg_pvp_active_participants
     ON rpg_pvp_matches (guild_id, status, challenger_id, defender_id, updated_at);
 `);
-for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'"], ['specialization', "TEXT NOT NULL DEFAULT 'Explorador'"], ['expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'"], ['known_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['move_points', 'INTEGER NOT NULL DEFAULT 0'], ['free_name_used', 'INTEGER NOT NULL DEFAULT 0']]) {
+for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'"], ['specialization', "TEXT NOT NULL DEFAULT 'Explorador'"], ['hunger', 'INTEGER NOT NULL DEFAULT 80'], ['affection', 'INTEGER NOT NULL DEFAULT 60'], ['needs_updated_at', 'INTEGER NOT NULL DEFAULT 0'], ['last_care_at', 'INTEGER'], ['last_battle_at', 'INTEGER'], ['last_train_at', 'INTEGER'], ['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'"], ['known_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['move_points', 'INTEGER NOT NULL DEFAULT 0'], ['free_name_used', 'INTEGER NOT NULL DEFAULT 0']]) {
     try {
         db.exec(`ALTER TABLE rpg_pets ADD COLUMN ${column} ${definition}`);
     }
@@ -216,6 +224,7 @@ for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'
             throw error;
     }
 }
+db.exec('UPDATE rpg_pets SET needs_updated_at = unixepoch() WHERE needs_updated_at = 0');
 db.exec("UPDATE rpg_pets SET move_points = MAX(level - 1, 0) WHERE move_points = 0 AND level > 1 AND known_moves_json = '[]'");
 // Keep local databases created by an earlier version compatible.
 try {

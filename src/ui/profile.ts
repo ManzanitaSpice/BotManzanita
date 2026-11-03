@@ -1,10 +1,11 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, StringSelectMenuBuilder, TextDisplayBuilder } from 'discord.js';
 import type { User } from 'discord.js';
-import { profileShopCategories, profileShopItems, type ProfileItemType, type ProfileShopItem } from '../data/profile-shop.js';
+import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { getAccountBalances } from '../services/economy.js';
-import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem, type ProfileSettings } from '../services/profile.js';
+import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem, PROFILE_CHAT_XP_DAILY_CAP, type ProfileSettings } from '../services/profile.js';
 import { getRpgPet } from '../services/rpg.js';
-import { renderProfileCard, type ProfileCardMode } from './profile-cards.js';
+import { getRpgPetSpritePath } from './rpg-art.js';
+import { renderProfileCard, renderShopItemPreview, type ProfileCardMode } from './profile-cards.js';
 
 const money=new Intl.NumberFormat('es-MX');
 const pid=(userId:string,action:string)=>`profile:${userId}:${action}`;
@@ -60,7 +61,7 @@ export async function profileProgressPanel(guildId:string,user:User){
   const [settings,progress]=await Promise.all([getProfileSettings(user.id),getProfileProgress(guildId,user.id)]); const buffer=await selfCard(guildId,user.id,'rank',settings,user);
   const target=(progress.level**2)*100;
   const container=new ContainerBuilder().setAccentColor(0x5c89d8).addTextDisplayComponents(new TextDisplayBuilder().setContent(
-    `# 📈 PROGRESO GLOBAL\nNivel **${progress.level}** · **${progress.xp.toLocaleString('es-MX')} XP** · rango global **#${progress.globalRank}**\nSiguiente nivel: **${Math.max(0,target-progress.xp).toLocaleString('es-MX')} XP** · actividad: **${progress.messages.toLocaleString('es-MX')} mensajes**`))
+    `# 📈 PROGRESO GLOBAL\nNivel **${progress.level}** · **${progress.xp.toLocaleString('es-MX')} XP** · rango global **#${progress.globalRank}**\nSiguiente nivel: **${Math.max(0,target-progress.xp).toLocaleString('es-MX')} XP** · XP de chat hoy: **${progress.dailyXp}/${PROFILE_CHAT_XP_DAILY_CAP}**\nActividad: **${progress.messages.toLocaleString('es-MX')} mensajes**`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rank-card.png').setDescription('Tarjeta de rango global')))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(pid(user.id,'home')).setLabel('Perfil').setEmoji('👤').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId(pid(user.id,'wallet')).setLabel('Wallet').setEmoji('💰').setStyle(ButtonStyle.Secondary)));
   return {components:[container],files:[png(buffer,'rank-card.png')],flags:['IsComponentsV2','Ephemeral'] as const};
@@ -68,11 +69,11 @@ export async function profileProgressPanel(guildId:string,user:User){
 
 export async function levelUpCardMessage(guildId:string,user:User,level:number){
   const [settings,progress,account,badges,pet]=await Promise.all([getProfileSettings(user.id),getProfileProgress(guildId,user.id),getAccountBalances(guildId,user.id),equippedProfileBadges(user.id),getRpgPet(guildId,user.id)]);
-  const buffer=await renderProfileCard({mode:'levelup',userId:user.id,username:user.username,avatarUrl:user.displayAvatarURL({extension:'png',size:256}),settings,progress,wallet:account.wallet,bank:account.bank,premium:account.premium,badges,levelUpTo:level,...(pet?.name?{petName:pet.name}:{})});
+  const buffer=await renderProfileCard({mode:'levelup',userId:user.id,username:user.username,avatarUrl:user.displayAvatarURL({extension:'png',size:256}),settings,progress,wallet:account.wallet,bank:account.bank,premium:account.premium,badges,levelUpTo:level,...(pet?.name?{petName:pet.name,petSpritePath:getRpgPetSpritePath(pet.species)}:{})});
   return png(buffer,'level-up.png');
 }
 
-export async function profileInventoryPanel(guildId:string,userId:string,category='all',selectedId?:string,user?:User){
+export async function profileInventoryPanel(guildId:string,userId:string,category='all',selectedId?:string){
   const [inventory,settings,pet]=await Promise.all([getProfileInventory(guildId,userId),getProfileSettings(userId),category==='pets'?getRpgPet(guildId,userId):Promise.resolve(undefined)]); const owned=new Map(inventory.map((entry)=>[entry.itemId,entry.quantity]));
   const matching=profileShopItems.filter((item)=>item.type!=='pet'&&owned.has(item.id)&&(category==='all'||item.category===category));
   const selected=matching.find((item)=>item.id===selectedId)??matching[0];
@@ -90,15 +91,18 @@ export async function profileInventoryPanel(guildId:string,userId:string,categor
   rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(pid(userId,'shop')).setLabel('Ir a tienda').setEmoji('🛒').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId(pid(userId,'customize')).setLabel('Personalizar').setEmoji('🎨').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId(pid(userId,'home')).setLabel('Perfil').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
   for(const row of rows)container.addActionRowComponents(row);
   const response={components:[container],flags:['IsComponentsV2','Ephemeral'] as const};
-  return selected?{...response,files:[png(await previewCard(guildId,userId,settings,selected,user),'inventory-preview.png')]}:response;
+  return selected?{...response,files:[png(await renderShopItemPreview(selected),'inventory-preview.png')]}:response;
 }
 
-export async function profileShopPanel(guildId:string,userId:string,category='all',query='',selectedId?:string,user?:User){
-  const [settings,inventory,account]=await Promise.all([getProfileSettings(userId),getProfileInventory(guildId,userId),getAccountBalances(guildId,userId)]); const owned=new Set(inventory.map((entry)=>entry.itemId));
+export async function profileShopPanel(guildId:string,userId:string,category='all',query='',selectedId?:string,notice=''){
+  const [inventory,account]=await Promise.all([getProfileInventory(guildId,userId),getAccountBalances(guildId,userId)]); const owned=new Set(inventory.map((entry)=>entry.itemId));
   const matching=profileShopItems.filter((item)=>item.type!=='pet'&&(category==='all'||item.category===category)&&(!query||`${item.name} ${item.description} ${item.rarity}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
   const selected=matching.find((item)=>item.id===selectedId)??matching[0];
-  const details=category==='pets'?'Las mascotas se consiguen con el sistema RPG: adopción de especies, rarezas, entrenamiento y combates. Abre el panel RPG para ver y adoptar.':selected?`${selected.emoji} **${selected.name}** · ${selected.rarity}\n${selected.description}\nPrecio: **${money.format(selected.price)} monedas**${owned.has(selected.id)?' · Ya lo tienes':''}`:'No hay artículos que coincidan. Prueba otra categoría o búsqueda.';
-  const container=new ContainerBuilder().setAccentColor(0x8b75dc).addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛒 TIENDA DE PERFIL\nBilletera: **${money.format(account.wallet)}** · vista previa antes de comprar.\n\n${details}`));
+  const catalog=matching.map((item)=>`${item.emoji} **${item.name}** · ${money.format(item.price)} monedas${owned.has(item.id)?' · ✓ En inventario':''}`).join('\n');
+  const details=category==='pets'?'Las mascotas se adoptan con huevos en el módulo RPG. La especie se elige al azar entre las compatibles con el elemento del huevo.':selected?`${selected.emoji} **${selected.name}** · ${selected.rarity}\n${selected.description}\nPrecio: **${money.format(selected.price)} monedas**${owned.has(selected.id)?' · Ya está en tu inventario':''}`:'No hay artículos en esta categoría. Prueba otra categoría o cambia la búsqueda.';
+  const status=notice?`\n\n${notice}`:'';
+  const content=category==='pets'?`# 🛍️ TIENDA DE PERSONALIZACIÓN\n**Tu saldo:** ${money.format(account.wallet)} monedas${status}\n\n### 🐾 Mascotas RPG\n${details}`:`# 🛍️ TIENDA DE PERSONALIZACIÓN\n**Tu saldo:** ${money.format(account.wallet)} monedas${status}\n\n### Catálogo · ${matching.length} artículos\n${catalog||'No hay productos en esta categoría.'}\n\n### ${selected?'Artículo seleccionado':'Sin selección'}\n${details}`;
+  const container=new ContainerBuilder().setAccentColor(0x8b75dc).addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
   if(selected)container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://shop-preview.png').setDescription(`Vista previa de ${selected.name}`)));
   container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(pid(userId,`shop-category:${category}`)).setPlaceholder('Categorías de decoración').addOptions(profileShopCategories.map((entry)=>({label:entry.label,value:entry.id,emoji:entry.emoji,default:category===entry.id})))));
   if(matching.length)container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(pid(userId,`shop-item:${category}:${encodeURIComponent(query).slice(0,40)}`)).setPlaceholder('Elige un artículo para previsualizar').addOptions(matching.slice(0,25).map((item)=>({label:item.name,value:item.id,description:`${money.format(item.price)} monedas · ${item.rarity}`,emoji:item.emoji,default:selected?.id===item.id})))));
@@ -108,7 +112,7 @@ export async function profileShopPanel(guildId:string,userId:string,category='al
   if(selected)actionRow.addComponents(owned.has(selected.id)?new ButtonBuilder().setCustomId(pid(userId,`equip:${selected.id}`)).setLabel('Equipar').setEmoji('✅').setStyle(ButtonStyle.Success):new ButtonBuilder().setCustomId(pid(userId,`buy:${selected.id}`)).setLabel(`Comprar · ${selected.price}`).setEmoji('🪙').setStyle(ButtonStyle.Success));
   actionRow.addComponents(new ButtonBuilder().setCustomId(pid(userId,'inventory')).setLabel('Inventario').setEmoji('🎒').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId(pid(userId,'home')).setLabel('Perfil').setEmoji('↩️').setStyle(ButtonStyle.Secondary)); container.addActionRowComponents(actionRow);
   const response={components:[container],flags:['IsComponentsV2','Ephemeral'] as const};
-  return selected?{...response,files:[png(await previewCard(guildId,userId,settings,selected,user),'shop-preview.png')]}:response;
+  return selected?{...response,files:[png(await renderShopItemPreview(selected),'shop-preview.png')]}:response;
 }
 
 export async function profileRoomPanel(guildId:string,userId:string,user?:User){
@@ -123,11 +127,4 @@ async function selfCard(guildId:string,userId:string,mode:ProfileCardMode,settin
   const [settings,progress,account,badges,pet]=await Promise.all([settingsOverride?Promise.resolve(settingsOverride):getProfileSettings(userId),getProfileProgress(guildId,userId),getAccountBalances(guildId,userId),equippedProfileBadges(userId),getRpgPet(guildId,userId)]);
   const username=user?.username??`Usuario ${userId.slice(-4)}`;const avatarUrl=user?.displayAvatarURL({extension:'png',size:256})??'';
   return renderProfileCard({mode,userId,username,avatarUrl,settings,progress,wallet:account.wallet,bank:account.bank,premium:account.premium,badges,...(pet?.name?{petName:pet.name}:{})});
-}
-async function previewCard(guildId:string,userId:string,settings:ProfileSettings,item:ProfileShopItem,user?:User){
-  const preview={...settings};
-  const slot:Partial<Record<ProfileItemType,keyof ProfileSettings>>={profile_bg:'profileBg',rank_bg:'rankBg',wallet_bg:'walletBg',levelup_bg:'levelupBg',frame:'frame',tag:'tag',sticker:'sticker',housing:'housing'};
-  const key=slot[item.type];if(key)preview[key]=item.id;
-  const [progress,account,badges,pet]=await Promise.all([getProfileProgress(guildId,userId),getAccountBalances(guildId,userId),equippedProfileBadges(userId),getRpgPet(guildId,userId)]);
-  return renderProfileCard({mode:item.type==='wallet_bg'?'wallet':item.type==='rank_bg'?'rank':item.type==='levelup_bg'?'levelup':item.type==='housing'?'room':'profile',userId,username:user?.username??'Vista previa',avatarUrl:user?.displayAvatarURL({extension:'png',size:256})??'',settings:preview,progress,wallet:account.wallet,bank:account.bank,premium:account.premium,badges,...(pet?.name?{petName:pet.name}:{})});
 }

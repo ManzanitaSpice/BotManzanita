@@ -18,7 +18,7 @@ export const economyCommand: BotCommand = {
     .addSubcommand((subcommand) => subcommand.setName('diaria').setDescription('Reclama tus monedas diarias'))
     .addSubcommand((subcommand) => subcommand.setName('trabajar').setDescription('Trabaja para ganar entre 35 y 80 monedas'))
     .addSubcommand((subcommand) => subcommand.setName('crimen').setDescription('Intenta un golpe: puedes ganar botín o pagar una multa'))
-    .addSubcommand((subcommand) => subcommand.setName('pescar').setDescription('Pesca para ganar monedas cada 15 minutos'))
+    .addSubcommand((subcommand) => subcommand.setName('pescar').setDescription('Pesca para ganar monedas cada 30 minutos'))
     .addSubcommand((subcommand) => subcommand.setName('robar').setDescription('Intenta robar monedas; puede salir mal')
       .addUserOption((option) => option.setName('usuario').setDescription('A quién intentar robar').setRequired(true)))
     .addSubcommand((subcommand) => subcommand.setName('ruleta').setDescription('Apuesta monedas en la ruleta')
@@ -60,7 +60,7 @@ export const economyCommand: BotCommand = {
       return;
     }
     if (action === 'panel') {
-      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id));
+      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username));
       return;
     }
     if (action === 'tienda_premium') {

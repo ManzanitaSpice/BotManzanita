@@ -3,8 +3,8 @@ import { ADMIN_OWNER_ID } from '../commands/admin.js';
 import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
 import { addFavorite, getFavorites, getPlaylist, getPlaylists, removeFavorite, saveTrackToPlaylist } from '../services/music-library.js';
-import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgInventory, getRpgLeaderboard, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
@@ -249,7 +249,7 @@ async function routeMessage(message) {
         return say(message, result.ok ? `✨ Le diste reputación a **${target.username}**. Ahora tiene **${result.reputation}**.` : target.id === userId ? 'No puedes darte reputación a ti.' : 'Ya reconociste a esa persona hoy.');
     }
     if (['eco', 'economy'].includes(command)) {
-        await sendPanel(message, await economyPanel(guildId, userId));
+        await sendPanel(message, await economyPanel(guildId, userId, message.author.username));
         return;
     }
     if (['daily', 'd', 'diaria'].includes(command)) {
@@ -356,9 +356,39 @@ async function routeMessage(message) {
     }
     // RPG
     if (['rpg', 'pet', 'mascota'].includes(command)) {
-        const action = (args.shift() ?? 'panel').toLowerCase();
+        const action = (args.shift() ?? (command === 'rpg' ? 'menu' : 'panel')).toLowerCase();
+        if (['menu', 'menú', 'help', 'ayuda'].includes(action)) {
+            await sendPanel(message, await rpgMenuPanel(guildId, userId));
+            return;
+        }
         if (['panel', 'profile', 'perfil'].includes(action)) {
             await sendPanel(message, await rpgPanel(guildId, userId, message.author.username));
+            return;
+        }
+        if (['bag', 'mochila', 'inventory', 'inventario'].includes(action)) {
+            await sendPanel(message, await rpgInventoryPanel(guildId, userId));
+            return;
+        }
+        if (['feed', 'alimentar', 'comida'].includes(action)) {
+            const query = args.join(' ').trim();
+            if (!query) {
+                await sendPanel(message, await rpgFeedPanel(guildId, userId));
+                return;
+            }
+            const item = findRpgItem(query);
+            if (!item || item.effect !== 'snack')
+                return say(message, 'Ese artículo no es comida. Usa `a!rpg alimentar` para abrir tus alimentos.');
+            const result = await useRpgItem(guildId, userId, item.id, message.id);
+            if (!result.ok)
+                return say(message, result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese alimento.' : 'Tu mascota ya está saciada y recuperada.');
+            await sendPanel(message, rpgCareResultPanel(result.pet, result.message));
+            return;
+        }
+        if (['care', 'cuidar', 'mimar'].includes(action)) {
+            const result = await careForRpgPet(guildId, userId);
+            if (!result.ok)
+                return say(message, result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+            await sendPanel(message, rpgCareResultPanel(result.pet, `Pasaste tiempo con ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`));
             return;
         }
         if (['adopt', 'adoptar'].includes(action)) {
@@ -387,12 +417,6 @@ async function routeMessage(message) {
             await sendPanel(message, await rpgShopPanel(guildId, userId));
             return;
         }
-        if (['inventory', 'inv', 'mochila'].includes(action)) {
-            const items = await getRpgInventory(guildId, userId);
-            const rows = items.map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return `${item?.emoji ?? '📦'} **${item?.name ?? entry.itemId}**  ·  ${item?.rarity ?? 'Objeto'}  ·  ×${entry.quantity}`; });
-            await sendPanel(message, listPanel('🎒 MOCHILA RPG', `${items.reduce((sum, item) => sum + item.quantity, 0)} unidades · ${items.length} tipos`, rows, 0x8b5cf6, 'Tu mochila está vacía. Visita el bazar para prepararte.'));
-            return;
-        }
         if (['explore', 'explorar'].includes(action)) {
             const zoneInput = args.join(' ').toLowerCase();
             const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput);
@@ -400,20 +424,20 @@ async function routeMessage(message) {
                 return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`);
             const result = await exploreRpg(guildId, userId, zone.id, message.id);
             if (!result.ok)
-                return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.');
-            await sendPanel(message, expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy));
+                return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : result.reason === 'low_hunger' ? 'Dale de comer antes de explorar.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.');
+            await sendPanel(message, expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy, result.pet.hunger, result.pet.affection));
             return;
         }
         if (['fight', 'battle', 'combatir'].includes(action)) {
             const result = await battleRpg(guildId, userId, message.id);
-            return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : 'Tu mascota está debilitada.');
+            return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : 'Tu mascota está debilitada.');
         }
         if (['train', 'entrenar'].includes(action)) {
             const stat = { fuerza: 'strength', strength: 'strength', defensa: 'defense', defense: 'defense', agilidad: 'agility', agility: 'agility' }[(args[0] ?? '').toLowerCase()];
             if (!stat)
                 return say(message, 'Uso: `a!rpg train fuerza|defensa|agilidad`.');
             const result = await trainRpgPet(guildId, userId, stat, message.id);
-            return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : 'Necesitas 180 monedas.');
+            return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'Necesitas 180 monedas.');
         }
         if (['buy', 'comprar'].includes(action)) {
             const item = findRpgItem(args.join(' '));
@@ -427,7 +451,7 @@ async function routeMessage(message) {
             if (!item)
                 return say(message, 'Indica el objeto: a!rpg use nombre.');
             const result = await useRpgItem(guildId, userId, item.id, message.id);
-            return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'missing_item' ? 'No tienes ese objeto.' : 'No es necesario usarlo ahora.');
+            return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'missing_item' ? 'No tienes ese objeto.' : item.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'No es necesario usarlo ahora.');
         }
         if (['quests', 'misiones'].includes(action)) {
             const quests = await getRpgQuests(guildId, userId);
@@ -439,27 +463,28 @@ async function routeMessage(message) {
                 const result = await claimRpgQuest(guildId, userId, quest.id, message.id);
                 return say(message, result.ok ? `🎁 Cobraste ${quest.reward} monedas.` : result.reason === 'incomplete' ? 'Aún no completas esa misión.' : result.reason === 'claimed' ? 'Ya la cobraste.' : 'No encontré esa misión.');
             }
-            const rows = quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} **${quest.title}**  ·  ${quest.progress}/${quest.target}  ·  ${money.format(quest.reward)} monedas${quest.claimed ? ' · cobrada' : quest.progress >= quest.target ? ' · lista para cobrar' : ''}`);
-            await sendPanel(message, listPanel('📜 ENCARGOS DEL GREMIO', 'Avance y recompensas de tus misiones', rows, 0x14b8a6, 'No hay misiones disponibles.'));
+            await sendPanel(message, await rpgMissionsPanel(guildId, userId));
             return;
         }
         if (['rank', 'ranking'].includes(action)) {
-            const rows = await getRpgLeaderboard(guildId);
-            const listing = rows.map((pet) => `<@${pet.userId}>  ·  **${pet.name}**  ·  ${pet.rarity}  ·  Nv. ${pet.level}`);
-            await sendPanel(message, leaderboardPanel('🐾 RANKING GLOBAL', 'Mascotas con mayor nivel', listing, 0x8b5cf6, 'Aún no hay mascotas.', false));
+            await sendPanel(message, await rpgRankingPanel(guildId));
             return;
         }
         if (['challenge', 'retar', 'pvp'].includes(action)) {
             const opponent = message.mentions.users.first();
-            if (!opponent || opponent.bot)
-                return say(message, 'Uso: a!rpg challenge @persona.');
+            if (!opponent) {
+                await sendPanel(message, await rpgPvPHelpPanel(guildId));
+                return;
+            }
+            if (opponent.bot)
+                return say(message, 'Solo puedes retar a una persona, no a un bot.');
             const result = await createRpgPvpChallenge(guildId, userId, message.author.username, opponent.id, opponent.username, message.id);
             if (!result.ok)
                 return say(message, 'No se pudo iniciar el reto; revisa que ambos tengan mascota y no estén en otro duelo.');
             await message.reply({ ...rpgPvpPanel(result.match), allowedMentions: { repliedUser: false } });
             return;
         }
-        return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `explore zona`, `fight`, `train stat`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
+        return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore zona`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
     }
     return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
 }

@@ -135,7 +135,15 @@ export async function initializeEconomyDatabase(): Promise<void> {
       max_hp INT NOT NULL,
       energy INT NOT NULL DEFAULT 100,
       max_energy INT NOT NULL DEFAULT 100,
+      hunger TINYINT UNSIGNED NOT NULL DEFAULT 80,
+      affection TINYINT UNSIGNED NOT NULL DEFAULT 60,
+      needs_updated_at BIGINT NOT NULL DEFAULT 0,
+      last_care_at BIGINT NULL,
       last_explore_at BIGINT NULL,
+      last_battle_at BIGINT NULL,
+      last_train_at BIGINT NULL,
+      daily_xp INT NOT NULL DEFAULT 0,
+      daily_xp_date VARCHAR(10) NOT NULL DEFAULT '',
       equipment_json TEXT NOT NULL,
       expedition_effects_json TEXT NOT NULL,
       known_moves_json TEXT NOT NULL,
@@ -150,11 +158,20 @@ export async function initializeEconomyDatabase(): Promise<void> {
   `);
   await ensureColumn('rpg_pets', 'element', "VARCHAR(16) NOT NULL DEFAULT 'Neutral'");
   await ensureColumn('rpg_pets', 'specialization', "VARCHAR(24) NOT NULL DEFAULT 'Explorador'");
+  await ensureColumn('rpg_pets', 'hunger', 'TINYINT UNSIGNED NOT NULL DEFAULT 80');
+  await ensureColumn('rpg_pets', 'affection', 'TINYINT UNSIGNED NOT NULL DEFAULT 60');
+  await ensureColumn('rpg_pets', 'needs_updated_at', 'BIGINT NOT NULL DEFAULT 0');
+  await ensureColumn('rpg_pets', 'last_care_at', 'BIGINT NULL');
+  await ensureColumn('rpg_pets', 'last_battle_at', 'BIGINT NULL');
+  await ensureColumn('rpg_pets', 'last_train_at', 'BIGINT NULL');
+  await ensureColumn('rpg_pets', 'daily_xp', 'INT NOT NULL DEFAULT 0');
+  await ensureColumn('rpg_pets', 'daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''");
   await ensureColumn('rpg_pets', 'expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'");
   await ensureColumn('rpg_pets', 'known_moves_json', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn('rpg_pets', 'equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn('rpg_pets', 'move_points', 'INT NOT NULL DEFAULT 0');
   await ensureColumn('rpg_pets', 'free_name_used', 'TINYINT(1) NOT NULL DEFAULT 0');
+  await economyPool.query('UPDATE rpg_pets SET needs_updated_at=UNIX_TIMESTAMP() WHERE needs_updated_at=0');
   await economyPool.query("UPDATE rpg_pets SET move_points=GREATEST(level-1,0) WHERE move_points=0 AND level>1 AND known_moves_json='[]'");
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS rpg_inventory (

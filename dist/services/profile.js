@@ -6,6 +6,8 @@ import { migratePlayerDataToGlobalScope } from '../storage/global-migration.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 const messageCooldown = new Map();
 const LEVEL_XP = 100;
+const CHAT_XP_COOLDOWN_MS = 60_000;
+export const PROFILE_CHAT_XP_DAILY_CAP = 1_200;
 const DEFAULT_SETTINGS = { about: '', title: 'Aventurero/a', accent: '#8b75dc', profileBg: null, rankBg: null, walletBg: null, levelupBg: null, tag: null, frame: null, sticker: null, housing: null };
 const equipColumns = { profile_bg: 'profileBg', rank_bg: 'rankBg', wallet_bg: 'walletBg', levelup_bg: 'levelupBg', tag: 'tag', frame: 'frame', sticker: 'sticker', housing: 'housing' };
 export async function initializeProfileStorage() {
@@ -15,7 +17,8 @@ export async function initializeProfileStorage() {
       profile_bg TEXT, rank_bg TEXT, wallet_bg TEXT, levelup_bg TEXT, tag TEXT, frame TEXT, sticker TEXT, housing TEXT, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS user_progress (
-      user_id TEXT PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0, level INTEGER NOT NULL DEFAULT 1, messages INTEGER NOT NULL DEFAULT 0, reputation INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      user_id TEXT PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0, level INTEGER NOT NULL DEFAULT 1, messages INTEGER NOT NULL DEFAULT 0, reputation INTEGER NOT NULL DEFAULT 0,
+      daily_xp INTEGER NOT NULL DEFAULT 0, daily_xp_date TEXT NOT NULL DEFAULT '', last_xp_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_user_progress_xp ON user_progress(xp DESC,user_id);
     CREATE TABLE IF NOT EXISTS shop_categories (category_id TEXT PRIMARY KEY, label TEXT NOT NULL, emoji TEXT NOT NULL);
@@ -26,7 +29,16 @@ export async function initializeProfileStorage() {
   `);
     if (economyPool) {
         await economyPool.query(`CREATE TABLE IF NOT EXISTS user_profiles (user_id VARCHAR(32) PRIMARY KEY, about VARCHAR(180) NOT NULL DEFAULT '', title VARCHAR(40) NOT NULL DEFAULT 'Aventurero/a', accent CHAR(7) NOT NULL DEFAULT '#8b75dc', profile_bg VARCHAR(48) NULL, rank_bg VARCHAR(48) NULL, wallet_bg VARCHAR(48) NULL, levelup_bg VARCHAR(48) NULL, tag VARCHAR(48) NULL, frame VARCHAR(48) NULL, sticker VARCHAR(48) NULL, housing VARCHAR(48) NULL, updated_at BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_progress (user_id VARCHAR(32) PRIMARY KEY, xp BIGINT NOT NULL DEFAULT 0, level INT NOT NULL DEFAULT 1, messages BIGINT NOT NULL DEFAULT 0, reputation INT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL, KEY idx_user_progress_xp (xp,user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_progress (user_id VARCHAR(32) PRIMARY KEY, xp BIGINT NOT NULL DEFAULT 0, level INT NOT NULL DEFAULT 1, messages BIGINT NOT NULL DEFAULT 0, reputation INT NOT NULL DEFAULT 0, daily_xp INT NOT NULL DEFAULT 0, daily_xp_date VARCHAR(10) NOT NULL DEFAULT '', last_xp_at BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL, KEY idx_user_progress_xp (xp,user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+        for (const [column, definition] of [['daily_xp', 'INT NOT NULL DEFAULT 0'], ['daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''"], ['last_xp_at', 'BIGINT NOT NULL DEFAULT 0']]) {
+            try {
+                await economyPool.query(`ALTER TABLE user_progress ADD COLUMN ${column} ${definition}`);
+            }
+            catch (error) {
+                if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_FIELDNAME'))
+                    throw error;
+            }
+        }
         await economyPool.query(`CREATE TABLE IF NOT EXISTS shop_categories (category_id VARCHAR(32) PRIMARY KEY, label VARCHAR(48) NOT NULL, emoji VARCHAR(8) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         await economyPool.query(`CREATE TABLE IF NOT EXISTS items (item_id VARCHAR(48) PRIMARY KEY, item_type VARCHAR(24) NOT NULL, category_id VARCHAR(32) NOT NULL, name VARCHAR(64) NOT NULL, description VARCHAR(180) NOT NULL, price BIGINT NOT NULL, color CHAR(7) NOT NULL, rarity VARCHAR(24) NOT NULL, emoji VARCHAR(8) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         await economyPool.query(`CREATE TABLE IF NOT EXISTS user_inventory (guild_id VARCHAR(32) NOT NULL, user_id VARCHAR(32) NOT NULL, item_id VARCHAR(48) NOT NULL, quantity BIGINT NOT NULL DEFAULT 1, acquired_at BIGINT NOT NULL, PRIMARY KEY (guild_id,user_id,item_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
@@ -36,8 +48,18 @@ export async function initializeProfileStorage() {
             await economyPool.execute('INSERT IGNORE INTO shop_categories(category_id,label,emoji) VALUES(?,?,?)', [category.id, category.label, category.emoji]);
         for (const item of profileShopItems)
             await economyPool.execute('INSERT IGNORE INTO items(item_id,item_type,category_id,name,description,price,color,rarity,emoji) VALUES(?,?,?,?,?,?,?,?,?)', [item.id, item.type, item.category, item.name, item.description, item.price, item.color, item.rarity, item.emoji]);
+        await economyPool.execute('DELETE FROM items WHERE item_id=?', ['pet_rpg_link']);
     }
     else {
+        for (const [column, definition] of [['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['last_xp_at', 'INTEGER NOT NULL DEFAULT 0']]) {
+            try {
+                db.exec(`ALTER TABLE user_progress ADD COLUMN ${column} ${definition}`);
+            }
+            catch (error) {
+                if (!(error instanceof Error) || !error.message.includes('duplicate column name'))
+                    throw error;
+            }
+        }
         const addCategory = db.prepare('INSERT OR IGNORE INTO shop_categories(category_id,label,emoji) VALUES(?,?,?)');
         const addItem = db.prepare('INSERT OR IGNORE INTO items(item_id,item_type,category_id,name,description,price,color,rarity,emoji) VALUES(?,?,?,?,?,?,?,?,?)');
         const seed = db.transaction(() => {
@@ -45,6 +67,7 @@ export async function initializeProfileStorage() {
                 addCategory.run(category.id, category.label, category.emoji);
             for (const item of profileShopItems)
                 addItem.run(item.id, item.type, item.category, item.name, item.description, item.price, item.color, item.rarity, item.emoji);
+            db.prepare('DELETE FROM items WHERE item_id=?').run('pet_rpg_link');
         });
         seed();
     }
@@ -56,33 +79,49 @@ export async function recordChatActivity(guildId, userId) {
     const key = `${guildId}:${userId}`;
     const now = Date.now();
     const last = messageCooldown.get(key) ?? 0;
-    if (now - last < 60_000)
+    if (now - last < CHAT_XP_COOLDOWN_MS)
         return undefined;
-    messageCooldown.set(key, now);
     if (messageCooldown.size > 20_000)
         for (const [entry, time] of messageCooldown)
             if (now - time > 3_600_000)
                 messageCooldown.delete(entry);
-    const gain = randomInt(10, 21);
+    messageCooldown.set(key, now);
+    const roll = randomInt(10, 21);
     const at = Math.floor(now / 1000);
+    const date = new Date(now).toISOString().slice(0, 10);
     if (economyPool) {
-        return withEconomyTransaction(async (connection) => {
+        const result = await withEconomyTransaction(async (connection) => {
             await connection.execute('INSERT IGNORE INTO user_progress(user_id,updated_at) VALUES(?,?)', [userId, at]);
-            const [beforeRows] = await connection.execute('SELECT level FROM user_progress WHERE user_id=? FOR UPDATE', [userId]);
-            await connection.execute('UPDATE user_progress SET level=FLOOR(SQRT((xp+?)/?))+1,xp=xp+?,messages=messages+1,updated_at=? WHERE user_id=?', [gain, LEVEL_XP, gain, at, userId]);
+            const [beforeRows] = await connection.execute('SELECT level,xp,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate,last_xp_at AS lastXpAt FROM user_progress WHERE user_id=? FOR UPDATE', [userId]);
+            const before = beforeRows[0];
+            if (at - Number(before.lastXpAt ?? 0) < CHAT_XP_COOLDOWN_MS / 1000)
+                return undefined;
+            const earnedToday = String(before.dailyXpDate ?? '') === date ? Number(before.dailyXp ?? 0) : 0;
+            const gain = Math.min(roll, PROFILE_CHAT_XP_DAILY_CAP - earnedToday);
+            if (gain <= 0)
+                return undefined;
+            const nextXp = Number(before.xp) + gain;
+            await connection.execute('UPDATE user_progress SET level=FLOOR(SQRT(?/?))+1,xp=?,messages=messages+1,daily_xp=?,daily_xp_date=?,last_xp_at=?,updated_at=? WHERE user_id=?', [nextXp, LEVEL_XP, nextXp, earnedToday + gain, date, at, at, userId]);
             const [rows] = await connection.execute('SELECT xp,level FROM user_progress WHERE user_id=?', [userId]);
-            return { levelUp: Number(rows[0]?.level ?? 1) > Number(beforeRows[0]?.level ?? 1), level: Number(rows[0]?.level ?? 1), xp: Number(rows[0]?.xp ?? gain) };
+            return { levelUp: Number(rows[0]?.level ?? 1) > Number(before.level ?? 1), level: Number(rows[0]?.level ?? 1), xp: Number(rows[0]?.xp ?? gain) };
         });
+        return result;
     }
-    const update = db.transaction(() => {
+    const result = db.transaction(() => {
         db.prepare('INSERT OR IGNORE INTO user_progress(user_id) VALUES(?)').run(userId);
-        const before = db.prepare('SELECT level FROM user_progress WHERE user_id=?').get(userId);
-        const xp = Number(db.prepare('SELECT xp FROM user_progress WHERE user_id=?').get(userId).xp) + gain;
+        const before = db.prepare('SELECT level,xp,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate,last_xp_at AS lastXpAt FROM user_progress WHERE user_id=?').get(userId);
+        if (at - Number(before.lastXpAt ?? 0) < CHAT_XP_COOLDOWN_MS / 1000)
+            return undefined;
+        const earnedToday = before.dailyXpDate === date ? Number(before.dailyXp) : 0;
+        const gain = Math.min(roll, PROFILE_CHAT_XP_DAILY_CAP - earnedToday);
+        if (gain <= 0)
+            return undefined;
+        const xp = Number(before.xp) + gain;
         const level = levelForExperience(xp);
-        db.prepare('UPDATE user_progress SET xp=?,level=?,messages=messages+1,updated_at=? WHERE user_id=?').run(xp, level, at, userId);
+        db.prepare('UPDATE user_progress SET xp=?,level=?,messages=messages+1,daily_xp=?,daily_xp_date=?,last_xp_at=?,updated_at=? WHERE user_id=?').run(xp, level, earnedToday + gain, date, at, at, userId);
         return { levelUp: level > Number(before.level), level, xp };
-    });
-    return update.immediate();
+    }).immediate();
+    return result;
 }
 export async function getProfileSettings(userId) {
     if (economyPool) {
@@ -94,22 +133,25 @@ export async function getProfileSettings(userId) {
     return db.prepare('SELECT about,title,accent,profile_bg AS profileBg,rank_bg AS rankBg,wallet_bg AS walletBg,levelup_bg AS levelupBg,tag,frame,sticker,housing FROM user_profiles WHERE user_id=?').get(userId) ?? DEFAULT_SETTINGS;
 }
 export async function getProfileProgress(_guildId, userId) {
+    const today = new Date().toISOString().slice(0, 10);
     if (economyPool) {
-        const [rows] = await economyPool.execute('SELECT xp,level,messages,reputation FROM user_progress WHERE user_id=?', [userId]);
+        const [rows] = await economyPool.execute('SELECT xp,level,messages,reputation,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?', [userId]);
         const row = (rows[0] ?? {});
         const xp = Number(row.xp ?? 0);
         const level = Number(row.level ?? 1);
         const messages = Number(row.messages ?? 0);
+        const dailyXp = String(row.dailyXpDate ?? '') === today ? Number(row.dailyXp ?? 0) : 0;
         const [ranks] = await economyPool.execute('SELECT COUNT(*)+1 rank FROM user_progress WHERE xp>(SELECT COALESCE(xp,0) FROM user_progress WHERE user_id=?)', [userId]);
         const rank = Number(ranks[0]?.rank ?? 1);
-        return { xp, level, messages, reputation: Number(row.reputation ?? 0), serverXp: xp, serverLevel: level, serverMessages: messages, globalRank: rank, serverRank: rank };
+        return { xp, level, messages, reputation: Number(row.reputation ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank: rank, serverRank: rank };
     }
-    const row = db.prepare('SELECT COALESCE(xp,0) xp,COALESCE(level,1) level,COALESCE(messages,0) messages,COALESCE(reputation,0) reputation FROM user_progress WHERE user_id=?').get(userId);
+    const row = db.prepare('SELECT COALESCE(xp,0) xp,COALESCE(level,1) level,COALESCE(messages,0) messages,COALESCE(reputation,0) reputation,COALESCE(daily_xp,0) dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?').get(userId);
     const xp = Number(row?.xp ?? 0);
     const level = Number(row?.level ?? 1);
     const messages = Number(row?.messages ?? 0);
     const globalRank = Number(db.prepare('SELECT COUNT(*)+1 rank FROM user_progress WHERE xp>(SELECT COALESCE(xp,0) FROM user_progress WHERE user_id=?)').get(userId).rank);
-    return { xp, level, messages, reputation: Number(row?.reputation ?? 0), serverXp: xp, serverLevel: level, serverMessages: messages, globalRank, serverRank: globalRank };
+    const dailyXp = String(row?.dailyXpDate ?? '') === today ? Number(row?.dailyXp ?? 0) : 0;
+    return { xp, level, messages, reputation: Number(row?.reputation ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank, serverRank: globalRank };
 }
 export async function getProfileInventory(guildId, userId) {
     guildId = GLOBAL_SCOPE_ID;

@@ -15,8 +15,10 @@ import {
 import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { bankAction, getAccountBalances, getBalance, getInventory, storeItems, type BlackjackView } from '../services/economy.js';
-import { getLatestExpeditionLog, getLearnableRpgMoves, getRpgInventory, getRpgMove, getRpgPet, getRpgQuests, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
+import { getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_BATTLE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { renderEggCard, renderPetCard, rpgEggOptions } from './rpg-art.js';
+import { renderProfileCard } from './profile-cards.js';
+import { equippedProfileBadges, getProfileProgress, getProfileSettings } from '../services/profile.js';
 
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
@@ -67,15 +69,20 @@ export function leaderboardPanel(title: string, subtitle: string, entries: strin
 }
 
 export function componentUpdate(panel: { components: ContainerBuilder[]; files?: AttachmentBuilder[] }) {
-  return { components: panel.components, ...(panel.files ? { files: panel.files, attachments: [] } : {}), flags: ['IsComponentsV2'] as const };
+  return { components: panel.components, attachments: [], ...(panel.files ? { files: panel.files } : {}), flags: ['IsComponentsV2'] as const };
 }
 
-export async function economyPanel(guildId: string, userId: string) {
-  const account = await getAccountBalances(guildId, userId);
+export async function economyPanel(guildId: string, userId: string, username = `Usuario ${userId.slice(-4)}`) {
+  const [account, settings, progress, badges] = await Promise.all([
+    getAccountBalances(guildId, userId), getProfileSettings(userId), getProfileProgress(guildId, userId), equippedProfileBadges(userId),
+  ]);
+  const walletCard = await renderProfileCard({ mode: 'wallet', userId, username, avatarUrl: '', settings, progress,
+    wallet: account.wallet, bank: account.bank, premium: account.premium, badges });
   const container = new ContainerBuilder()
     .setAccentColor(colors.economy)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# ✨ ECONOMÍA\n💰 **${money.format(account.wallet)}** monedas　🏦 **${money.format(account.bank)}** banco\n💎 **${money.format(account.premium)}** gemas admin\n\n🎁 Diaria: **+100** · reclama cada 24 h`))
+      `# 💳 ECONOMÍA\nBilletera · banco · gemas premium\n🎁 Diaria: **+100 monedas**`))
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://economy-wallet.png').setDescription(`Wallet de ${username}`)))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:daily').setLabel('Reclamar diaria').setEmoji('🎁').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
@@ -86,7 +93,7 @@ export async function economyPanel(guildId: string, userId: string) {
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:premium-store').setLabel('Tienda premium').setEmoji('💎').setStyle(ButtonStyle.Secondary),
     ));
-  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+  return { components: [container], files: [new AttachmentBuilder(walletCard).setName('economy-wallet.png')], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
 function statBar(value: number, max: number, width = 10): string {
@@ -95,40 +102,161 @@ function statBar(value: number, max: number, width = 10): string {
 }
 
 export async function rpgPanel(guildId: string, userId: string, username: string, requestedZoneId?: string) {
-  const [pet, inventory, quests, latestLog] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId), getRpgQuests(guildId, userId), getLatestExpeditionLog(guildId, userId)]);
+  const pet = await getRpgPet(guildId, userId);
   const container = new ContainerBuilder().setAccentColor(pet ? ({ 'Común': 0x94a3b8, 'Poco común': 0x22c55e, 'Raro': 0x3b82f6, 'Épico': 0xa855f7, 'Legendario': 0xf59e0b } as const)[pet.rarity] : 0x14b8a6);
   if (!pet) return rpgAdoptionPanel(username, 'Fuego');
   const xpNext = 100 + (pet.level - 1) * 45;
-  const selectedZone = rpgZones.find((zone) => zone.id === requestedZoneId) ?? rpgZones.find((zone) => zone.id === latestLog?.zoneId) ?? rpgZones[0]!;
-  const questLines = quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} ${quest.title} ${quest.progress}/${quest.target}`).join(' · ');
-  const inventoryLines = inventory.length ? inventory.slice(0, 4).map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return `${item?.emoji ?? '📦'} ${item?.name ?? entry.itemId} ×${entry.quantity}`; }).join(' · ') : 'Vacía';
-  const logLines = latestLog?.events.slice(0, 2).map((event) => `${event.emoji} ${event.title} · ${event.detail}`).join('\n') ?? '_Sin expediciones todavía._';
-  const exploreReady = !pet.lastExploreAt || pet.lastExploreAt + 1800 <= Math.floor(Date.now() / 1000);
-  const petCard = await renderPetCard(pet, selectedZone.background);
+  const selectedZone = rpgZones.find((zone) => zone.id === requestedZoneId) ?? rpgZones[0]!;
+  const currentTime = Math.floor(Date.now() / 1000);
+  const exploreReady = !pet.lastExploreAt || pet.lastExploreAt + RPG_EXPLORE_COOLDOWN <= currentTime;
+  const cooldownSeconds = pet.lastExploreAt ? Math.max(0, pet.lastExploreAt + RPG_EXPLORE_COOLDOWN - currentTime) : 0;
+  const battleReady = !pet.lastBattleAt || pet.lastBattleAt + RPG_BATTLE_COOLDOWN <= currentTime;
+  const exploreState = pet.level < selectedZone.minLevel ? `🔒 Requiere nivel ${selectedZone.minLevel}`
+    : pet.energy < 20 ? '⚡ Necesita 20 de energía'
+        : pet.hunger < 15 ? '🍖 Necesita comer antes de salir'
+      : exploreReady ? '🟢 Lista para salir' : `🕒 Descanso · ${Math.ceil(cooldownSeconds / 60)} min`;
+  const petCard = await renderPetCard(pet, selectedZone.background, selectedZone, xpNext);
   container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name}, ${pet.species} · tarjeta de mascota`),
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-    `❤️ ${statBar(pet.hp, pet.maxHp)} **${pet.hp}/${pet.maxHp} PV**　⚡ ${statBar(pet.energy, pet.maxEnergy)} **${pet.energy}/${pet.maxEnergy} energía** · ${pet.xp}/${xpNext} XP para subir\n\n## 🗺️ ${selectedZone.emoji} ${selectedZone.name} · ${selectedZone.difficulty}\nNv. ${selectedZone.minLevel}+ · peligro ${selectedZone.danger}% · 🪙 ${selectedZone.reward[0]}–${selectedZone.reward[1]} · 🎒 ${selectedZone.lootChance}%\n👑 ${selectedZone.boss.name} · aparición ${selectedZone.boss.spawnChance}% · botín ${selectedZone.boss.dropChance}%\n${exploreReady ? '🟢 Lista para salir' : '🕒 En descanso'} · equipo ${Object.keys(pet.equipment).length ? Object.values(pet.equipment).map((id) => rpgItems.find((item) => item.id === id)?.name ?? id).join(' · ') : 'vacío'}\n\n## 🎒 Mochila · 📜 Misiones\n${inventoryLines}\n${questLines}\n\n## 📖 ${latestLog ? `Bitácora · ${latestLog.zoneName}` : 'Bitácora'}\n${logLines}`))
+    `## 🧭 ${selectedZone.emoji} ${selectedZone.name}\n${selectedZone.difficulty} · Nv. ${selectedZone.minLevel}+ · riesgo ${selectedZone.danger}% · botín ${selectedZone.reward[0]}–${selectedZone.reward[1]} monedas\n👑 ${selectedZone.boss.name} · aparición ${selectedZone.boss.spawnChance}%\n${exploreState} · 📘 XP hoy ${pet.dailyXp}/${RPG_DAILY_XP_CAP}`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId('rpg:zone:preview').setPlaceholder('Elegir zona y ver su fondo').addOptions(rpgZones.map((zone) => ({ label: `${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id, emoji: zone.emoji, description: `${zone.difficulty} · botín ${zone.lootChance}% · jefe ${zone.boss.spawnChance}%` }))),
+      new StringSelectMenuBuilder().setCustomId('rpg:zone:preview').setPlaceholder('Elegir zona').addOptions(rpgZones.map((zone) => ({ label: `${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id, emoji: zone.emoji, description: `${zone.difficulty} · botín ${zone.lootChance}% · jefe ${zone.boss.spawnChance}%` }))),
     ))
-  if (inventory.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId('rpg:use').setPlaceholder('Usar o equipar artículo').addOptions(inventory.slice(0, 25).map((entry) => { const item = rpgItems.find((candidate) => candidate.id === entry.itemId); return { label: `${item?.name ?? entry.itemId} · x${entry.quantity}`, value: entry.itemId, emoji: item?.emoji ?? '📦', description: (item?.description ?? 'Objeto de aventura').slice(0, 100) }; })),
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(pet.hunger < 15 ? 'Necesita comer' : exploreReady ? 'Explorar' : 'Descansando').setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20 || pet.hunger < 15),
+    new ButtonBuilder().setCustomId('rpg:battle').setLabel(battleReady ? 'Combate' : 'Descanso').setEmoji('⚔️').setStyle(ButtonStyle.Danger).setDisabled(!battleReady || pet.energy < 10 || pet.hp <= 0),
+    new ButtonBuilder().setCustomId('rpg:build').setLabel('Build').setEmoji('📘').setStyle(ButtonStyle.Secondary),
   ));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('rpg:battle').setLabel('Combate PvE').setEmoji('⚔️').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('rpg:train').setLabel('Entrenar · 180').setEmoji('🏋️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('rpg:quests').setLabel('Cobrar misión').setEmoji('📜').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('rpg:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('rpg:feed').setLabel('Alimentar').setEmoji('🍓').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('rpg:care').setLabel('Dar cariño').setEmoji('🫶').setStyle(ButtonStyle.Secondary),
   ));
-  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(`Explorar ${selectedZone.name}`).setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20),
-    new ButtonBuilder().setCustomId('rpg:build').setLabel('Build de combate').setEmoji('⚔️').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('rpg:name').setLabel(pet.freeNameUsed ? 'Nombre usado' : 'Nombrar gratis').setEmoji('🏷️').setStyle(ButtonStyle.Secondary).setDisabled(pet.freeNameUsed),
+  container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId('rpg:manage').setPlaceholder('Más opciones').addOptions(
+      { label: 'Mochila', value: 'inventory', emoji: '🎒', description: 'Usar objetos y revisar el equipo' },
+      { label: 'Misiones', value: 'missions', emoji: '📜', description: 'Ver encargos y cobrar recompensas' },
+      { label: 'Entrenar fuerza', value: 'train', emoji: '🏋️', description: 'Mejorar fuerza · cuesta monedas y energía' },
+      { label: 'Tienda RPG', value: 'shop', emoji: '🛍️', description: 'Comprar comida, equipo y consumibles' },
+      { label: 'Nombrar mascota', value: 'name', emoji: '🏷️', description: pet.freeNameUsed ? 'Cambio gratuito ya utilizado' : 'Usar el cambio de nombre gratuito', default: false },
+    ),
   ));
   return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgMenuPanel(guildId: string, userId: string) {
+  const pet = await getRpgPet(guildId, userId);
+  const status = pet ? `🐾 **${pet.name}** · Nv. ${pet.level} · 🍖 ${pet.hunger}/100 · 🫶 ${pet.affection}/100` : '🥚 Aún no tienes mascota. Adopta una desde **Mascota y stats**.';
+  const container = new ContainerBuilder().setAccentColor(0x8b5cf6)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🐾 GREMIO RPG\n${status}\n\nElige una sección para continuar.`))
+    .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId('rpg:menu:category').setPlaceholder('Abrir una categoría').addOptions(
+        { label: 'Mascota y estadísticas', value: 'pet', emoji: '🐾', description: 'Tarjeta, nivel, atributos y zonas' },
+        { label: 'Exploración', value: 'explore', emoji: '🧭', description: 'Elegir zona y salir de aventura' },
+        { label: 'Alimentar', value: 'feed', emoji: '🍓', description: 'Dar comida de tu mochila' },
+        { label: 'Cariño', value: 'care', emoji: '🫶', description: 'Aumentar el vínculo con tu mascota' },
+        { label: 'Combate y técnicas', value: 'battle', emoji: '⚔️', description: 'Combate PvE y build de ataques' },
+        { label: 'Mochila', value: 'inventory', emoji: '🎒', description: 'Objetos, consumibles y equipo' },
+        { label: 'Misiones', value: 'missions', emoji: '📜', description: 'Encargos diarios y recompensas' },
+        { label: 'Bazar RPG', value: 'shop', emoji: '🛍️', description: 'Comida, equipo y objetos RPG' },
+        { label: 'Retos PvP', value: 'pvp', emoji: '🥊', description: 'Desafiar a otra persona' },
+        { label: 'Ranking global', value: 'ranking', emoji: '🏆', description: 'Ver las mascotas con más nivel' },
+      ),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgPvPHelpPanel(guildId: string) {
+  const ranking = await getRpgLeaderboard(guildId);
+  const rows = ranking.slice(0, 3).map((pet, index) => `${['🥇', '🥈', '🥉'][index]} <@${pet.userId}> · **${pet.name}** · Nv. ${pet.level}`);
+  const container = new ContainerBuilder().setAccentColor(0xef4444)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥊 RETOS RPG\nDesafía a otra persona a un duelo por turnos. Ambos necesitan tener una mascota.\n\n**Comandos**\n\`/rpg retar\` · elegir oponente\n\`a!rpg pvp @persona\` · reto rápido${rows.length ? `\n\n## 🏆 Mejores aventureros\n${rows.join('\n')}` : ''}`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgCombatPanel(guildId: string, userId: string) {
+  const pet = await getRpgPet(guildId, userId);
+  const container = new ContainerBuilder().setAccentColor(0xef4444)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ COMBATE RPG${pet ? ` · ${pet.name} Nv. ${pet.level}` : ''}\n${pet ? `❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad` : 'Primero adopta una mascota para participar en combate.'}\n\nCombate PvE consume energía y puede reducir PV. Tu build determina las técnicas disponibles en PvP.`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('rpg:battle').setLabel('Combatir PvE').setEmoji('⚔️').setStyle(ButtonStyle.Danger).setDisabled(!pet || pet.hp <= 0 || pet.energy < 10),
+      new ButtonBuilder().setCustomId('rpg:build').setLabel('Preparar build').setEmoji('📘').setStyle(ButtonStyle.Primary).setDisabled(!pet),
+      new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgRankingPanel(guildId: string) {
+  const ranking = await getRpgLeaderboard(guildId);
+  const rows = ranking.map((pet) => `<@${pet.userId}> · **${pet.name}** · ${pet.rarity} · Nv. ${pet.level}`);
+  const panel = leaderboardPanel('🏆 RANKING RPG', 'Mascotas con más nivel · global', rows, 0x8b5cf6, 'Aún no hay mascotas registradas.');
+  const container = panel.components[0]!;
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  ));
+  return panel;
+}
+
+export async function rpgInventoryPanel(guildId: string, userId: string) {
+  const [pet, inventory] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
+  const entries = inventory.map((entry) => ({ entry, item: rpgItems.find((candidate) => candidate.id === entry.itemId) })).filter((row) => row.item);
+  const text = entries.slice(0, 8).map(({ entry, item }) => `${item!.emoji} **${item!.name}** ×${entry.quantity} · ${item!.rarity}\n${item!.description}`).join('\n\n');
+  const container = new ContainerBuilder().setAccentColor(0x16a085)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎒 MOCHILA${pet ? ` · ${pet.name}` : ''}\n${inventory.reduce((sum, entry) => sum + entry.quantity, 0)} objetos\n\n${text || '_Aún no tienes objetos. Encuentra botín explorando o visita la tienda._'}`));
+  if (entries.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId('rpg:use').setPlaceholder('Usar o equipar un objeto').addOptions(entries.slice(0, 25).map(({ entry, item }) => ({ label: `${item!.name} · x${entry.quantity}`, value: entry.itemId, emoji: item!.emoji, description: item!.description.slice(0, 100) }))),
+  ));
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('rpg:panel').setLabel('Mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+  ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgFeedPanel(guildId: string, userId: string) {
+  const [pet, inventory] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
+  const foods = inventory.map((entry) => ({ entry, item: rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack') })).filter((row) => row.item);
+  const container = new ContainerBuilder().setAccentColor(0xf59e0b)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🍓 ALIMENTAR${pet ? ` · ${pet.name}` : ''}\n${pet ? `🍖 Saciedad **${pet.hunger}/100**　🫶 Cariño **${pet.affection}/100**\n\n${foods.length ? 'Elige un alimento de tu mochila.' : 'No tienes comida. Encuentra bayas explorando o compra alimento en la tienda RPG.'}` : 'Primero adopta una mascota.'}`));
+  if (foods.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId('rpg:feed:select').setPlaceholder('Elegir alimento').addOptions(foods.slice(0, 25).map(({ entry, item }) => ({ label: `${item!.name} · x${entry.quantity}`, value: entry.itemId, emoji: item!.emoji, description: item!.description.slice(0, 100) }))),
+  ));
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda RPG').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('rpg:panel').setLabel('Mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+  ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export function rpgCareResultPanel(pet: NonNullable<Awaited<ReturnType<typeof getRpgPet>>>, message: string) {
+  const container = new ContainerBuilder().setAccentColor(0xec79b7)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🫶 UN MOMENTO JUNTOS\n${message}\n\n**${pet.name}** · vínculo **${pet.affection}/100**\n🍖 Saciedad ${statBar(pet.hunger, 100, 12)} **${pet.hunger}/100**`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function rpgMissionsPanel(guildId: string, userId: string) {
+  const quests = await getRpgQuests(guildId, userId);
+  const rows = quests.map((quest) => {
+    const marker = quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️';
+    return `${marker} **${quest.title}** · ${Math.min(quest.progress, quest.target)}/${quest.target}\n${quest.description} · **${money.format(quest.reward)} monedas**`;
+  }).join('\n\n');
+  const claimable = quests.filter((quest) => !quest.claimed && quest.progress >= quest.target);
+  const container = new ContainerBuilder().setAccentColor(0x8b75dc)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📜 ENCARGOS DEL GREMIO\n${quests.length} misiones diarias${claimable.length ? ` · ${claimable.length} lista(s) para cobrar` : ''}\n\n${rows || '_Sin encargos disponibles hoy._'}`));
+  if (claimable.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId('rpg:mission:claim').setPlaceholder('Cobrar recompensa').addOptions(claimable.map((quest) => ({ label: quest.title, value: quest.id, description: `${money.format(quest.reward)} monedas` }))),
+  ));
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('rpg:panel').setLabel('Mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+  ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
 export async function rpgAdoptionPanel(username: string, selectedElement: PetElement = 'Fuego') {
@@ -171,16 +299,19 @@ export async function rpgBuildPanel(guildId: string, userId: string) {
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export function expeditionPanel(events: Array<{ emoji: string; title: string; detail: string }>, summary: string, hp: number, maxHp: number, energy: number, maxEnergy: number) {
+export function expeditionPanel(events: Array<{ emoji: string; title: string; detail: string }>, summary: string, hp: number, maxHp: number, energy: number, maxEnergy: number, hunger: number, affection: number) {
   const journal = events.length
     ? events.map((event, index) => `**${String(index + 1).padStart(2, '0')} · ${event.emoji} ${event.title}**\n${event.detail}`).join('\n\n')
     : '_La expedición terminó sin incidentes._';
   const container = new ContainerBuilder().setAccentColor(0x14b8a6)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🧭 BITÁCORA DE EXPEDICIÓN\nCada parada del viaje, en orden.'))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🧭 REGRESO DE EXPLORACIÓN\nResumen del recorrido y sus hallazgos.'))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(journal))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏁 Regreso\n${summary}\n\n❤️ **${hp}/${maxHp} PV**  ·  ⚡ **${energy}/${maxEnergy} energía**`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏁 Regreso\n${summary}\n\n❤️ **${hp}/${maxHp} PV**  ·  ⚡ **${energy}/${maxEnergy} energía**\n🍖 Saciedad ${statBar(hunger, 100, 8)} **${hunger}/100**  ·  🫶 vínculo **${affection}/100**`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+    ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
@@ -223,23 +354,32 @@ export function rpgPvpPanel(match: RpgPvpMatch) {
   return { components: [container], flags: ['IsComponentsV2'] as const };
 }
 
-export async function rpgShopPanel(guildId: string, userId: string, requestedPage = 0) {
+export async function rpgShopPanel(guildId: string, userId: string, requestedPage = 0, requestedCategory = 'all') {
   const balance = await getBalance(guildId, userId);
-  const pageCount = Math.ceil(rpgItems.length / 25);
+  const categories = [...new Set(rpgItems.map((item) => item.category))].sort((a, b) => a.localeCompare(b, 'es'));
+  const category = requestedCategory === 'all' || categories.includes(requestedCategory) ? requestedCategory : 'all';
+  const filteredItems = category === 'all' ? rpgItems : rpgItems.filter((item) => item.category === category);
+  const pageSize = 6;
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const page = Math.max(0, Math.min(pageCount - 1, Math.floor(requestedPage)));
-  const pageItems = rpgItems.slice(page * 25, (page + 1) * 25);
+  const pageItems = filteredItems.slice(page * pageSize, (page + 1) * pageSize);
+  const listing = pageItems.map((item) => `${item.emoji} **${item.name}**  ·  ${item.rarity}\n${item.description}\n🪙 **${money.format(item.cost)}**`).join('\n\n');
   const container = new ContainerBuilder().setAccentColor(0x8b5cf6)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛍️ BAZAR RPG · ${page + 1}/${pageCount}\n💰 ${money.format(balance)} monedas · ${rpgItems.length} artículos`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛍️ BAZAR DEL GREMIO\n👛 ${money.format(balance)} monedas · ${category === 'all' ? 'Todos los artículos' : category}\n${filteredItems.length} artículos · página ${page + 1} de ${pageCount}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(pageItems.map((item) => `${item.emoji} **${item.name}** · ${item.rarity} · ${money.format(item.cost)} 🪙`).join('\n')))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(listing || '_No hay artículos en esta categoría._'))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId('rpg:buy').setPlaceholder('Comprar un artículo')
-        .addOptions(pageItems.map((item) => ({ label: `${item.name} · ${money.format(item.cost)}`, value: item.id, emoji: item.emoji, description: `${item.category} · ${item.rarity}: ${item.description}`.slice(0, 100) }))),
+      new StringSelectMenuBuilder().setCustomId('rpg:shop:category').setPlaceholder('Filtrar por categoría')
+        .addOptions([{ label: 'Todas las categorías', value: 'all', emoji: '✨', default: category === 'all' }, ...categories.map((name) => ({ label: name, value: name, emoji: rpgItems.find((item) => item.category === name)?.emoji ?? '📦', default: category === name }))]),
+    ))
+    .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId(`rpg:buy:${page}:${encodeURIComponent(category)}`).setPlaceholder('Elegir un artículo para comprar')
+        .addOptions(pageItems.map((item) => ({ label: `${item.name} · ${money.format(item.cost)}`, value: item.id, emoji: item.emoji, description: `${item.rarity} · ${item.description}`.slice(0, 100) }))),
     ))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`rpg:shop:page:${Math.max(0, page - 1)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-      new ButtonBuilder().setCustomId(`rpg:shop:page:${Math.min(pageCount - 1, page + 1)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
-      new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a la mascota').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`rpg:shop:page:${Math.max(0, page - 1)}:${encodeURIComponent(category)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+      new ButtonBuilder().setCustomId(`rpg:shop:page:${Math.min(pageCount - 1, page + 1)}:${encodeURIComponent(category)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
+      new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
     ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
@@ -276,10 +416,10 @@ export async function storePanel(guildId: string, userId: string) {
   const container = new ContainerBuilder()
     .setAccentColor(colors.economy)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🛍️ TIENDA\n💰 ${money.format(balance)} monedas · 🎒 tus unidades aparecen en inventario`))
+      `# 🛍️ TIENDA DE ECONOMÍA\n**Saldo:** ${money.format(balance)} monedas  ·  **${storeItems.length}** artículos disponibles`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      storeItems.map((item) => `${item.emoji} **${item.name}** · ${money.format(item.cost)} monedas · tienes x${quantities.get(item.id) ?? 0}\n${item.description}`).join('\n\n')))
+    .addTextDisplayComponents(...storeItems.map((item) => new TextDisplayBuilder().setContent(
+      `### ${item.emoji} ${item.name}\n**${money.format(item.cost)} monedas**  ·  En tu inventario: **x${quantities.get(item.id) ?? 0}**\n${item.description}`)))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('eco:buy').setPlaceholder('Selecciona un artículo para comprar')
         .addOptions(storeItems.map((item) => ({ label: item.name, value: item.id, description: `${money.format(item.cost)} monedas · ${item.description}`.slice(0, 100), emoji: item.emoji }))),
@@ -324,7 +464,7 @@ export async function bankPanel(guildId: string, userId: string) {
   const container = new ContainerBuilder()
     .setAccentColor(0x0ea5e9)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 0.5% por día completo · siguiente interés <t:${next}:R>${earned}`))
+      `# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 0.1% por día completo · siguiente interés <t:${next}:R>${earned}`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:bank:deposit').setLabel('Depositar').setEmoji('📥').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:bank:withdraw').setLabel('Retirar').setEmoji('📤').setStyle(ButtonStyle.Primary),

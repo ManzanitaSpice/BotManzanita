@@ -10,13 +10,17 @@ export type PetSpecialization = 'Atacante' | 'Guardián' | 'Explorador' | 'Míst
 export type RpgPet = {
   name: string; species: string; rarity: PetRarity; element: PetElement | 'Neutral'; specialization: PetSpecialization; level: number; xp: number;
   strength: number; defense: number; agility: number; hp: number; maxHp: number;
-  energy: number; maxEnergy: number; lastExploreAt: number | null; equipment: Record<string, string>; expeditionEffects: { safety: number; luck: number };
+  energy: number; maxEnergy: number; hunger: number; affection: number; needsUpdatedAt: number; lastCareAt: number | null;
+  lastExploreAt: number | null; lastBattleAt: number | null; lastTrainAt: number | null; dailyXp: number; dailyXpDate: string;
+  equipment: Record<string, string>; expeditionEffects: { safety: number; luck: number };
   knownMoves: string[]; equippedMoves: string[]; movePoints: number; freeNameUsed: boolean;
 };
 type PetData = {
   name: string; species: string; rarity: PetRarity; element: PetElement | 'Neutral'; specialization: PetSpecialization; level: number; xp: number;
   strength: number; defense: number; agility: number; hp: number; maxHp: number;
-  energy: number; maxEnergy: number; lastExploreAt: number | null; equipment: string; expeditionEffects: string; knownMoves: string; equippedMoves: string; movePoints: number; freeNameUsed: number | boolean;
+  energy: number; maxEnergy: number; hunger: number; affection: number; needsUpdatedAt: number; lastCareAt: number | null;
+  lastExploreAt: number | null; lastBattleAt: number | null; lastTrainAt: number | null; dailyXp: number; dailyXpDate: string;
+  equipment: string; expeditionEffects: string; knownMoves: string; equippedMoves: string; movePoints: number; freeNameUsed: number | boolean;
   updatedAt: number;
 };
 type PetRow = RowDataPacket & PetData;
@@ -33,7 +37,7 @@ type RpgItem = { id: string; name: string; emoji: string; rarity: PetRarity; cat
 const coreRpgItems: RpgItem[] = [
   { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 90, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
   { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 75, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
-  { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 55, description: 'Tu mascota recupera 15 PV y 15 de energía.', effect: 'snack', power: 15 },
+  { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 55, description: 'Recupera 15 PV y energía, +35 saciedad y cariño.', effect: 'snack', power: 15 },
   { id: 'rpg_super_potion', name: 'Poción solar', emoji: '☀️', rarity: 'Poco común', category: 'Curación', cost: 210, description: 'Recupera 75 PV.', effect: 'heal', power: 75 },
   { id: 'rpg_energy_crystal', name: 'Cristal de energía', emoji: '💠', rarity: 'Poco común', category: 'Energía', cost: 190, description: 'Restaura toda la energía.', effect: 'full_energy', power: 100 },
   { id: 'rpg_revive', name: 'Polvo de renacer', emoji: '✨', rarity: 'Raro', category: 'Reanimación', cost: 420, description: 'Levanta a una mascota debilitada con 35 PV.', effect: 'revive', power: 35 },
@@ -92,7 +96,7 @@ if (additionalRpgItems.length !== 70) throw new Error(`El catálogo extra RPG de
 function itemDescription(effect: RpgItemEffect, power: number): string {
   if (effect === 'heal') return `Recupera ${power} PV.`;
   if (effect === 'energy') return `Recupera ${power} de energía.`;
-  if (effect === 'snack') return `Recupera ${power} PV y energía.`;
+  if (effect === 'snack') return `Recupera ${power} PV y energía, +${Math.min(45, 20 + power)} saciedad y cariño.`;
   if (effect === 'xp') return `Otorga ${power} XP.`;
   if (effect.startsWith('stat_')) return `Mejora permanentemente ${effect.slice(5)} en +${power}.`;
   if (effect.startsWith('equip_')) return `Equipo permanente: mejora ${effect.slice(6)} en +${power}.`;
@@ -103,9 +107,9 @@ function itemDescription(effect: RpgItemEffect, power: number): string {
 export const rpgZones: Zone[] = [
   { id: 'bosque', name: 'Bosque Susurrante', emoji: '🌲', background: 'zone-bosque.png', difficulty: 'Tranquila', minLevel: 1, danger: 18, reward: [45, 95], lootChance: 34, lootWeights: [['Común', 66], ['Poco común', 26], ['Raro', 7], ['Épico', 1], ['Legendario', 0]], drops: ['rpg_berries', 'rpg_potion', 'rpg_ether', 'rpg_comun_parche', 'rpg_comun_caldo', 'rpg_comun_resguardo'], boss: { name: 'Ciervo Zarzal', emoji: '🦌', spawnChance: 6, power: 24, reward: [90, 150], xp: [35, 55], dropChance: 38, drops: ['rpg_comun_armadura', 'rpg_comun_agilidad', 'rpg_inusual_parche'] } },
   { id: 'cumbres', name: 'Cumbres de Bruma', emoji: '🏔️', background: 'zone-cumbres.png', difficulty: 'Moderada', minLevel: 3, danger: 32, reward: [90, 165], lootChance: 39, lootWeights: [['Común', 35], ['Poco común', 40], ['Raro', 20], ['Épico', 5], ['Legendario', 0]], drops: ['rpg_super_potion', 'rpg_energy_crystal', 'rpg_training_manual', 'rpg_inusual_manual', 'rpg_raro_manual', 'rpg_raro_armadura'], boss: { name: 'Yeti de la Cumbre', emoji: '❄️', spawnChance: 9, power: 36, reward: [170, 270], xp: [55, 80], dropChance: 48, drops: ['rpg_inusual_defensa', 'rpg_raro_parche', 'rpg_raro_botas'] } },
-  { id: 'ruinas', name: 'Ruinas Antiguas', emoji: '🏛️', background: 'zone-ruinas.png', difficulty: 'Difícil', minLevel: 6, danger: 48, reward: [160, 280], lootChance: 44, lootWeights: [['Común', 15], ['Poco común', 35], ['Raro', 35], ['Épico', 13], ['Legendario', 2]], drops: ['rpg_revive', 'rpg_iron_charm', 'rpg_swift_boots', 'rpg_raro_cronica', 'rpg_epico_manual', 'rpg_raro_agilidad'], boss: { name: 'Coloso del Archivo', emoji: '🗿', spawnChance: 12, power: 50, reward: [300, 460], xp: [85, 120], dropChance: 58, drops: ['rpg_raro_defensa', 'rpg_epico_agilidad', 'rpg_epico_armadura'] } },
-  { id: 'dunas', name: 'Dunas de Cristal', emoji: '🏜️', background: 'zone-dunas.png', difficulty: 'Élite', minLevel: 8, danger: 54, reward: [205, 350], lootChance: 48, lootWeights: [['Común', 10], ['Poco común', 30], ['Raro', 38], ['Épico', 18], ['Legendario', 4]], drops: ['rpg_training_manual', 'rpg_iron_charm', 'rpg_star_collar', 'rpg_raro_hallazgo', 'rpg_epico_hallazgo', 'rpg_legendario_hallazgo'], boss: { name: 'Dragón Espejismo', emoji: '🐲', spawnChance: 14, power: 58, reward: [420, 620], xp: [110, 155], dropChance: 65, drops: ['rpg_epico_fuerza', 'rpg_epico_armadura', 'rpg_legendario_parche'] } },
-  { id: 'astral', name: 'Mar Astral', emoji: '🌌', background: 'zone-astral.png', difficulty: 'Mítica', minLevel: 10, danger: 60, reward: [260, 420], lootChance: 52, lootWeights: [['Común', 5], ['Poco común', 20], ['Raro', 35], ['Épico', 30], ['Legendario', 10]], drops: ['rpg_star_collar', 'rpg_revive', 'rpg_training_manual', 'rpg_epico_cronica', 'rpg_legendario_hallazgo', 'rpg_legendario_botas'], boss: { name: 'Leviatán de las Estrellas', emoji: '🐋', spawnChance: 18, power: 70, reward: [600, 900], xp: [150, 220], dropChance: 72, drops: ['rpg_epico_agilidad', 'rpg_legendario_armadura', 'rpg_legendario_cronica'] } },
+  { id: 'ruinas', name: 'Ruinas Antiguas', emoji: '🏛️', background: 'zone-ruinas.png', difficulty: 'Difícil', minLevel: 6, danger: 48, reward: [140, 250], lootChance: 44, lootWeights: [['Común', 15], ['Poco común', 35], ['Raro', 35], ['Épico', 13], ['Legendario', 2]], drops: ['rpg_revive', 'rpg_iron_charm', 'rpg_swift_boots', 'rpg_raro_cronica', 'rpg_epico_manual', 'rpg_raro_agilidad'], boss: { name: 'Coloso del Archivo', emoji: '🗿', spawnChance: 12, power: 50, reward: [260, 400], xp: [85, 120], dropChance: 58, drops: ['rpg_raro_defensa', 'rpg_epico_agilidad', 'rpg_epico_armadura'] } },
+  { id: 'dunas', name: 'Dunas de Cristal', emoji: '🏜️', background: 'zone-dunas.png', difficulty: 'Élite', minLevel: 8, danger: 54, reward: [180, 300], lootChance: 48, lootWeights: [['Común', 10], ['Poco común', 30], ['Raro', 38], ['Épico', 18], ['Legendario', 4]], drops: ['rpg_training_manual', 'rpg_iron_charm', 'rpg_star_collar', 'rpg_raro_hallazgo', 'rpg_epico_hallazgo', 'rpg_legendario_hallazgo'], boss: { name: 'Dragón Espejismo', emoji: '🐲', spawnChance: 14, power: 58, reward: [350, 520], xp: [110, 155], dropChance: 65, drops: ['rpg_epico_fuerza', 'rpg_epico_armadura', 'rpg_legendario_parche'] } },
+  { id: 'astral', name: 'Mar Astral', emoji: '🌌', background: 'zone-astral.png', difficulty: 'Mítica', minLevel: 10, danger: 60, reward: [220, 360], lootChance: 52, lootWeights: [['Común', 5], ['Poco común', 20], ['Raro', 35], ['Épico', 30], ['Legendario', 10]], drops: ['rpg_star_collar', 'rpg_revive', 'rpg_training_manual', 'rpg_epico_cronica', 'rpg_legendario_hallazgo', 'rpg_legendario_botas'], boss: { name: 'Leviatán de las Estrellas', emoji: '🐋', spawnChance: 18, power: 70, reward: [500, 750], xp: [150, 220], dropChance: 72, drops: ['rpg_epico_agilidad', 'rpg_legendario_armadura', 'rpg_legendario_cronica'] } },
 ];
 for (const zone of rpgZones) {
   for (const itemId of [...zone.drops, ...zone.boss.drops]) {
@@ -287,7 +291,12 @@ export function getPetRarityOdds(element: PetElement): Array<{ rarity: PetRarity
   return values;
 }
 const rarityRank: Record<PetRarity, number> = { 'Común': 0, 'Poco común': 1, 'Raro': 2, 'Épico': 3, 'Legendario': 4 };
-const EXPLORE_COOLDOWN = 30 * 60;
+export const RPG_DAILY_XP_CAP = 650;
+export const RPG_EXPLORE_COOLDOWN = 2 * 60 * 60;
+export const RPG_BATTLE_COOLDOWN = 2 * 60 * 60;
+export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
+const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
+const CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
   { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 120 },
   { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 150 },
@@ -295,6 +304,7 @@ const quests = [
 ] as const;
 
 function now(): number { return Math.floor(Date.now() / 1000); }
+function utcDate(at = now()): string { return new Date(at * 1000).toISOString().slice(0, 10); }
 function pick<T>(items: readonly T[]): T { return items[randomInt(items.length)]!; }
 function starterMoves(element: PetElement | 'Neutral'): string[] {
   const elemental = element === 'Neutral' ? undefined : starterMoveByElement[element];
@@ -318,23 +328,36 @@ function petFromRow(row: PetData | undefined): RpgPet | undefined {
   const equippedMoves = parseMoveList(row.equippedMoves).filter((id) => resolvedKnownMoves.includes(id)).slice(0, 4);
   const level = Number(row.level);
   const maxEnergy = Number(row.maxEnergy);
-  const passiveEnergy = Math.floor(Math.max(0, now() - Number(row.updatedAt ?? now())) / 90);
+  const currentTime = now();
+  const needsUpdatedAt = Number(row.needsUpdatedAt || row.updatedAt || currentTime);
+  const elapsedNeeds = Math.max(0, currentTime - needsUpdatedAt);
+  const storedHunger = Number(row.hunger ?? 80);
+  const hunger = Math.max(0, storedHunger - Math.floor(elapsedNeeds / 1800));
+  const starvationSeconds = Math.max(0, elapsedNeeds - storedHunger * 1800);
+  const affection = Math.max(0, Number(row.affection ?? 60) - Math.floor(starvationSeconds / 86400));
+  const passiveEnergy = Math.floor(Math.max(0, currentTime - Number(row.updatedAt ?? currentTime)) / 90);
   return { name: row.name, species: row.species, rarity: row.rarity, element, specialization,
     level, xp: Number(row.xp),
     strength: Number(row.strength), defense: Number(row.defense), agility: Number(row.agility), hp: Number(row.hp), maxHp: Number(row.maxHp),
-    energy: Math.min(maxEnergy, Number(row.energy) + passiveEnergy), maxEnergy, lastExploreAt: row.lastExploreAt == null ? null : Number(row.lastExploreAt), equipment, expeditionEffects,
+    energy: Math.min(maxEnergy, Number(row.energy) + passiveEnergy), maxEnergy, hunger, affection, needsUpdatedAt,
+    lastCareAt: row.lastCareAt == null ? null : Number(row.lastCareAt),
+    lastExploreAt: row.lastExploreAt == null ? null : Number(row.lastExploreAt),
+    lastBattleAt: row.lastBattleAt == null ? null : Number(row.lastBattleAt), lastTrainAt: row.lastTrainAt == null ? null : Number(row.lastTrainAt),
+    dailyXp: String(row.dailyXpDate ?? '') === utcDate() ? Number(row.dailyXp ?? 0) : 0, dailyXpDate: utcDate(), equipment, expeditionEffects,
     knownMoves: resolvedKnownMoves, equippedMoves: equippedMoves.length ? equippedMoves : resolvedKnownMoves.slice(0, 4), movePoints: Number(row.movePoints ?? Math.max(0, level - 1)), freeNameUsed: Boolean(row.freeNameUsed) };
 }
 function sqlitePet(guildId: string, userId: string): RpgPet | undefined {
   const row = db.prepare(`SELECT name, species, rarity, element, specialization, level, xp, strength, defense, agility, hp, max_hp AS maxHp,
-    energy, max_energy AS maxEnergy, last_explore_at AS lastExploreAt, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
+    energy, max_energy AS maxEnergy, hunger, affection, needs_updated_at AS needsUpdatedAt, last_care_at AS lastCareAt,
+    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
     known_moves_json AS knownMoves,equipped_moves_json AS equippedMoves,move_points AS movePoints,free_name_used AS freeNameUsed,updated_at AS updatedAt
     FROM rpg_pets WHERE guild_id = ? AND user_id = ?`).get(guildId, userId) as PetData | undefined;
   return petFromRow(row);
 }
 async function mysqlPet(connection: PoolConnection, guildId: string, userId: string, lock = false): Promise<RpgPet | undefined> {
   const [rows] = await connection.execute<PetRow[]>(`SELECT name, species, rarity, element, specialization, level, xp, strength, defense, agility, hp,
-    max_hp AS maxHp, energy, max_energy AS maxEnergy, last_explore_at AS lastExploreAt, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
+    max_hp AS maxHp, energy, max_energy AS maxEnergy, hunger, affection, needs_updated_at AS needsUpdatedAt, last_care_at AS lastCareAt,
+    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
     known_moves_json AS knownMoves,equipped_moves_json AS equippedMoves,move_points AS movePoints,free_name_used AS freeNameUsed,updated_at AS updatedAt
     FROM rpg_pets WHERE guild_id = ? AND user_id = ?${lock ? ' FOR UPDATE' : ''}`, [guildId, userId]);
   return petFromRow(rows[0]);
@@ -348,8 +371,11 @@ function findRarity(element?: PetElement): { rarity: PetRarity; bonus: number } 
   return { rarity: 'Común', bonus: 0 };
 }
 function xpNeeded(level: number): number { return 100 + (level - 1) * 45; }
-function applyXp(pet: RpgPet, xpGain: number): { levels: number; pet: RpgPet } {
-  let xp = pet.xp + xpGain;
+function applyXp(pet: RpgPet, xpGain: number, enforceDailyCap = true, at = now()): { levels: number; pet: RpgPet; gained: number } {
+  const day = utcDate(at);
+  const dailyXp = pet.dailyXpDate === day ? pet.dailyXp : 0;
+  const gained = Math.max(0, Math.min(Math.floor(xpGain), enforceDailyCap ? RPG_DAILY_XP_CAP - dailyXp : Math.floor(xpGain)));
+  let xp = pet.xp + gained;
   let level = pet.level;
   let strength = pet.strength; let defense = pet.defense; let agility = pet.agility; let maxHp = pet.maxHp;
   let levels = 0;
@@ -357,19 +383,19 @@ function applyXp(pet: RpgPet, xpGain: number): { levels: number; pet: RpgPet } {
     xp -= xpNeeded(level); level++; levels++;
     strength += 2; defense += 2; agility += 1; maxHp += 8;
   }
-  return { levels, pet: { ...pet, level, xp, strength, defense, agility, maxHp, hp: Math.min(maxHp, pet.hp + levels * 8), movePoints: pet.movePoints + levels } };
+  return { levels, gained, pet: { ...pet, level, xp, dailyXp: enforceDailyCap ? dailyXp + gained : dailyXp, dailyXpDate: day, strength, defense, agility, maxHp, hp: Math.min(maxHp, pet.hp + levels * 8), movePoints: pet.movePoints + levels } };
 }
 async function savePetMysql(connection: PoolConnection, guildId: string, userId: string, pet: RpgPet, updated = now()) {
   await connection.execute(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
-    last_explore_at=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`,
+    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`,
   [pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
-    pet.lastExploreAt, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId]);
+    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId]);
 }
 function savePetSqlite(guildId: string, userId: string, pet: RpgPet, updated = now()) {
   db.prepare(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
-    last_explore_at=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(
+    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(
     pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
-    pet.lastExploreAt, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects),JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId);
+    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects),JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId);
 }
 async function changeBalanceMysql(connection: PoolConnection, guildId: string, userId: string, amount: number, reason: string, ref: string, at = now()) {
   await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)', [guildId, userId, at, at]);
@@ -425,6 +451,31 @@ export async function renameRpgPet(guildId: string, userId: string, requestedNam
   });
   return run.immediate();
 }
+
+export async function careForRpgPet(guildId: string, userId: string): Promise<
+  | { ok: true; pet: RpgPet; affectionGained: number }
+  | { ok: false; reason: 'no_pet' | 'cooldown' | 'max_affection'; secondsRemaining?: number }
+> {
+  guildId = GLOBAL_SCOPE_ID;
+  const at = now();
+  const care = (pet: RpgPet) => {
+    if (pet.affection >= 100) return { ok: false as const, reason: 'max_affection' as const };
+    const remaining = (pet.lastCareAt ?? 0) + CARE_COOLDOWN - at;
+    if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
+    const affectionGained = pet.hunger < 30 ? 4 : pet.hunger < 60 ? 6 : 8;
+    return { ok: true as const, affectionGained, pet: { ...pet, affection: Math.min(100, pet.affection + affectionGained), lastCareAt: at } };
+  };
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const result = care(pet); if (result.ok) await savePetMysql(connection, guildId, userId, result.pet, at); return result;
+  });
+  const run = db.transaction(() => {
+    const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const result = care(pet); if (result.ok) savePetSqlite(guildId, userId, result.pet, at); return result;
+  });
+  return run.immediate();
+}
+
 export async function adoptRpgPet(guildId: string, userId: string, name: string, element?: PetElement): Promise<{ ok: true; pet: RpgPet } | { ok: false; reason: 'already_has_pet' | 'invalid_name' }> {
   guildId = GLOBAL_SCOPE_ID;
   const normalizedName = name.trim().replace(/\s+/g, ' ');
@@ -435,7 +486,7 @@ export async function adoptRpgPet(guildId: string, userId: string, name: string,
   const stats = chosen.base.map((n) => n + randomInt(4) + rarity.bonus);
   const pet: RpgPet = { name: normalizedName || chosen.name, species: chosen.name, rarity: rarity.rarity, element: chosen.element, specialization: chosen.specialization, level: 1, xp: 0,
     strength: stats[0]!, defense: stats[1]!, agility: stats[2]!, hp: 70 + rarity.bonus * 2, maxHp: 70 + rarity.bonus * 2,
-    energy: 100, maxEnergy: 100, lastExploreAt: null, equipment: {}, expeditionEffects: { safety: 0, luck: 0 },
+  energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0 },
     knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), movePoints: 0, freeNameUsed: Boolean(normalizedName) };
   const at = now();
   if (economyPool) return withEconomyTransaction(async (connection) => {
@@ -465,7 +516,7 @@ export async function adminGrantRpgPet(guildId: string, userId: string, speciesN
   const pet: RpgPet = {
     name: normalizedName || lineage.name, species: lineage.name, rarity: lineage.rarity, element: lineage.element,
     specialization: lineage.specialization, level: 1, xp: 0, strength: stats[0]!, defense: stats[1]!, agility: stats[2]!,
-    hp: 70 + bonus * 2, maxHp: 70 + bonus * 2, energy: 100, maxEnergy: 100, lastExploreAt: null,
+    hp: 70 + bonus * 2, maxHp: 70 + bonus * 2, energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(),
     equipment: {}, expeditionEffects: { safety: 0, luck: 0 }, knownMoves: starterMoves(lineage.element),
     equippedMoves: starterMoves(lineage.element), movePoints: 0, freeNameUsed: Boolean(normalizedName),
   };
@@ -499,7 +550,7 @@ export async function adminEditRpgPet(
     if (edit.type === 'restore') { updated.hp = pet.maxHp; updated.energy = pet.maxEnergy; }
     else if (edit.type === 'heal') updated.hp = pet.maxHp;
     else if (edit.type === 'energy') updated.energy = pet.maxEnergy;
-    else if (edit.type === 'xp') { const gained = applyXp(pet, edit.amount); updated = gained.pet; levels = gained.levels; }
+    else if (edit.type === 'xp') { const gained = applyXp(pet, edit.amount, false, at); updated = gained.pet; levels = gained.levels; }
     else if (edit.type === 'stat') {
       if (pet[edit.stat] + edit.amount < 1 || pet[edit.stat] + edit.amount > 10_000) return { ok: false as const, reason: 'invalid_value' as const };
       updated[edit.stat] = pet[edit.stat] + edit.amount;
@@ -529,7 +580,7 @@ export async function adminRemoveRpgPet(guildId: string, userId: string): Promis
 
 export async function exploreRpg(guildId: string, userId: string, zoneId: string, reference: string): Promise<
   | { ok: true; pet: RpgPet; zone: Zone; coins: number; xp: number; damage: number; item: RpgItem | undefined; bossItem: RpgItem | undefined; boss?: { name: string; won: boolean }; levelUps: number; events: ExpeditionEvent[]; message: string }
-  | { ok: false; reason: 'no_pet' | 'zone_locked' | 'cooldown' | 'low_energy'; secondsRemaining?: number }
+  | { ok: false; reason: 'no_pet' | 'zone_locked' | 'cooldown' | 'low_energy' | 'low_hunger'; secondsRemaining?: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
   const zone = rpgZones.find((candidate) => candidate.id === zoneId);
@@ -540,18 +591,22 @@ export async function exploreRpg(guildId: string, userId: string, zoneId: string
     const remaining = (pet.lastExploreAt ?? 0) + EXPLORE_COOLDOWN - at;
     if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
     if (pet.energy < 20) return { ok: false as const, reason: 'low_energy' as const };
+    if (pet.hunger < 15) return { ok: false as const, reason: 'low_hunger' as const };
     const story = zoneStories[zone.id]!;
     const affinity = pet.element !== 'Neutral' && zoneAffinity[zone.id]!.includes(pet.element) ? 7 : 0;
     const roleBonus = pet.specialization === 'Explorador' ? 7 : pet.specialization === 'Atacante' ? 4 : 0;
     const petRarity = rarityRank[pet.rarity];
-    const effectiveDanger = Math.max(5, zone.danger - Math.floor(pet.agility / 5) - affinity - roleBonus - pet.expeditionEffects.safety - petRarity * 2);
+    const bondBonus = pet.affection >= 75 ? 5 : pet.affection < 25 ? -8 : 0;
+    const hungerPenalty = pet.hunger < 35 ? 12 : pet.hunger < 60 ? 5 : 0;
+    const effectiveDanger = Math.max(5, Math.min(85, zone.danger - Math.floor(pet.agility / 5) - affinity - roleBonus - pet.expeditionEffects.safety - petRarity * 2 - bondBonus + hungerPenalty));
     const success = randomInt(100) >= effectiveDanger;
     let coins = success ? zone.reward[0] + randomInt(zone.reward[1] - zone.reward[0] + 1) : 0;
     const xpRaw = success ? 32 + randomInt(34) : 14 + randomInt(18);
     let xp = pet.specialization === 'Místico' ? Math.floor(xpRaw * 1.15) : xpRaw;
     const baseDamage = success ? randomInt(6) : 9 + randomInt(19);
     let damage = Math.max(0, baseDamage - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
-    const dropChance = Math.min(80, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0) + petRarity * 3);
+    const bondLoot = pet.affection >= 75 ? 4 : pet.affection < 25 ? -5 : 0;
+    const dropChance = Math.max(5, Math.min(80, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0) + petRarity * 3 + bondLoot - (pet.hunger < 35 ? 8 : 0)));
     const dropped = success && randomInt(100) < dropChance ? rollExpeditionDrop(zone) : undefined;
     const chosenDecision = pick(story.decisions[pet.specialization]);
     const threat = pick(story.threats);
@@ -576,6 +631,8 @@ export async function exploreRpg(guildId: string, userId: string, zoneId: string
         xp += 12;
       }
     }
+    const leveled = applyXp(pet, xp, true, at);
+    xp = leveled.gained;
     const events: ExpeditionEvent[] = [
       { emoji: zone.emoji, title: `Llegada a ${zone.name}`, detail: pick(story.arrival) },
       { emoji: '🧠', title: 'Decisión de la mascota', detail: pick(decisionsBySpecialization[pet.specialization]).replace('{decision}', chosenDecision).replace('{name}', pet.name) },
@@ -583,12 +640,13 @@ export async function exploreRpg(guildId: string, userId: string, zoneId: string
       { emoji: dropped ? dropped.emoji : success ? '🪙' : '🔎', title: dropped ? 'Hallazgo' : success ? 'Recompensa' : 'Búsqueda', detail: dropped ? `Exploró ${pick(story.safeFinds)} y encontró **${dropped.name}** (${dropped.rarity}).` : success ? `${pick(story.safeFinds)}: recuperó **${coins} monedas**.` : 'Revisó el área después del incidente; no encontró objetos esta vez.' },
     ];
     if (boss) events.push({ emoji: zone.boss.emoji, title: boss.won ? `Jefe derrotado: ${boss.name}` : `Jefe avistado: ${boss.name}`, detail: boss.won
-      ? `Ganó el combate y recibió **${boss.rewardCoins} monedas** y **${boss.rewardXp} XP**${bossItem ? `; encontró **${bossItem.name}** (${bossItem.rarity})` : `; no cayó botín especial (${zone.boss.dropChance}% de probabilidad)`}.`
+      ? `Ganó el combate y recibió **${boss.rewardCoins} monedas**; la XP total se muestra al volver${bossItem ? `; encontró **${bossItem.name}** (${bossItem.rarity})` : `; no cayó botín especial (${zone.boss.dropChance}% de probabilidad)`}.`
       : `No logró vencerlo; recibió daño adicional y volvió con 12 XP de supervivencia.` });
     events.push({ emoji: '🏕️', title: 'Regreso al gremio', detail: `${pet.name} vuelve con ${xp} XP${damage ? ` y ${damage} PV de daño` : ' ilesa'}${coins ? `, ${coins} monedas` : ''}${boss ? `; ${boss.won ? 'derrotó' : 'se enfrentó a'} al jefe ${boss.name}` : ''}.` });
-    const leveled = applyXp(pet, xp);
     const recoveredHp = pet.specialization === 'Apoyo' && success ? 5 : 0;
-    const updated = { ...leveled.pet, hp: Math.max(1, Math.min(leveled.pet.maxHp, leveled.pet.hp - damage + recoveredHp)), energy: pet.energy - 20, lastExploreAt: at,
+    const hungerCost = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
+    const updated = { ...leveled.pet, hp: Math.max(1, Math.min(leveled.pet.maxHp, leveled.pet.hp - damage + recoveredHp)), energy: pet.energy - 20,
+      hunger: pet.hunger - hungerCost, affection: Math.min(100, pet.affection + (success ? 2 : 1)), needsUpdatedAt: at, lastExploreAt: at,
       expeditionEffects: { safety: 0, luck: 0 } };
     return { ok: true as const, pet: updated, zone, coins, xp, damage, item: dropped, bossItem, ...(boss ? { boss } : {}), levelUps: leveled.levels, events,
       message: `${zone.emoji} ${success ? 'Expedición completada' : 'Expedición difícil'} en **${zone.name}**. ${boss ? `${zone.boss.emoji} ${boss.won ? `Derrotó a ${boss.name}` : `Perdió contra ${boss.name}`}. ` : ''}${dropped ? `Hallazgo: ${dropped.emoji} **${dropped.name}**. ` : ''}${bossItem ? `Botín de jefe: ${bossItem.emoji} **${bossItem.name}**. ` : ''}${coins ? `Botín: **${coins} monedas**. ` : ''}${leveled.levels ? `¡Subió ${leveled.levels} nivel(es)!` : ''}` };
@@ -652,13 +710,15 @@ function expeditionLogFromRow(row: RowDataPacket | undefined): ExpeditionLog | u
 
 export async function battleRpg(guildId: string, userId: string, reference: string): Promise<
   | { ok: true; pet: RpgPet; won: boolean; enemy: string; coins: number; xp: number; damage: number; levelUps: number; message: string }
-  | { ok: false; reason: 'no_pet' | 'low_energy' | 'knocked_out' }
+  | { ok: false; reason: 'no_pet' | 'low_energy' | 'knocked_out' | 'cooldown'; secondsRemaining?: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
   const enemies = [{ name: 'Slime de bosque', minLevel: 1, power: 8, reward: [35, 60] }, { name: 'Ladrón de ruinas', minLevel: 3, power: 17, reward: [75, 120] }, { name: 'Gólem de obsidiana', minLevel: 6, power: 28, reward: [150, 230] }];
   const at = now();
   const resolve = (pet: RpgPet) => {
     if (pet.hp <= 0) return { ok: false as const, reason: 'knocked_out' as const };
+    const remaining = (pet.lastBattleAt ?? 0) + RPG_BATTLE_COOLDOWN - at;
+    if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
     if (pet.energy < 10) return { ok: false as const, reason: 'low_energy' as const };
     const eligible = enemies.filter((candidate) => candidate.minLevel <= pet.level);
     const enemy = eligible[randomInt(eligible.length)]!;
@@ -666,13 +726,16 @@ export async function battleRpg(guildId: string, userId: string, reference: stri
     const chosenMove = combatMoves.sort((a, b) => (b.power * b.accuracy) - (a.power * a.accuracy))[0] ?? getRpgMove('quick_tackle')!;
     const moveHit = randomInt(100) < chosenMove.accuracy;
     const elementalBonus = chosenMove.element === pet.element && pet.specialization === 'Místico' ? 5 : 0;
-    const power = pet.strength + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + chosenMove.power * 0.65 + elementalBonus + randomInt(12) + (moveHit ? 0 : -chosenMove.power);
+    const conditionBonus = pet.affection >= 75 ? 3 : 0;
+    const hungerPenalty = pet.hunger < 30 ? 5 : pet.hunger < 55 ? 2 : 0;
+    const power = pet.strength + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + chosenMove.power * 0.65 + elementalBonus + conditionBonus - hungerPenalty + randomInt(12) + (moveHit ? 0 : -chosenMove.power);
     const won = power >= enemy.power + randomInt(18);
     const damage = won ? Math.max(1, enemy.power - Math.floor(pet.defense / 3) - randomInt(4)) : 12 + randomInt(18);
-    const xp = won ? 35 + randomInt(26) : 15;
+    let xp = won ? 35 + randomInt(26) : 15;
     const coins = won ? enemy.reward[0]! + randomInt(enemy.reward[1]! - enemy.reward[0]! + 1) : 0;
-    const level = applyXp(pet, xp); const healing = chosenMove.effect === 'drain' && moveHit ? Math.max(0, Math.floor(chosenMove.power * 0.15)) : 0;
-    const updated = { ...level.pet, hp: Math.min(level.pet.maxHp, Math.max(0, level.pet.hp - damage + healing)), energy: pet.energy - Math.max(10, chosenMove.energy) };
+    const level = applyXp(pet, xp, true, at); xp = level.gained; const healing = chosenMove.effect === 'drain' && moveHit ? Math.max(0, Math.floor(chosenMove.power * 0.15)) : 0;
+    const updated = { ...level.pet, hp: Math.min(level.pet.maxHp, Math.max(0, level.pet.hp - damage + healing)), energy: pet.energy - Math.max(10, chosenMove.energy),
+      hunger: Math.max(0, pet.hunger - 7), affection: Math.min(100, pet.affection + (won ? 1 : 0)), needsUpdatedAt: at, lastBattleAt: at };
     
     return { ok: true as const, pet: updated, won, enemy: enemy.name, coins, xp, damage, levelUps: level.levels,
       message: `${won ? '🏆 Victoria' : '💫 Retirada'} contra **${enemy.name}**. ${updated.name} usó **${chosenMove.name}**${moveHit ? '' : ', pero falló'} y ganó **${xp} XP**; recibió **${damage} de daño**.${healing ? ` Recuperó ${healing} PV al absorber energía.` : ''}${coins ? ` Botín: **${coins} monedas**.` : ''}${level.levels ? ` ¡Subió ${level.levels} nivel(es) y obtuvo ${level.levels} punto(s) de aprendizaje!` : ''}${updated.hp === 0 ? ' Quedó debilitada; usa polvo de renacer.' : ''}` };
@@ -682,18 +745,20 @@ export async function battleRpg(guildId: string, userId: string, reference: stri
   return run.immediate();
 }
 
-export async function trainRpgPet(guildId: string, userId: string, stat: 'strength' | 'defense' | 'agility', reference: string): Promise<{ ok: true; pet: RpgPet; balance: number } | { ok: false; reason: 'no_pet' | 'low_energy' | 'funds' }> {
+export async function trainRpgPet(guildId: string, userId: string, stat: 'strength' | 'defense' | 'agility', reference: string): Promise<{ ok: true; pet: RpgPet; balance: number } | { ok: false; reason: 'no_pet' | 'low_energy' | 'low_hunger' | 'funds' | 'cooldown'; secondsRemaining?: number }> {
   guildId = GLOBAL_SCOPE_ID;
   const cost = 180; const at = now();
-  const levelPet = (pet: RpgPet): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - 15 });
+  const levelPet = (pet: RpgPet): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - 15, hunger: Math.max(0, pet.hunger - 6), needsUpdatedAt: at, lastTrainAt: at });
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
     if (pet.energy < 15) return { ok: false as const, reason: 'low_energy' as const };
+    if (pet.hunger < 8) return { ok: false as const, reason: 'low_hunger' as const };
     const payment = await changeBalanceMysql(connection, guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const };
     const updated = levelPet(pet); await savePetMysql(connection, guildId, userId, updated, at); await updateQuestMysql(connection, guildId, userId, 'train', at);
     return { ok: true as const, pet: updated, balance: payment.balance };
   });
-  const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; if (pet.energy < 15) return { ok: false as const, reason: 'low_energy' as const }; const payment = changeBalanceSqlite(guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true as const, pet: updated, balance: payment.balance }; });
+  const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining }; if (pet.energy < 15) return { ok: false as const, reason: 'low_energy' as const }; if (pet.hunger < 8) return { ok: false as const, reason: 'low_hunger' as const }; const payment = changeBalanceSqlite(guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true as const, pet: updated, balance: payment.balance }; });
   return run.immediate();
 }
 
@@ -711,10 +776,20 @@ export async function useRpgItem(guildId: string, userId: string, itemId: string
     let updated = { ...pet, equipment: { ...pet.equipment } }; let message = '';
     if (item.effect === 'heal') { if (pet.hp >= pet.maxHp) return undefined; updated.hp = Math.min(pet.maxHp, pet.hp + item.power); message = `💚 ${pet.name} recuperó ${updated.hp - pet.hp} PV.`; }
     else if (item.effect === 'energy') { if (pet.energy >= pet.maxEnergy) return undefined; updated.energy = Math.min(pet.maxEnergy, pet.energy + item.power); message = `⚡ ${pet.name} recuperó ${updated.energy - pet.energy} de energía.`; }
-    else if (item.effect === 'snack') { if (pet.hp >= pet.maxHp && pet.energy >= pet.maxEnergy) return undefined; updated.hp = Math.min(pet.maxHp, pet.hp + item.power); updated.energy = Math.min(pet.maxEnergy, pet.energy + item.power); message = `🫐 ${pet.name} recuperó PV y energía.`; }
+    else if (item.effect === 'snack') {
+      const satiety = Math.min(45, 20 + item.power);
+      if (pet.hp >= pet.maxHp && pet.energy >= pet.maxEnergy && pet.hunger >= 100) return undefined;
+      updated.hp = Math.min(pet.maxHp, pet.hp + item.power);
+      updated.energy = Math.min(pet.maxEnergy, pet.energy + item.power);
+      updated.hunger = Math.min(100, pet.hunger + satiety);
+      const affectionGain = pet.hunger < 35 ? 4 : pet.hunger < 60 ? 2 : 0;
+      updated.affection = Math.min(100, pet.affection + affectionGain);
+      updated.needsUpdatedAt = at;
+      message = `🫐 ${pet.name} comió **${item.name}** · +${updated.hunger - pet.hunger} saciedad${affectionGain ? ` · +${Math.min(affectionGain, 100 - pet.affection)} cariño` : ''}.`;
+    }
     else if (item.effect === 'full_energy') { if (pet.energy >= pet.maxEnergy) return undefined; updated.energy = pet.maxEnergy; message = `💠 La energía de ${pet.name} está completa.`; }
     else if (item.effect === 'revive') { if (pet.hp > 0) return undefined; updated.hp = item.power; message = `✨ ${pet.name} volvió a la aventura con ${item.power} PV.`; }
-    else if (item.effect === 'xp') { const gained = applyXp(pet, item.power); updated = { ...gained.pet, equipment: { ...pet.equipment } }; message = `📘 ${pet.name} ganó ${item.power} XP.${gained.levels ? ` ¡Subió ${gained.levels} nivel(es)!` : ''}`; }
+    else if (item.effect === 'xp') { const gained = applyXp(pet, item.power, true, at); if (!gained.gained) return undefined; updated = { ...gained.pet, equipment: { ...pet.equipment } }; message = `📘 ${pet.name} ganó ${gained.gained} XP.${gained.gained < item.power ? ` Límite diario: ${RPG_DAILY_XP_CAP} XP.` : ''}${gained.levels ? ` ¡Subió ${gained.levels} nivel(es)!` : ''}`; }
     else if (item.effect.startsWith('stat_')) {
       const stat = item.effect.slice(5) as 'strength' | 'defense' | 'agility';
       updated[stat] += item.power;

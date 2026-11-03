@@ -6,12 +6,12 @@ import { economyPool, insertItemLedger, insertLedger, withEconomyTransaction } f
 
 export const DAILY_AMOUNT = 100;
 const DAILY_COOLDOWN_SECONDS = 24 * 60 * 60;
-const WORK_COOLDOWN_SECONDS = 30 * 60;
-const FISH_COOLDOWN_SECONDS = 15 * 60;
-const ROB_COOLDOWN_SECONDS = 60 * 60;
-const CRIME_COOLDOWN_SECONDS = 90 * 60;
+const WORK_COOLDOWN_SECONDS = 45 * 60;
+const FISH_COOLDOWN_SECONDS = 30 * 60;
+const ROB_COOLDOWN_SECONDS = 2 * 60 * 60;
+const CRIME_COOLDOWN_SECONDS = 2 * 60 * 60;
 const BANK_INTEREST_INTERVAL_SECONDS = 24 * 60 * 60;
-const BANK_INTEREST_BASIS_POINTS = 50;
+const BANK_INTEREST_BASIS_POINTS = 10;
 const BANK_MAX_ACCRUAL_DAYS = 30;
 const ROB_SHIELD_SECONDS = 24 * 60 * 60;
 const MAX_BET = 100_000;
@@ -426,7 +426,7 @@ export async function work(guildId: string, userId: string, reference: string): 
   | { ok: false; secondsRemaining: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
-  const amount = 35 + randomInt(46);
+  const amount = 25 + randomInt(41);
   const messages = [
     '🧰 Reparaste una nave en el muelle.', '📦 Repartiste paquetes por toda la ciudad.',
     '🍜 Cubriste un turno en el puesto de ramen.', '🪴 Ayudaste en el invernadero.',
@@ -489,8 +489,8 @@ export async function crime(guildId: string, userId: string, reference: string):
     const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
     if (now < nextCrimeAt) return { ok: false as const, secondsRemaining: nextCrimeAt - now };
     const amount = success
-      ? 80 + randomInt(171)
-      : Math.min(account.balance, Math.max(1, Math.floor(account.balance * (5 + randomInt(16)) / 100)));
+      ? 70 + randomInt(71)
+      : Math.min(account.balance, 15 + randomInt(31));
     const signedAmount = success ? amount : -amount;
     const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount });
     await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?',
@@ -504,8 +504,8 @@ export async function crime(guildId: string, userId: string, reference: string):
     const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
     if (now < nextCrimeAt) return { ok: false as const, secondsRemaining: nextCrimeAt - now };
     const amount = success
-      ? 80 + randomInt(171)
-      : Math.min(account.balance, Math.max(1, Math.floor(account.balance * (5 + randomInt(16)) / 100)));
+      ? 70 + randomInt(71)
+      : Math.min(account.balance, 15 + randomInt(31));
     const signedAmount = success ? amount : -amount;
     const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount });
     db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?')
@@ -559,10 +559,10 @@ export async function fish(guildId: string, userId: string, reference: string): 
   | { ok: false; secondsRemaining: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
-  const caught = randomInt(100) < 82;
-  const rare = caught && randomInt(100) < 12;
+  const caught = randomInt(100) < 78;
+  const rare = caught && randomInt(100) < 8;
   const fishName = pick(rare ? fishRare : fishCommon);
-  const amount = caught ? (rare ? 100 + randomInt(151) : 25 + randomInt(56)) : 0;
+  const amount = caught ? (rare ? 90 + randomInt(61) : 20 + randomInt(31)) : 0;
   const message = caught
     ? formatMessage(pick(fishCatchLines), { fish: fishName, amount })
     : pick(fishMissLines);
@@ -615,7 +615,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
     let amount: number;
     let message: string;
     if (success) {
-      amount = Math.min(victim.balance, 300, Math.max(1, Math.floor(victim.balance * (5 + randomInt(16)) / 100)));
+      amount = Math.min(victim.balance, 200, Math.max(1, Math.floor(victim.balance * (5 + randomInt(11)) / 100)));
       message = formatMessage(pick(robSuccessLines), { amount, target: targetName });
       await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_rob_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [amount, now, now, guildId, userId]);
       await connection.execute('UPDATE economy_accounts SET balance = balance - ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [amount, now, guildId, targetId]);
@@ -623,7 +623,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       await mysqlAddLedger(connection, guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
       return { ok: true as const, success: true, amount, balance: robber.balance + amount, message };
     }
-    amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.1)));
+    amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05)));
     message = formatMessage(pick(robFailLines), { amount, target: targetName });
     await connection.execute('UPDATE economy_accounts SET balance = balance - ?, last_rob_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [amount, now, now, guildId, userId]);
     if (amount) await mysqlAddLedger(connection, guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
@@ -645,7 +645,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
         message: `🛡️ ${targetName} tenía un escudo activo. El intento fue bloqueado y tendrás que esperar antes de volver a robar.` };
     }
     if (success) {
-      const amount = Math.min(victim.balance, 300, Math.max(1, Math.floor(victim.balance * (5 + randomInt(16)) / 100)));
+      const amount = Math.min(victim.balance, 200, Math.max(1, Math.floor(victim.balance * (5 + randomInt(11)) / 100)));
       const message = formatMessage(pick(robSuccessLines), { amount, target: targetName });
       db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_rob_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(amount, now, now, guildId, userId);
       db.prepare('UPDATE economy_accounts SET balance = balance - ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(amount, now, guildId, targetId);
@@ -654,7 +654,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       ledger.run(guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
       return { ok: true as const, success: true, amount, balance: robber.balance + amount, message };
     }
-    const amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.1)));
+    const amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05)));
     const message = formatMessage(pick(robFailLines), { amount, target: targetName });
     db.prepare('UPDATE economy_accounts SET balance = balance - ?, last_rob_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(amount, now, now, guildId, userId);
     if (amount) db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
@@ -774,10 +774,10 @@ export async function useShopItem(guildId: string, userId: string, itemId: strin
   guildId = GLOBAL_SCOPE_ID;
   const item = storeItems.find((candidate) => candidate.id === itemId && candidate.usable);
   if (!item) return { ok: false, reason: 'invalid_item' };
-  const caught = randomInt(100) < 82;
-  const rare = caught && randomInt(100) < 12;
+  const caught = randomInt(100) < 78;
+  const rare = caught && randomInt(100) < 8;
   const fishName = pick(rare ? fishRare : fishCommon);
-  const amount = caught ? (rare ? 100 + randomInt(151) : 25 + randomInt(56)) * 2 : 0;
+  const amount = caught ? (rare ? 90 + randomInt(61) : 20 + randomInt(31)) * 2 : 0;
   const fishMessage = caught
     ? `¡El cebo premium atrajo un **${fishName}**! La captura salió excelente.`
     : 'El cebo premium se gastó, pero los peces no picaron. Inténtalo de nuevo después del enfriamiento.';
@@ -1034,6 +1034,6 @@ export function formatCooldown(seconds: number): string {
 }
 
 export const storeItems = [
-  { id: 'cebo_premium', name: 'Cebo premium', description: 'Úsalo para hacer una pesca ahora y duplicar el premio. Respeta el enfriamiento normal.', cost: 180, emoji: '🎣', usable: true },
+  { id: 'cebo_premium', name: 'Cebo premium', description: 'Duplica el premio de una pesca. Respeta el enfriamiento normal.', cost: 40, emoji: '🎣', usable: true },
   { id: 'escudo_antirrobo', name: 'Escudo antirrobo', description: 'Úsalo para bloquear robos contra ti durante 24 horas. Puedes extender la protección con otro escudo.', cost: 320, emoji: '🛡️', usable: true },
 ] as const;

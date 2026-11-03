@@ -122,14 +122,14 @@ function createEconomyPanelCommand(): BotCommand {
         await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
         return;
       }
-      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id));
+      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username));
     },
   };
 }
 
 function createFishCommand(): BotCommand {
   return {
-    data: new SlashCommandBuilder().setName('fish').setDescription('Pesca para ganar monedas cada 15 minutos.'),
+    data: new SlashCommandBuilder().setName('fish').setDescription('Pesca para ganar monedas cada 30 minutos.'),
     async execute(interaction) {
       if (!interaction.guildId) {
         await interaction.reply({ content: 'La pesca solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -179,7 +179,7 @@ function createDailyCommand(): BotCommand {
 
 function createWorkCommand(): BotCommand {
   return {
-    data: new SlashCommandBuilder().setName('work').setDescription('Trabaja para ganar monedas cada 30 minutos.'),
+    data: new SlashCommandBuilder().setName('work').setDescription('Trabaja para ganar monedas cada 45 minutos.'),
     async execute(interaction) {
       if (!interaction.guildId) {
         await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });

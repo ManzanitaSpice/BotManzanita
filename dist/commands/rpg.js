@@ -1,10 +1,15 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { adoptRpgPet, battleRpg, buyRpgItem, createRpgPvpChallenge, exploreRpg, getRpgLeaderboard, getRpgQuests, renameRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { expeditionPanel, leaderboardPanel, listPanel, rpgBuildPanel, rpgPanel, rpgPvpPanel, rpgShopPanel } from '../ui/panels.js';
+import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, createRpgPvpChallenge, exploreRpg, renameRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
+import { expeditionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 export const rpgCommand = {
     data: new SlashCommandBuilder().setName('rpg').setDescription('Mascotas, aventuras, combate y recompensas RPG')
+        .addSubcommand((sub) => sub.setName('menu').setDescription('Abre el menú de categorías del RPG'))
         .addSubcommand((sub) => sub.setName('panel').setDescription('Abre la ficha visual de tu mascota'))
+        .addSubcommand((sub) => sub.setName('mochila').setDescription('Consulta y usa tus objetos RPG'))
+        .addSubcommand((sub) => sub.setName('alimentar').setDescription('Alimenta a tu mascota con comida de la mochila')
+        .addStringOption((option) => option.setName('alimento').setDescription('Comida disponible').setAutocomplete(true)))
+        .addSubcommand((sub) => sub.setName('cuidar').setDescription('Pasa tiempo con tu mascota para aumentar el vínculo'))
         .addSubcommand((sub) => sub.setName('ataques').setDescription('Aprende técnicas y prepara la build de combate'))
         .addSubcommand((sub) => sub.setName('nombrar').setDescription('Usa el nombre gratuito de tu mascota una sola vez')
         .addStringOption((option) => option.setName('nombre').setDescription('Nombre nuevo (2–24 caracteres)').setRequired(true).setMinLength(2).setMaxLength(24)))
@@ -34,6 +39,10 @@ export const rpgCommand = {
         const guildId = interaction.guildId;
         const userId = interaction.user.id;
         const action = interaction.options.getSubcommand();
+        if (action === 'menu') {
+            await interaction.reply(await rpgMenuPanel(guildId, userId));
+            return;
+        }
         if (action === 'retar') {
             const opponent = interaction.options.getUser('oponente', true);
             if (opponent.bot) {
@@ -53,13 +62,43 @@ export const rpgCommand = {
             return;
         }
         if (action === 'misiones') {
-            const quests = await getRpgQuests(guildId, userId);
-            const rows = quests.map((quest) => `${quest.claimed ? '✅' : quest.progress >= quest.target ? '🎁' : '▫️'} **${quest.title}**  ·  ${quest.progress}/${quest.target}  ·  ${new Intl.NumberFormat('es-MX').format(quest.reward)} monedas${quest.claimed ? ' · cobrada' : quest.progress >= quest.target ? ' · lista para cobrar' : ''}`);
-            await interaction.reply(listPanel('📜 ENCARGOS DEL GREMIO', 'Avance y recompensas de tus misiones', rows, 0x14b8a6, 'No hay misiones disponibles.'));
+            await interaction.reply(await rpgMissionsPanel(guildId, userId));
             return;
         }
         if (action === 'panel') {
             await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username));
+            return;
+        }
+        if (action === 'mochila') {
+            await interaction.reply(await rpgInventoryPanel(guildId, userId));
+            return;
+        }
+        if (action === 'alimentar') {
+            const itemId = interaction.options.getString('alimento');
+            if (!itemId) {
+                await interaction.reply(await rpgFeedPanel(guildId, userId));
+                return;
+            }
+            const item = rpgItems.find((candidate) => candidate.id === itemId && candidate.effect === 'snack');
+            if (!item) {
+                await interaction.reply({ content: 'Elige un alimento registrado.', flags: MessageFlags.Ephemeral });
+                return;
+            }
+            const result = await useRpgItem(guildId, userId, item.id, interaction.id);
+            if (!result.ok) {
+                await interaction.reply({ content: result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese alimento.' : 'Tu mascota ya está saciada y recuperada.', flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(await rpgCareResultPanel(result.pet, result.message));
+            return;
+        }
+        if (action === 'cuidar') {
+            const result = await careForRpgPet(guildId, userId);
+            if (!result.ok) {
+                await interaction.reply({ content: result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+            await interaction.reply(rpgCareResultPanel(result.pet, `Pasaste tiempo con ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`));
             return;
         }
         if (action === 'ataques') {
@@ -91,18 +130,20 @@ export const rpgCommand = {
                 const message = result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
                     : result.reason === 'zone_locked' ? 'Tu mascota todavía no tiene nivel suficiente para esa zona.'
                         : result.reason === 'low_energy' ? 'Tu mascota necesita energía. Busca éter o bayas en el bazar.'
-                            : `Tu mascota está descansando. Prueba en **${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos**.`;
+                            : result.reason === 'low_hunger' ? 'Tu mascota necesita comer. Usa `/rpg alimentar` antes de explorar.'
+                                : `Tu mascota está descansando. Prueba en **${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos**.`;
                 await interaction.reply({ content: `🧭 ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy));
+            await interaction.reply(expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy, result.pet.hunger, result.pet.affection));
             return;
         }
         if (action === 'combatir') {
             const result = await battleRpg(guildId, userId, interaction.id);
             if (!result.ok) {
                 const message = result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
-                    : result.reason === 'low_energy' ? 'Te falta energía para combatir. Usa un artículo de recuperación.' : 'Tu mascota quedó debilitada. Usa polvo de renacer en `/rpg usar`.';
+                    : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 60)} min antes de otro combate.`
+                        : result.reason === 'low_energy' ? 'Te falta energía para combatir. Usa un artículo de recuperación.' : 'Tu mascota quedó debilitada. Usa polvo de renacer en `/rpg usar`.';
                 await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
@@ -113,7 +154,7 @@ export const rpgCommand = {
             const stat = interaction.options.getString('atributo', true);
             const result = await trainRpgPet(guildId, userId, stat, interaction.id);
             const message = result.ok ? `🏋️ Entrenamiento completado. ${stat === 'strength' ? 'Fuerza' : stat === 'defense' ? 'Defensa' : 'Agilidad'} ahora es **${result.pet[stat]}**. Saldo: **${result.balance} monedas**.`
-                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'low_energy' ? 'Necesita 15 de energía para entrenar.' : 'No tienes las 180 monedas necesarias.';
+                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 3600)} h antes de entrenar otra vez.` : result.reason === 'low_energy' ? 'Necesita 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'No tienes las 180 monedas necesarias.';
             await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             return;
         }
@@ -125,14 +166,12 @@ export const rpgCommand = {
         }
         if (action === 'usar') {
             const result = await useRpgItem(guildId, userId, interaction.options.getString('articulo', true), interaction.id);
-            const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese artículo en tu mochila.' : 'Ese objeto no se puede usar ahora; revisa los PV, energía o equipo.';
+            const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese artículo en tu mochila.' : rpgItems.find((item) => item.id === interaction.options.getString('articulo', true))?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'Ese objeto no se puede usar ahora; revisa los PV, energía o equipo.';
             await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             return;
         }
         if (action === 'ranking') {
-            const ranking = await getRpgLeaderboard(guildId);
-            const listing = ranking.map((pet) => `<@${pet.userId}>  ·  **${pet.name}**  ·  ${pet.rarity}  ·  Nv. ${pet.level}`);
-            await interaction.reply({ ...leaderboardPanel('🐾 RANKING GLOBAL', 'Mascotas con mayor nivel', listing, 0x8b5cf6, 'Todavía no hay mascotas registradas.'), flags: ['IsComponentsV2', 'Ephemeral'], allowedMentions: { parse: [] } });
+            await interaction.reply({ ...await rpgRankingPanel(guildId), allowedMentions: { parse: [] } });
         }
     },
 };
