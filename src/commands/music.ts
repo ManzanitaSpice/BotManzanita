@@ -3,6 +3,7 @@ import type { RepeatMode } from 'lavalink-client';
 import type { BotCommand } from '../types.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getPlaylist, getPlaylists, removeFavorite, removePlaylistTrack, saveTrackToPlaylist } from '../services/music-library.js';
+import { removePersistedMusicQueueTrack } from '../storage/music-queue-store.js';
 import { componentUpdate, favoritesPanel, musicPanel, playlistDetailPanel, playlistsPanel, queuePanel, searchResultsPanel } from '../ui/panels.js';
 
 export const musicCommand: BotCommand = {
@@ -229,10 +230,16 @@ export const musicCommand: BotCommand = {
 
     const player = manager.getPlayer(guildId);
     if (action === 'cola') {
-      await interaction.reply(queuePanel(player, 0));
+      await interaction.reply(queuePanel(player, 0, guildId));
       return;
     }
     if (!player) {
+      if (action === 'quitar') {
+        const position = interaction.options.getInteger('posicion', true);
+        const removed = removePersistedMusicQueueTrack(guildId, position - 1);
+        await interaction.reply({ content: removed ? `🗑️ Quité **${removed.info.title}** de la cola guardada.` : 'No hay una canción en esa posición.', flags: MessageFlags.Ephemeral });
+        return;
+      }
       await interaction.reply({ content: 'No hay una sesión musical activa. Usa `/play` para empezar.', flags: MessageFlags.Ephemeral });
       return;
     }

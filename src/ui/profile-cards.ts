@@ -13,9 +13,7 @@ const width = 1200; const height = 640;
 export async function renderProfileCard(input: ProfileCardInput): Promise<Buffer> {
   const key=cacheKey(input); const cached=cardCache.get(key);
   if (cached&&cached.expiresAt>Date.now()) return cached.buffer;
-  const scale=input.mode==='levelup'?.78:1;
-  const canvas=createCanvas(Math.round(width*scale),Math.round(height*scale)); const ctx=canvas.getContext('2d');
-  if(scale!==1)ctx.scale(scale,scale);
+  const canvas=createCanvas(width,height); const ctx=canvas.getContext('2d');
   const accent=input.settings.accent; const background=itemForMode(input);
   const baseColor=background?.color ?? accent;
   const gradient=ctx.createLinearGradient(0,0,width,height); gradient.addColorStop(0,baseColor); gradient.addColorStop(.48,'#171b31'); gradient.addColorStop(1,'#0b1021');
@@ -104,16 +102,19 @@ function drawWallet(ctx:ReturnType<ReturnType<typeof createCanvas>['getContext']
 }
 
 async function drawLevelup(ctx:ReturnType<ReturnType<typeof createCanvas>['getContext']>,input:ProfileCardInput,accent:string) {
-  label(ctx,'✨ NUEVO NIVEL',70,83,23,accent,800); label(ctx,input.username,70,155,38,'#fff',800);
-  label(ctx,`${input.levelUpTo ?? input.progress.level}`,76,360,132,'#fff',900);
-  label(ctx,'¡SIGUE SUBIENDO!',300,278,25,'#fff',800); label(ctx,`${input.progress.xp.toLocaleString('es-MX')} XP global`,304,320,20,'#c8cde0',600);
-  label(ctx,`Rango global #${input.progress.globalRank}`,304,359,17,'#aeb6d0',500);
-  await drawAvatar(ctx,input,818,174,116,input.settings.frame);
+  label(ctx,'NUEVO NIVEL',70,91,32,accent,800); label(ctx,truncate(input.username,24),70,166,52,'#fff',800);
+  label(ctx,'NIVEL',78,256,25,'#c8cde0',700); label(ctx,`${input.levelUpTo ?? input.progress.level}`,72,405,178,'#fff',900);
+  label(ctx,'¡SIGUE SUBIENDO!',330,284,40,'#fff',800); label(ctx,`${input.progress.xp.toLocaleString('es-MX')} XP global`,334,338,32,'#c8cde0',600);
+  label(ctx,`Rango global #${input.progress.globalRank}`,334,382,26,'#aeb6d0',500);
+  await drawAvatar(ctx,input,820,164,148,input.settings.frame);
   if(input.petSpritePath){
-    try { const sprite=await loadImage(input.petSpritePath); const aura=ctx.createRadialGradient(1030,360,14,1030,360,112); aura.addColorStop(0,hexAlpha(accent,.28)); aura.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=aura; ctx.beginPath(); ctx.arc(1030,360,112,0,Math.PI*2); ctx.fill(); ctx.drawImage(sprite,965,284,130,130); }
+    try { const sprite=await loadImage(input.petSpritePath); const aura=ctx.createRadialGradient(1040,378,18,1040,378,145); aura.addColorStop(0,hexAlpha(accent,.32)); aura.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=aura; ctx.beginPath(); ctx.arc(1040,378,145,0,Math.PI*2); ctx.fill(); ctx.drawImage(sprite,955,290,170,170); }
     catch { /* A missing cosmetic sprite should not block the level-up notice. */ }
   }
-  if(input.petName) label(ctx,`🐾 ${truncate(input.petName,22)} celebra contigo`,790,478,17,'#f6eaff',600,'center');
+  if(input.petName) {
+    label(ctx,'TU MASCOTA',1040,494,19,accent,700,'center');
+    label(ctx,truncate(input.petName,18),1040,530,28,'#f6eaff',700,'center');
+  }
 }
 
 async function drawRoom(ctx:ReturnType<ReturnType<typeof createCanvas>['getContext']>,input:ProfileCardInput,accent:string){

@@ -46,15 +46,15 @@ La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, 
 - `/economia panel`: abre el panel privado de economía.
 - `/economia admin_moneda usuario cantidad`: un administrador otorga una cantidad positiva o retira una negativa de gemas premium; deja registro del movimiento.
 - `/economia saldo`: consulta el saldo.
-- `/economia diaria`: reclama la recompensa diaria (una vez cada 24 horas).
-- `/economia trabajar`: gana entre 35 y 80 monedas cada 30 minutos.
-- `/economia crimen` o `/crime`: intenta un golpe con 45% de éxito, botín de 80 a 250 monedas o una multa de hasta 20% del saldo; tiene 90 minutos de enfriamiento.
-- `/economia pescar`: consigue una captura común o rara; hay enfriamiento de 15 minutos y resultados variados.
-- `/economia robar usuario`: intenta quitar una parte del saldo; hay probabilidad de fallar y perder monedas, con enfriamiento de una hora.
+- `/economia diaria`: reclama 75 monedas cada 24 horas.
+- `/economia trabajar`: gana entre 15 y 30 monedas cada hora.
+- `/economia crimen` o `/crime`: intenta un golpe cada 4 horas; hay 40% de éxito, botín de 40 a 80 monedas o una multa de 10 a 30.
+- `/economia pescar`: consigue una captura común o rara; hay enfriamiento de una hora y resultados variados.
+- `/economia robar usuario`: tiene 40% de éxito, transfiere hasta 15% del saldo de la otra persona (máximo 200) y puede hacerte perder 5% del tuyo; enfriamiento de dos horas.
 - `/economia ruleta cantidad color`: apuesta al rojo, negro o verde en una ruleta de monedas virtuales.
 - `/economia blackjack apuesta`: juega veintiuno con panel interactivo para pedir carta o plantarse.
 - `/economia casino`: abre el panel del casino con saldo y acceso a pesca.
-- `/economia banco`: abre el panel para depositar y retirar monedas; el ahorro gana 0.5% de interés por día completo.
+- `/economia banco`: abre el panel para depositar y retirar monedas; el ahorro gana 0.01% de interés por día completo.
 - `/economia usar articulo`: consume un artículo del inventario. El cebo duplica la próxima pesca al usarlo; el escudo bloquea robos durante 24 horas.
 - `/economia apostar_objeto articulo color`: arriesga una unidad de un consumible en la ruleta; si gana, recibe monedas según su precio en tienda; si pierde, el artículo se consume.
 - `/rpg panel`: ficha visual interactiva con rareza, nivel, atributos, equipo, mochila, encargos y bitácora persistente de la última expedición. Muestra las decisiones, encuentros, hallazgos y regreso; también aparece enlazada desde `/profile`.
@@ -99,7 +99,7 @@ La reproducción usa un nodo Lavalink v4. `lavalink/application.yml` configura Y
 - `assets/rpg`: ilustraciones pixel art de mascotas, huevos de rareza y mapa de zonas; `assets/reactions` contiene GIFs usados por expresiones locales como `a!cacawe`. El paquete del host debe conservar ambas carpetas junto a `dist/`.
 - `src/events`: despacho de interacciones.
 
-La economía se separa por servidor y usuario. El banco guarda una billetera y ahorro separados, acredita interés compuesto de 0.5% por día completo y limita cada actualización a 30 días de cálculo. Por defecto usa SQLite; en producción puedes elegir MySQL/MariaDB mediante `ECONOMY_DB_DRIVER=mysql` y las variables `ECONOMY_DB_*`. Apuestas, premios, robos, transferencias, compras y consumos usan transacciones y un ledger. El ranking suma billetera y banco. La tienda vende consumibles acumulables con efectos que se aplican al usarlos; la ruleta de artículos consume una unidad incluso al perder. Consulta [HOSTING.md](HOSTING.md) para configurar el panel y migrar saldos existentes. Favoritos y listas de música permanecen en SQLite. Lavalink mantiene el estado de la cola por servidor mientras el bot está activo.
+La economía se separa por servidor y usuario. El banco guarda una billetera y ahorro separados, acredita interés compuesto de 0.01% por día completo y limita cada actualización a 30 días de cálculo. Por defecto usa SQLite; en producción puedes elegir MySQL/MariaDB mediante `ECONOMY_DB_DRIVER=mysql` y las variables `ECONOMY_DB_*`. Apuestas, premios, robos, transferencias, compras y consumos usan transacciones y un ledger. El ranking suma billetera y banco. La tienda vende consumibles acumulables con efectos que se aplican al usarlos; la ruleta de artículos consume una unidad incluso al perder. Consulta [HOSTING.md](HOSTING.md) para configurar el panel y migrar saldos existentes. Favoritos y listas de música permanecen en SQLite. Lavalink mantiene el estado de la cola por servidor mientras el bot está activo.
 
 ### Comandos privados de administración
 

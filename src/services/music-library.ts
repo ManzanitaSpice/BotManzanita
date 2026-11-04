@@ -24,9 +24,19 @@ export type SavedPlaylistTrack = Omit<FavoriteTrack, 'savedAt'> & { addedAt: num
 const MAX_FAVORITES = 25;
 const MAX_PLAYLISTS = 20;
 const MAX_PLAYLIST_TRACKS = 100;
+const FAVORITE_RETENTION_SECONDS = 3 * 24 * 60 * 60;
+
+export function pruneExpiredFavorites(now = Math.floor(Date.now() / 1000)): number {
+  return db.prepare('DELETE FROM music_favorites WHERE saved_at <= ?')
+    .run(now - FAVORITE_RETENTION_SECONDS).changes;
+}
 
 function trackValues(track: Track) {
-  const uri = track.info.uri?.trim();
+  const identifier = track.info.identifier?.trim();
+  const sourcePrefix = track.info.sourceName === 'youtube' ? 'ytsearch'
+    : track.info.sourceName === 'soundcloud' ? 'scsearch'
+      : track.info.sourceName === 'spotify' ? 'spsearch' : undefined;
+  const uri = track.info.uri?.trim() || (identifier && sourcePrefix ? `${sourcePrefix}:${identifier}` : undefined);
   if (!uri) throw new Error('Esta pista no proporciona un enlace que pueda guardarse.');
   return {
     uri,
@@ -38,6 +48,7 @@ function trackValues(track: Track) {
 }
 
 export function addFavorite(guildId: string, userId: string, track: Track): 'saved' | 'exists' | 'full' {
+  pruneExpiredFavorites();
   guildId = GLOBAL_SCOPE_ID;
   const values = trackValues(track);
   const save = db.transaction(() => {
@@ -56,6 +67,7 @@ export function addFavorite(guildId: string, userId: string, track: Track): 'sav
 }
 
 export function getFavorites(guildId: string, userId: string): FavoriteTrack[] {
+  pruneExpiredFavorites();
   guildId = GLOBAL_SCOPE_ID;
   return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt
@@ -64,6 +76,7 @@ export function getFavorites(guildId: string, userId: string): FavoriteTrack[] {
 }
 
 export function getFavorite(guildId: string, userId: string, id: number): FavoriteTrack | undefined {
+  pruneExpiredFavorites();
   guildId = GLOBAL_SCOPE_ID;
   return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt

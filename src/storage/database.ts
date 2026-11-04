@@ -115,6 +115,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_music_playlist_tracks_playlist
     ON music_playlist_tracks (playlist_id, added_at, id);
 
+  CREATE TABLE IF NOT EXISTS music_queue_store (
+    guild_id TEXT PRIMARY KEY,
+    queue_json TEXT NOT NULL,
+    voice_channel_id TEXT,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
   CREATE TABLE IF NOT EXISTS economy_games (
     id TEXT PRIMARY KEY,
     guild_id TEXT NOT NULL,
@@ -260,6 +267,12 @@ try {
 
 try {
   db.exec('ALTER TABLE economy_inventory ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0)');
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
+}
+
+try {
+  db.exec('ALTER TABLE music_queue_store ADD COLUMN voice_channel_id TEXT');
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
 }

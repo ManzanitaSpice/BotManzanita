@@ -14,9 +14,10 @@ import {
 } from 'discord.js';
 import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
+import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { bankAction, getAccountBalances, getBalance, getInventory, storeItems, type BlackjackView } from '../services/economy.js';
 import { getLatestExpeditionLog, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones, type ExpeditionLog, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
-import { renderEggCard, renderPetCard, rpgEggOptions } from './rpg-art.js';
+import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
 import { equippedProfileBadges, getProfileProgress, getProfileSettings } from '../services/profile.js';
 
@@ -327,35 +328,34 @@ export function expeditionPanel(events: Array<{ emoji: string; title: string; de
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-function pvpFighterCard(match: RpgPvpMatch, fighter: RpgPvpMatch['fighters'][number]) {
-  const active = match.turnUserId === fighter.userId && match.status === 'active';
-  return `### ${active ? '▶️ ' : ''}<@${fighter.userId}> · ${fighter.petName}\n${fighter.species} · ${fighter.rarity} · Nv. ${fighter.level} · ${fighter.element} ${fighter.specialization}\n❤️ ${statBar(fighter.hp, fighter.maxHp, 12)} **${fighter.hp}/${fighter.maxHp}** · ⚡ ${statBar(fighter.energy, fighter.maxEnergy, 8)} **${fighter.energy}/${fighter.maxEnergy}**\n⚔️${fighter.strength} 🛡️${fighter.defense} 💨${fighter.agility}${fighter.guarding ? ' · 🛡️ Guardia' : ''}${fighter.weakened ? ' · 🌀 Debilitado' : ''}${fighter.specialUsed ? ' · ✨ Técnica usada' : ''}`;
-}
-
-export function rpgPvpPanel(match: RpgPvpMatch) {
+export async function rpgPvpPanel(match: RpgPvpMatch) {
   const [challenger, defender] = match.fighters;
+  const duelCard = await renderPvpDuelCard(match);
   const status = match.status === 'pending' ? 'DESAFÍO PENDIENTE · vence en 5 minutos'
     : match.status === 'active' ? `COMBATE · RONDA ${match.round} · turno de <@${match.turnUserId}>`
       : match.status === 'finished' ? `COMBATE TERMINADO · ${match.winnerId ? `gana <@${match.winnerId}>` : 'sin ganador'}`
         : match.status === 'declined' ? 'DESAFÍO RECHAZADO' : 'DESAFÍO VENCIDO';
   const container = new ContainerBuilder().setAccentColor(match.status === 'active' ? 0xef4444 : 0x8b5cf6)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ DUELO DE MASCOTAS · ${status}\n${pvpFighterCard(match, challenger)}\n\n**VS**\n\n${pvpFighterCard(match, defender)}\n\n_Duelo amistoso: la vida se simula en esta partida; no consume energía ni altera los PV normales._`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ DUELO · ${status}`))
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL('attachment://rpg-pvp-duel.png').setDescription(`${challenger.petName} contra ${defender.petName}`),
+    ));
   if (match.status === 'pending') {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`La invitación es para <@${match.defenderId}>. Al aceptar, el combate comienza con ${challenger.petName}; quien lanzó el desafío toma el primer turno.`))
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`Duelo amistoso · PV y energía simulados.\n<@${match.defenderId}>, acepta o rechaza abajo. <@${match.challengerId}> toma el primer turno.`))
       .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(`rpg:pvp:accept:${match.id}`).setLabel('Aceptar duelo').setEmoji('⚔️').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(`rpg:pvp:decline:${match.id}`).setLabel('Rechazar').setEmoji('🚫').setStyle(ButtonStyle.Secondary),
       ));
   } else if (match.status === 'active') {
-    const recentLog = match.log.slice(-6).map((line) => `• ${line}`).join('\n');
+    const recentLog = match.log.slice(-4).map((line) => `• ${line}`).join('\n');
     const turnFighter = match.fighters.find((fighter) => fighter.userId === match.turnUserId);
     container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📜 Bitácora del duelo\n${recentLog || 'El duelo está por comenzar.'}\n\n**Turno actual:** <@${match.turnUserId}>`))
-      .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents((turnFighter?.equippedMoves ?? ['quick_tackle']).slice(0, 4).map((id) => { const move = getRpgMove(id); return new ButtonBuilder().setCustomId(`rpg:pvp:move:${match.id}:${id}`).setLabel(move?.name ?? 'Placaje').setEmoji(move?.element === 'Neutral' ? '⚪' : '✨').setStyle(ButtonStyle.Danger).setDisabled((turnFighter?.energy ?? 0) < (move?.energy ?? 0)); })))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📜 Bitácora del duelo\n${recentLog || 'El duelo está por comenzar.'}\n\n**Turno actual:** <@${match.turnUserId}>\nSolo esa persona puede ejecutar las acciones. Este panel es compartido y se actualiza para ambos.`))
+      .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents((turnFighter?.equippedMoves ?? ['quick_tackle']).slice(0, 4).map((id) => { const move = getRpgMove(id); return new ButtonBuilder().setCustomId(`rpg:pvp:move:${match.id}:${match.turnUserId}:${id}`).setLabel(move?.name ?? 'Placaje').setEmoji(move?.element === 'Neutral' ? '⚪' : '✨').setStyle(ButtonStyle.Danger).setDisabled((turnFighter?.energy ?? 0) < (move?.energy ?? 0)); })))
       .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:guard`).setLabel('Defender').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:special`).setLabel('Técnica especial').setEmoji('✨').setStyle(ButtonStyle.Success).setDisabled(match.fighters.find((fighter) => fighter.userId === match.turnUserId)?.specialUsed ?? false),
-        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:surrender`).setLabel('Rendirse').setEmoji('🏳️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:${match.turnUserId}:guard`).setLabel('Defender').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:${match.turnUserId}:special`).setLabel('Técnica especial').setEmoji('✨').setStyle(ButtonStyle.Success).setDisabled(turnFighter?.specialUsed ?? false),
+        new ButtonBuilder().setCustomId(`rpg:pvp:turn:${match.id}:${match.turnUserId}:surrender`).setLabel('Rendirse').setEmoji('🏳️').setStyle(ButtonStyle.Secondary),
       ));
   } else {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📜 Resultado\n${match.log.slice(-4).map((line) => `• ${line}`).join('\n')}`))
@@ -363,7 +363,7 @@ export function rpgPvpPanel(match: RpgPvpMatch) {
         new ButtonBuilder().setCustomId('rpg:pvp:panel').setLabel('Ver mi panel RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
       ));
   }
-  return { components: [container], flags: ['IsComponentsV2'] as const };
+  return { components: [container], files: [duelCard], flags: ['IsComponentsV2'] as const };
 }
 
 export async function rpgShopPanel(guildId: string, userId: string, requestedPage = 0, requestedCategory = 'all') {
@@ -476,7 +476,7 @@ export async function bankPanel(guildId: string, userId: string) {
   const container = new ContainerBuilder()
     .setAccentColor(0x0ea5e9)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 0.1% por día completo · siguiente interés <t:${next}:R>${earned}`))
+      `# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 0.01% por día completo · siguiente interés <t:${next}:R>${earned}`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:bank:deposit').setLabel('Depositar').setEmoji('📥').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:bank:withdraw').setLabel('Retirar').setEmoji('📤').setStyle(ButtonStyle.Primary),
@@ -488,14 +488,30 @@ export async function bankPanel(guildId: string, userId: string) {
 
 export function blackjackPanel(game: BlackjackView) {
   const active = game.status === 'active';
-  const dealerTotal = game.dealerTotal === undefined ? '' : ` · **${game.dealerTotal}**`;
-  const status = active
-    ? 'Elige si quieres pedir carta o plantarte.'
-    : `${game.resultText ?? 'Partida terminada'}\n${game.payout > 0 ? `Premio acreditado: **${money.format(game.payout)} monedas**.` : ''}\nSaldo: **${money.format(game.balance)} monedas**.`;
+  const accent = active ? 0x7c3aed : game.outcome === 'win' ? 0x22c55e : game.outcome === 'push' ? 0x0ea5e9 : 0xef4444;
+  const playerCards = game.playerCards.join('　');
+  const dealerCards = game.dealerCards.join('　');
+  const dealerHeading = active ? '### 🎩 CRUPIER · carta visible' : `### 🎩 CRUPIER · ${game.dealerTotal} puntos`;
+  const playerBusted = game.playerTotal > 21;
+  const outcome = active
+    ? '### 🎯 TU TURNO\nPide una carta para acercarte a 21 o plántate para cerrar tu mano.'
+    : game.outcome === 'win'
+      ? `### ✅ GANASTE\n${game.resultText ?? 'Venciste al crupier.'}\n💰 Cobraste **${money.format(game.payout)} monedas**.`
+      : game.outcome === 'push'
+        ? `### 🤝 EMPATE\n${game.resultText ?? 'Empataste con el crupier.'}\n↩️ Se devolvió tu apuesta de **${money.format(game.bet)} monedas**.`
+        : `### ❌ PERDISTE\n${playerBusted ? `Te pasaste de 21 con **${game.playerTotal} puntos**.` : game.resultText ?? 'El crupier ganó esta mano.'}\n🔻 Perdiste la apuesta de **${money.format(game.bet)} monedas**.`;
   const container = new ContainerBuilder()
-    .setAccentColor(active ? 0x7c3aed : 0x22c55e)
+    .setAccentColor(accent)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🃏 VEINTIUNO\nApuesta: **${money.format(game.bet)} monedas** · Saldo: **${money.format(game.balance)}**\n\n**Tu mano** · ${game.playerCards.join('  ')} · **${game.playerTotal}**\n**Crupier** · ${game.dealerCards.join('  ')}${dealerTotal}\n\n${status}`))
+      `# 🃏 VEINTIUNO\n💵 **Apuesta:** ${money.format(game.bet)} monedas　 ·　 👛 **Saldo:** ${money.format(game.balance)} monedas`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 🙋 TU MANO · ${game.playerTotal} ${game.playerTotal === 1 ? 'punto' : 'puntos'}\n${playerCards}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `${dealerHeading}\n${dealerCards}${active ? '\n_El crupier revela su mano al terminar tu turno._' : ''}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(outcome))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`eco:blackjack:hit:${game.gameId}`).setLabel('Pedir carta').setEmoji('🎴').setStyle(ButtonStyle.Primary).setDisabled(!active),
       new ButtonBuilder().setCustomId(`eco:blackjack:stand:${game.gameId}`).setLabel('Plantarse').setEmoji('✋').setStyle(ButtonStyle.Success).setDisabled(!active),
@@ -631,7 +647,7 @@ export function favoritesPanel(guildId: string, userId: string, favorites: Favor
   const container = new ContainerBuilder()
     .setAccentColor(colors.music)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 💜 MIS FAVORITOS\n${favorites.length}/25 canciones guardadas\n\n${favorites.length
+      `# 💜 MIS FAVORITOS\n${favorites.length}/25 canciones guardadas · caducan a los 3 días\n\n${favorites.length
         ? favorites.map((track, index) => `**${index + 1}.** ${truncate(track.title, 90)} · ${truncate(track.author, 55)}`).join('\n')
         : '_Guarda la canción actual con `/musica favorito guardar`._'}`));
   if (favorites.length) {
@@ -676,8 +692,10 @@ export function playlistDetailPanel(name: string, trackCount: number, tracks: Ar
 
 const QUEUE_PAGE_SIZE = 10;
 
-export function queuePanel(player: Player | undefined, page: number) {
-  const queue = player?.queue.tracks ?? [];
+export function queuePanel(player: Player | undefined, page: number, guildId?: string) {
+  const saved = !player && guildId ? getPersistedMusicQueue(guildId) : undefined;
+  const queue = player?.queue.tracks ?? saved?.tracks ?? [];
+  const current = player?.queue.current ?? saved?.current;
   const pageCount = Math.max(1, Math.ceil(queue.length / QUEUE_PAGE_SIZE));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
   const start = safePage * QUEUE_PAGE_SIZE;
@@ -688,7 +706,7 @@ export function queuePanel(player: Player | undefined, page: number) {
   const container = new ContainerBuilder()
     .setAccentColor(colors.music)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 📜 COLA MUSICAL\n${player?.queue.current ? `Ahora: **${player.queue.current.info.title}**\n\n` : ''}${listing}\n\nPágina **${safePage + 1}/${pageCount}** · ${queue.length} canciones en espera`))
+      `# 📜 COLA MUSICAL\n${current ? `Ahora: **${current.info.title}**\n\n` : ''}${!player && queue.length ? '🔌 Cola guardada; se retomará al volver a reproducir.\n\n' : ''}${listing}\n\nPágina **${safePage + 1}/${pageCount}** · ${queue.length} canciones en espera`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`music:queue:page:${safePage - 1}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(safePage === 0),
       new ButtonBuilder().setCustomId(`music:queue:page:${safePage + 1}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(safePage >= pageCount - 1),

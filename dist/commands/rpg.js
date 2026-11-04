@@ -58,7 +58,7 @@ export const rpgCommand = {
                 await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(rpgPvpPanel(result.match));
+            await interaction.reply(await rpgPvpPanel(result.match));
             return;
         }
         if (action === 'misiones') {

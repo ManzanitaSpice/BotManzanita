@@ -3,8 +3,17 @@ import { db } from '../storage/database.js';
 const MAX_FAVORITES = 25;
 const MAX_PLAYLISTS = 20;
 const MAX_PLAYLIST_TRACKS = 100;
+const FAVORITE_RETENTION_SECONDS = 3 * 24 * 60 * 60;
+export function pruneExpiredFavorites(now = Math.floor(Date.now() / 1000)) {
+    return db.prepare('DELETE FROM music_favorites WHERE saved_at <= ?')
+        .run(now - FAVORITE_RETENTION_SECONDS).changes;
+}
 function trackValues(track) {
-    const uri = track.info.uri?.trim();
+    const identifier = track.info.identifier?.trim();
+    const sourcePrefix = track.info.sourceName === 'youtube' ? 'ytsearch'
+        : track.info.sourceName === 'soundcloud' ? 'scsearch'
+            : track.info.sourceName === 'spotify' ? 'spsearch' : undefined;
+    const uri = track.info.uri?.trim() || (identifier && sourcePrefix ? `${sourcePrefix}:${identifier}` : undefined);
     if (!uri)
         throw new Error('Esta pista no proporciona un enlace que pueda guardarse.');
     return {
@@ -16,6 +25,7 @@ function trackValues(track) {
     };
 }
 export function addFavorite(guildId, userId, track) {
+    pruneExpiredFavorites();
     guildId = GLOBAL_SCOPE_ID;
     const values = trackValues(track);
     const save = db.transaction(() => {
@@ -35,6 +45,7 @@ export function addFavorite(guildId, userId, track) {
     return save.immediate();
 }
 export function getFavorites(guildId, userId) {
+    pruneExpiredFavorites();
     guildId = GLOBAL_SCOPE_ID;
     return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt
@@ -42,6 +53,7 @@ export function getFavorites(guildId, userId) {
         .all(guildId, userId, MAX_FAVORITES);
 }
 export function getFavorite(guildId, userId, id) {
+    pruneExpiredFavorites();
     guildId = GLOBAL_SCOPE_ID;
     return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, saved_at AS savedAt

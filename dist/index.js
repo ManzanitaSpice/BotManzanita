@@ -8,6 +8,8 @@ import './storage/database.js';
 import { initializeEconomyDatabase } from './storage/economy-database.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
 import { initializeProfileStorage } from './services/profile.js';
+import { pruneExpiredFavorites } from './services/music-library.js';
+import { musicQueueStoreManager } from './storage/music-queue-store.js';
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] });
 client.commands = new Collection(commands.map((command) => [command.data.name, command]));
 client.lavalink = new LavalinkManager({
@@ -28,6 +30,10 @@ client.lavalink = new LavalinkManager({
         // A manual or unexpected voice disconnect must not pull the bot back in.
         onDisconnect: { autoReconnect: false, destroyPlayer: true },
         onEmptyQueue: { destroyAfterMs: 30_000 },
+    },
+    queueOptions: {
+        maxPreviousTracks: 25,
+        queueStore: musicQueueStoreManager(),
     },
 });
 registerInteractionHandler(client);
@@ -50,6 +56,15 @@ client.once('clientReady', async (readyClient) => {
     await client.lavalink.init({ id: readyClient.user.id, username: readyClient.user.username });
     const panelRefreshTimer = setInterval(() => void refreshActiveMusicPanels(client), 15_000);
     panelRefreshTimer.unref();
+    const queueSnapshotTimer = setInterval(() => {
+        for (const guild of client.guilds.cache.values()) {
+            const player = client.lavalink.getPlayer(guild.id);
+            if (!player || (!player.queue.current && !player.queue.tracks.length))
+                continue;
+            void player.queue.utils.save().catch((error) => console.error(`No se pudo renovar la cola de ${guild.id}:`, error));
+        }
+    }, 5 * 60_000);
+    queueSnapshotTimer.unref();
 });
 process.on('unhandledRejection', (error) => {
     console.error('Promesa rechazada sin manejar; el host deberá reiniciar el bot:', error);
@@ -61,6 +76,16 @@ process.on('uncaughtException', (error) => {
 });
 await initializeEconomyDatabase();
 await initializeProfileStorage();
+pruneExpiredFavorites();
+const favoriteCleanupTimer = setInterval(() => {
+    try {
+        pruneExpiredFavorites();
+    }
+    catch (error) {
+        console.error('No se pudieron limpiar favoritos vencidos:', error);
+    }
+}, 12 * 60 * 60 * 1000);
+favoriteCleanupTimer.unref();
 if (config.economyDatabase.driver === 'mysql') {
     console.log(`Base de economía MySQL conectada: ${config.economyDatabase.host}:${config.economyDatabase.port}/${config.economyDatabase.name}.`);
 }

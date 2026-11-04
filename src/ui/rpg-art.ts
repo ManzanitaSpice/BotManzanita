@@ -132,3 +132,70 @@ export async function renderPetCard(
   context.fillStyle = '#ffffff'; context.font = '600 18px sans-serif'; context.fillText(`${zone.emoji} ${zone.name}  ·  ${zone.difficulty}`, 696, 578);
   return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'rpg-pet-card.png' });
 }
+
+export async function renderPvpDuelCard(match: import('../services/rpg.js').RpgPvpMatch) {
+  const width = 1280; const height = 600;
+  const canvas = createCanvas(width, height); const context = canvas.getContext('2d');
+  const [leftSprite, rightSprite] = await Promise.all([
+    loadImage(getRpgPetSpritePath(match.fighters[0].species)),
+    loadImage(getRpgPetSpritePath(match.fighters[1].species)),
+  ]);
+  const rarityColors: Record<string, string> = { 'Común': '#b8c4d4', 'Poco común': '#65d487', 'Raro': '#69b9ff', 'Épico': '#c29aff', 'Legendario': '#ffc35d' };
+  const themes = match.fighters.map((fighter) => rpgEggOptions.find((entry) => entry.element === fighter.element)?.accent ?? '#8b5cf6');
+  const background = context.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, '#151a2c'); background.addColorStop(.52, '#090d18'); background.addColorStop(1, '#191329');
+  context.fillStyle = background; context.fillRect(0, 0, width, height);
+  context.fillStyle = 'rgba(255,255,255,.025)';
+  for (let i = 0; i < 18; i++) { const x = (i * 173 + 47) % width; const y = (i * 97 + 31) % height; context.beginPath(); context.arc(x, y, i % 3 + 1, 0, Math.PI * 2); context.fill(); }
+
+  const drawFighter = (index: 0 | 1, sprite: Awaited<ReturnType<typeof loadImage>>, x: number) => {
+    const fighter = match.fighters[index]; const accent = themes[index]!; const cardY = 26; const cardWidth = 548; const cardHeight = 548;
+    context.fillStyle = 'rgba(5, 9, 19, .82)'; context.beginPath(); context.roundRect(x, cardY, cardWidth, cardHeight, 30); context.fill();
+    context.strokeStyle = `${accent}bb`; context.lineWidth = 3; context.beginPath(); context.roundRect(x + 1.5, cardY + 1.5, cardWidth - 3, cardHeight - 3, 30); context.stroke();
+    const header = context.createLinearGradient(x, cardY, x + cardWidth, cardY + 100);
+    header.addColorStop(0, `${accent}36`); header.addColorStop(1, 'rgba(10,14,25,0)');
+    context.fillStyle = header; context.beginPath(); context.roundRect(x + 4, cardY + 4, cardWidth - 8, 132, 26); context.fill();
+
+    context.fillStyle = accent; context.font = '700 16px sans-serif'; context.fillText(`JUGADOR ${index + 1}  ·  @${fighter.username.slice(0, 22)}`, x + 28, cardY + 37);
+    context.fillStyle = '#f8fafc'; context.font = '700 31px sans-serif'; context.fillText(fighter.petName.slice(0, 25), x + 28, cardY + 78);
+    context.fillStyle = '#cbd5e1'; context.font = '500 17px sans-serif';
+    context.fillText(`${fighter.species}  ·  ${fighter.element}  ·  ${fighter.specialization}`, x + 29, cardY + 108);
+
+    context.fillStyle = `${accent}22`; context.beginPath(); context.ellipse(x + cardWidth / 2, cardY + 290, 175, 165, 0, 0, Math.PI * 2); context.fill();
+    context.fillStyle = 'rgba(0,0,0,.35)'; context.beginPath(); context.ellipse(x + cardWidth / 2, cardY + 430, 130, 18, 0, 0, Math.PI * 2); context.fill();
+    context.save(); context.shadowColor = `${accent}bb`; context.shadowBlur = 26;
+    context.drawImage(sprite, x + 122, cardY + 128, 304, 304); context.restore();
+
+    context.fillStyle = rarityColors[fighter.rarity] ?? '#cbd5e1'; context.font = '700 16px sans-serif'; context.textAlign = 'right';
+    context.fillText(`${fighter.rarity.toLocaleUpperCase('es')}  ·  NIVEL ${fighter.level}`, x + cardWidth - 28, cardY + 37); context.textAlign = 'left';
+    context.fillStyle = '#e2e8f0'; context.font = '700 16px sans-serif';
+    context.fillText(`FUE  ${fighter.strength}       DEF  ${fighter.defense}       AGI  ${fighter.agility}`, x + 29, cardY + 458);
+    drawPvpMeter(context, x + 29, cardY + 490, cardWidth - 58, 'VIDA', fighter.hp, fighter.maxHp, '#fb5672');
+    drawPvpMeter(context, x + 29, cardY + 527, cardWidth - 58, 'ENERGÍA', fighter.energy, fighter.maxEnergy, '#55c8ff');
+  };
+
+  drawFighter(0, leftSprite, 24); drawFighter(1, rightSprite, 708);
+  const center = context.createRadialGradient(640, 300, 10, 640, 300, 74);
+  center.addColorStop(0, 'rgba(239,68,68,.48)'); center.addColorStop(1, 'rgba(139,92,246,0)');
+  context.fillStyle = center; context.beginPath(); context.arc(640, 300, 74, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#f8fafc'; context.font = '900 33px sans-serif'; context.textAlign = 'center'; context.shadowColor = 'rgba(0,0,0,.8)'; context.shadowBlur = 12;
+  context.fillText('VS', 640, 311); context.shadowBlur = 0; context.textAlign = 'left';
+  return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'rpg-pvp-duel.png' });
+}
+
+function drawPvpMeter(
+  context: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
+  x: number,
+  y: number,
+  width: number,
+  label: string,
+  value: number,
+  max: number,
+  color: string,
+) {
+  const ratio = Math.max(0, Math.min(1, value / Math.max(1, max)));
+  context.fillStyle = '#dbe3ef'; context.font = '700 13px sans-serif'; context.fillText(label, x, y);
+  context.textAlign = 'right'; context.fillText(`${value} / ${max}`, x + width, y); context.textAlign = 'left';
+  context.fillStyle = 'rgba(255,255,255,.15)'; context.beginPath(); context.roundRect(x, y + 7, width, 8, 4); context.fill();
+  if (ratio > 0) { context.fillStyle = color; context.beginPath(); context.roundRect(x, y + 7, Math.max(7, width * ratio), 8, 4); context.fill(); }
+}

@@ -11,7 +11,7 @@ const categories = {
   },
   musica: {
     label: 'Música', description: 'Buscar, reproducir y controlar', emoji: '🎵',
-    body: '# 🎵 MÚSICA\nBusca canciones, arma la cola y controla el reproductor con botones.\n\n## 🔎 Buscar y reproducir\n• `a!play` / `a!p` **canción o URL** · reproduce o añade a la cola\n• `a!search` / `a!s` **consulta** · elige entre resultados\n• `a!np` · abre el reproductor\n• `a!queue` / `a!q` · revisa y edita la cola\n\n## 🎛️ Controles\n`a!pause` · `a!resume` · `a!skip` · `a!prev` · `a!stop` · `a!leave`\n`a!shuffle` · `a!repeat track|queue|off` · `a!vol 0-100`\n`a!fx normal|bass|rock|pop|nightcore|vaporwave`\n\n## 💜 Tu biblioteca\n• `a!fav` · guardar la canción actual\n• `a!fav list` · ver y reproducir favoritos\n• `a!lists` · explorar listas\n• `a!lists save NOMBRE` · guardar la canción actual\n• `a!lists play NOMBRE` · reproducir una lista\n\nTambién están `/play`, `/search`, `/queue` y `/musica`.',
+    body: '# 🎵 MÚSICA\nBusca canciones, arma la cola y controla el reproductor con botones.\n\n## 🔎 Buscar y reproducir\n• `a!play` / `a!p` **canción o URL** · reproduce o añade a la cola\n• `a!search` / `a!s` **consulta** · elige entre resultados\n• `a!np` · abre el reproductor\n• `a!queue` / `a!q` · revisa y edita la cola\n\n## 🎛️ Controles\n`a!pause` · `a!resume` · `a!skip` · `a!prev` · `a!stop` · `a!leave`\n`a!resume` también recupera la cola del canal después de un reinicio, durante 1 hora.\n`a!shuffle` · `a!repeat track|queue|off` · `a!vol 0-100`\n`a!fx normal|bass|rock|pop|nightcore|vaporwave`\n\n## 💜 Tu biblioteca\n• `a!fav` · guardar la canción actual\n• `a!fav list` · ver y reproducir favoritos\n• `a!lists` · explorar listas\n• `a!lists save NOMBRE` · guardar la canción actual\n• `a!lists play NOMBRE` · reproducir una lista\n\nTambién están `/play`, `/search`, `/queue` y `/musica`.',
   },
   economia: {
     label: 'Economía', description: 'Saldo, banco, tienda y juegos', emoji: '💰',
@@ -23,7 +23,7 @@ const categories = {
   },
   utilidades: {
     label: 'Utilidades', description: 'Juegos rápidos, perfiles e información', emoji: '🧰',
-    body: '# 🧰 UTILIDADES\nAtajos prácticos para decisiones rápidas y datos del servidor.\n\n## 🎲 Decidir y jugar\n`a!roll [caras]` / `a!dado [caras]` · tira de 2 a 1,000,000 caras\n`a!coin` / `a!moneda` · lanza una moneda\n`a!choose opción 1, opción 2` · elige al azar entre tus opciones\n`a!8ball pregunta` / `a!bola pregunta` · respuesta aleatoria\n\n## 👤 Información\n`a!avatar [@persona]` · avatar en tamaño grande\n`a!userinfo [@persona]` · fecha de cuenta, ingreso e ID\n`a!serverinfo` · miembros y canales del servidor\n`a!ping` · latencia del bot y Discord\n\nTambién puedes usar `/utilidad` y elegir la herramienta desde el menú de comandos.',
+    body: '# 🧰 UTILIDADES\nAtajos prácticos para decisiones rápidas y datos del servidor.\n\n## 🎲 Decidir y jugar\n`a!roll [caras]` / `a!dado [caras]` · tira de 2 a 1,000,000 caras\n`a!coin` / `a!moneda` · lanza una moneda\n`a!choose opción 1, opción 2` · elige al azar entre tus opciones\n`a!8ball pregunta` / `a!bola pregunta` · respuesta aleatoria\n`a!hack [@persona]` · animación ficticia de hackeo\n\n## 👤 Información\n`a!avatar [@persona]` · avatar en tamaño grande\n`a!userinfo [@persona]` · fecha de cuenta, ingreso e ID\n`a!serverinfo` · miembros y canales del servidor\n`a!ping` · latencia del bot y Discord\n\nTambién puedes usar `/utilidad` y elegir la herramienta desde el menú de comandos.',
   },
   admin: {
     label: 'Admin', description: 'Herramientas privadas del propietario', emoji: '🛡️',

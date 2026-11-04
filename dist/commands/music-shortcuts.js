@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { addTrack, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
+import { addTrack, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks } from '../services/music.js';
 import { componentUpdate, musicPanel, queuePanel, searchResultsPanel } from '../ui/panels.js';
 export const musicShortcutCommands = [
     createPlayCommand('play', 'Reproduce música o enlaces de YouTube, SoundCloud y Spotify.'),
@@ -89,7 +89,7 @@ function createQueueCommand(name) {
                 await interaction.reply({ content: 'La cola solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(queuePanel(interaction.client.lavalink.getPlayer(context.guildId), 0));
+            await interaction.reply(queuePanel(interaction.client.lavalink.getPlayer(context.guildId), 0, context.guildId));
         },
     };
 }
@@ -103,11 +103,27 @@ function createControlCommand(name, description, action) {
                 return;
             }
             const player = interaction.client.lavalink.getPlayer(context.guildId);
+            const voiceChannelId = context.guild.voiceStates.cache.get(interaction.user.id)?.channelId;
+            if (!player && action === 'resume') {
+                if (!voiceChannelId) {
+                    await interaction.reply({ content: 'Entra a un canal de voz para recuperar la cola.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                try {
+                    const resumed = await resumeSavedMusicQueue(interaction.client, { guildId: context.guildId, voiceChannelId, textChannelId: interaction.channelId, user: interaction.user });
+                    await refreshMusicPanel(interaction.client, context.guildId);
+                    await interaction.editReply(`▶️ Recuperé **${resumed.currentTitle}** y ${resumed.queuedTracks} canciones en espera. La recuperación dura una hora.`);
+                }
+                catch (error) {
+                    await interaction.editReply(`⚠️ ${errorText(error, 'No pude recuperar la cola.')}`);
+                }
+                return;
+            }
             if (!player) {
                 await interaction.reply({ content: 'No hay música activa. Usa `/play` para empezar.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            const voiceChannelId = context.guild.voiceStates.cache.get(interaction.user.id)?.channelId;
             if (!voiceChannelId || voiceChannelId !== player.voiceChannelId) {
                 await interaction.reply({ content: 'Entra al mismo canal de voz que el bot para controlar la música.', flags: MessageFlags.Ephemeral });
                 return;

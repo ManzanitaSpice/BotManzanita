@@ -51,7 +51,7 @@ export const rpgCommand: BotCommand = {
               : 'Tú o esa persona ya tienen un desafío o duelo RPG activo.';
         await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral }); return;
       }
-      await interaction.reply(rpgPvpPanel(result.match));
+      await interaction.reply(await rpgPvpPanel(result.match));
       return;
     }
     if (action === 'misiones') {

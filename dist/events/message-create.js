@@ -2,7 +2,7 @@ import { EmbedBuilder, MessageFlags, escapeMarkdown } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
 import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
-import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
+import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks } from '../services/music.js';
 import { addFavorite, getFavorites, getPlaylist, getPlaylists, removeFavorite, saveTrackToPlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
@@ -121,7 +121,7 @@ async function routeMessage(message) {
         return;
     }
     if (['queue', 'q', 'cola'].includes(command)) {
-        await sendPanel(message, queuePanel(client.lavalink.getPlayer(guildId), 0));
+        await sendPanel(message, queuePanel(client.lavalink.getPlayer(guildId), 0, guildId));
         return;
     }
     if (['np', 'nowplaying', 'panel'].includes(command)) {
@@ -131,8 +131,17 @@ async function routeMessage(message) {
     }
     if (['pause', 'resume', 'skip', 'prev', 'stop', 'leave', 'shuffle', 'repeat', 'vol', 'volume', 'fx', 'effect'].includes(command)) {
         const player = client.lavalink.getPlayer(guildId);
+        if (!player && command === 'resume') {
+            const voiceChannelId = message.guild.voiceStates.cache.get(userId)?.channelId;
+            if (!voiceChannelId)
+                return say(message, 'Entra a un canal de voz para recuperar la cola.');
+            const resumed = await resumeSavedMusicQueue(client, { guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message) });
+            await refreshMusicPanel(client, guildId);
+            await say(message, `▶️ Recuperé **${resumed.currentTitle}** y ${resumed.queuedTracks} canciones en espera. Puedes recuperarla durante una hora: vence <t:${resumed.expiresAt}:R>.`);
+            return;
+        }
         if (!player)
-            return say(message, 'No hay música activa. Usa `a!play canción`.');
+            return say(message, 'No hay música activa ni una cola reciente para recuperar.');
         const voiceChannelId = message.guild.voiceStates.cache.get(userId)?.channelId;
         if (!voiceChannelId || voiceChannelId !== player.voiceChannelId)
             return say(message, 'Entra al mismo canal de voz que el bot para controlarlo.');
@@ -142,8 +151,16 @@ async function routeMessage(message) {
             response = '⏸️ Pausada.';
         }
         else if (command === 'resume') {
-            await player.resume();
-            response = '▶️ Reanudada.';
+            if (player.paused) {
+                await player.resume();
+                response = '▶️ Reanudada.';
+            }
+            else if (!player.playing && (player.queue.current || player.queue.tracks.length)) {
+                await player.play();
+                response = '▶️ Cola recuperada y en reproducción.';
+            }
+            else
+                response = 'La música ya está reproduciéndose.';
         }
         else if (command === 'skip') {
             await player.skip();
@@ -505,7 +522,7 @@ async function routeMessage(message) {
             const result = await createRpgPvpChallenge(guildId, userId, message.author.username, opponent.id, opponent.username, message.id);
             if (!result.ok)
                 return say(message, 'No se pudo iniciar el reto; revisa que ambos tengan mascota y no estén en otro duelo.');
-            await message.reply({ ...rpgPvpPanel(result.match), allowedMentions: { repliedUser: false } });
+            await message.reply({ ...await rpgPvpPanel(result.match), allowedMentions: { repliedUser: false } });
             return;
         }
         return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore zona`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
@@ -515,7 +532,30 @@ async function routeMessage(message) {
 async function routeUtilityMessage(message, command, args) {
     const target = message.mentions.users.first() ?? message.author;
     const embed = new EmbedBuilder().setColor(0x38bdf8);
-    if (['roll', 'dado'].includes(command)) {
+    if (['hack', 'hackear'].includes(command)) {
+        const ipRanges = ['192.0.2', '198.51.100', '203.0.113'];
+        const fakeIp = `${ipRanges[randomInt(ipRanges.length)]}.${randomInt(1, 255)}`;
+        const token = Array.from({ length: 10 }, () => randomInt(16).toString(16)).join('');
+        const targetName = escapeMarkdown(message.mentions.users.first()?.username ?? 'servidor de prueba').replace(/@/g, '@\u200b');
+        const stages = [
+            { progress: 15, line: 'Iniciando consola de utilería…', detail: 'Preparando escenario completamente ficticio.' },
+            { progress: 35, line: `Buscando ruta hacia ${fakeIp}…`, detail: 'IP reservada para ejemplos · TEST-NET.' },
+            { progress: 58, line: 'Escaneando puertos imaginarios…', detail: `22/tcp · 80/tcp · 443/tcp · huella ${token.slice(0, 6)}` },
+            { progress: 82, line: 'Descifrando archivos de mentira…', detail: `Clave de utilería: ${token} · cifrado: TACOS-256` },
+            { progress: 100, line: '¡Infiltración de película completada!', detail: 'Hallazgo: memes_secretos.txt · acceso real: ninguno.' },
+        ];
+        const makeHackEmbed = (stage) => new EmbedBuilder().setColor(stage.progress === 100 ? 0x22c55e : 0x38bdf8)
+            .setTitle('🖥️ SIMULACIÓN DE HACKING')
+            .setDescription(`**Objetivo ficticio:** ${targetName}\n\`\`\`ansi\n[${'█'.repeat(Math.floor(stage.progress / 10))}${'░'.repeat(10 - Math.floor(stage.progress / 10))}] ${stage.progress}%\n> ${stage.line}\n> ${stage.detail}\n\`\`\``)
+            .setFooter({ text: 'Broma visual · no se conecta a ningún sistema ni revela datos reales.' });
+        const response = await message.reply({ embeds: [makeHackEmbed(stages[0])], allowedMentions: { parse: [], repliedUser: false } });
+        for (const stage of stages.slice(1)) {
+            await new Promise((resolve) => setTimeout(resolve, 650 + randomInt(400)));
+            await response.edit({ embeds: [makeHackEmbed(stage)], allowedMentions: { parse: [] } });
+        }
+        return true;
+    }
+    else if (['roll', 'dado'].includes(command)) {
         const sides = args[0] === undefined ? 100 : Number(args[0]);
         if (!Number.isSafeInteger(sides) || sides < 2 || sides > 1_000_000) {
             await say(message, 'Uso: `a!roll [caras]` · elige entre 2 y 1,000,000.');

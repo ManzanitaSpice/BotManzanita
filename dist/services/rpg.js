@@ -285,15 +285,16 @@ export function getPetRarityOdds(element) {
 }
 const rarityRank = { 'Común': 0, 'Poco común': 1, 'Raro': 2, 'Épico': 3, 'Legendario': 4 };
 export const RPG_DAILY_XP_CAP = 650;
-export const RPG_EXPLORE_COOLDOWN = 2 * 60 * 60;
-export const RPG_BATTLE_COOLDOWN = 2 * 60 * 60;
+export const RPG_EXPLORE_COOLDOWN = 4 * 60 * 60;
+export const RPG_BATTLE_COOLDOWN = 3 * 60 * 60;
 export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
+const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
 const CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
-    { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 120 },
-    { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 150 },
-    { id: 'train', title: 'Disciplina', description: 'Entrena a tu mascota 1 vez', target: 1, reward: 100 },
+    { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 40 },
+    { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 50 },
+    { id: 'train', title: 'Disciplina', description: 'Entrena a tu mascota 1 vez', target: 1, reward: 30 },
 ];
 function now() { return Math.floor(Date.now() / 1000); }
 function utcDate(at = now()) { return new Date(at * 1000).toISOString().slice(0, 10); }
@@ -671,7 +672,7 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
         const hungerPenalty = pet.hunger < 35 ? 12 : pet.hunger < 60 ? 5 : 0;
         const effectiveDanger = Math.max(5, Math.min(85, zone.danger - Math.floor(pet.agility / 5) - affinity - roleBonus - pet.expeditionEffects.safety - petRarity * 2 - bondBonus + hungerPenalty));
         const success = randomInt(100) >= effectiveDanger;
-        let coins = success ? zone.reward[0] + randomInt(zone.reward[1] - zone.reward[0] + 1) : 0;
+        let coins = success ? Math.floor((zone.reward[0] + randomInt(zone.reward[1] - zone.reward[0] + 1)) * RPG_COIN_REWARD_SCALE) : 0;
         const xpRaw = success ? 32 + randomInt(34) : 14 + randomInt(18);
         let xp = pet.specialization === 'Místico' ? Math.floor(xpRaw * 1.15) : xpRaw;
         const baseDamage = success ? randomInt(6) : 9 + randomInt(19);
@@ -690,7 +691,7 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
             const won = bossPower >= bossTarget;
             boss = { name: zone.boss.name, won, rewardCoins: 0, rewardXp: 0 };
             if (won) {
-                const bonusCoins = zone.boss.reward[0] + randomInt(zone.boss.reward[1] - zone.boss.reward[0] + 1);
+                const bonusCoins = Math.floor((zone.boss.reward[0] + randomInt(zone.boss.reward[1] - zone.boss.reward[0] + 1)) * RPG_COIN_REWARD_SCALE);
                 const bonusXp = zone.boss.xp[0] + randomInt(zone.boss.xp[1] - zone.boss.xp[0] + 1);
                 coins += bonusCoins;
                 xp += bonusXp;
@@ -812,7 +813,7 @@ function expeditionLogFromRow(row) {
 }
 export async function battleRpg(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
-    const enemies = [{ name: 'Slime de bosque', minLevel: 1, power: 8, reward: [35, 60] }, { name: 'Ladrón de ruinas', minLevel: 3, power: 17, reward: [75, 120] }, { name: 'Gólem de obsidiana', minLevel: 6, power: 28, reward: [150, 230] }];
+    const enemies = [{ name: 'Slime de bosque', minLevel: 1, power: 8, reward: [20, 35] }, { name: 'Ladrón de ruinas', minLevel: 3, power: 17, reward: [40, 65] }, { name: 'Gólem de obsidiana', minLevel: 6, power: 28, reward: [75, 110] }];
     const at = now();
     const resolve = (pet) => {
         if (pet.hp <= 0)

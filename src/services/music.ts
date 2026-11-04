@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { Client, Message } from 'discord.js';
 import type { Player, Track, TrackRequester, UnresolvedTrack } from 'lavalink-client';
 import { musicPanel } from '../ui/panels.js';
+import { getMusicQueueRecovery, rememberMusicQueueChannel } from '../storage/music-queue-store.js';
 
 export type MusicEffect = 'normal' | 'bass' | 'rock' | 'pop' | 'nightcore' | 'vaporwave';
 
@@ -10,6 +11,7 @@ type SearchSession = { userId: string; guildId: string; tracks: Track[]; expires
 const panelReferences = new Map<string, PanelReference>();
 const searchSessions = new Map<string, SearchSession>();
 const MAX_SEARCH_SESSIONS = 1_000;
+const restoredQueues = new WeakSet<Player>();
 
 export function rememberMusicPanel(guildId: string, message: Message): void {
   panelReferences.set(guildId, { message });
@@ -158,11 +160,35 @@ export async function addSelectedTrack(
   input: { guildId: string; voiceChannelId: string; textChannelId: string; user: TrackRequester },
   track: Track,
 ): Promise<void> {
-  const player = getOrCreatePlayer(client, input);
+  const player = await getOrCreatePlayer(client, input);
   if (player.queue.tracks.length >= 500) throw new Error('La cola llegó al límite de 500 canciones.');
   if (!player.connected) await player.connect();
   await player.queue.add(track);
+  rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
   if (!player.playing && !player.paused) await player.play();
+}
+
+export async function resumeSavedMusicQueue(
+  client: Client,
+  input: { guildId: string; voiceChannelId: string; textChannelId: string; user: TrackRequester },
+): Promise<{ currentTitle: string; queuedTracks: number; expiresAt: number }> {
+  if (!client.lavalink.useable) throw new Error('El nodo de audio aún no está disponible.');
+  const recovery = getMusicQueueRecovery(input.guildId);
+  if (!recovery) throw new Error('No hay una cola reciente para recuperar; las colas guardadas caducan en una hora.');
+  if (recovery.voiceChannelId && recovery.voiceChannelId !== input.voiceChannelId) {
+    throw new Error('Entra al mismo canal de voz donde estaba reproduciéndose la música.');
+  }
+  const existing = client.lavalink.getPlayer(input.guildId);
+  if (existing && (existing.playing || existing.paused || existing.queue.current || existing.queue.tracks.length)) {
+    throw new Error('Ya hay una sesión musical activa o una cola cargada en este servidor.');
+  }
+  const player = await getOrCreatePlayer(client, input);
+  if (!player.connected) await player.connect();
+  if (!player.queue.current && !player.queue.tracks.length) throw new Error('La cola guardada ya no tiene canciones reproducibles.');
+  await player.play();
+  rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
+  const title = player.queue.current?.info.title ?? 'La cola guardada';
+  return { currentTitle: title, queuedTracks: player.queue.tracks.length, expiresAt: Math.floor(Date.now() / 1000) + 60 * 60 };
 }
 
 export async function disconnectPlayer(player: Player): Promise<void> {
@@ -185,7 +211,7 @@ export async function addSavedTracks(
 ): Promise<{ added: number; unavailable: number }> {
   if (!client.lavalink.useable) throw new Error('El nodo de audio aún no está disponible.');
   if (!input.uris.length) throw new Error('Esta lista no tiene canciones guardadas.');
-  const player = getOrCreatePlayer(client, input);
+  const player = await getOrCreatePlayer(client, input);
   if (player.queue.tracks.length + input.uris.length > 500) throw new Error('La cola llegó al límite de 500 canciones.');
   if (!player.connected) await player.connect();
 
@@ -197,7 +223,9 @@ export async function addSavedTracks(
       try {
         const result = await searchWithFallback((identifier) => player.search(identifier, input.user, true), input.uris[index]!);
         const track = result?.tracks[0];
-        resolved[index] = track && !('resolve' in track) ? track : undefined;
+        if (!track) continue;
+        if ('resolve' in track) await track.resolve(player);
+        resolved[index] = 'resolve' in track ? undefined : track;
       } catch {
         resolved[index] = undefined;
       }
@@ -207,6 +235,7 @@ export async function addSavedTracks(
   const tracks = resolved.filter((track): track is Track => track !== undefined);
   if (!tracks.length) throw new Error('No pude resolver ninguna canción guardada.');
   await player.queue.add(tracks);
+  rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
   if (!player.playing && !player.paused) await player.play();
   return { added: tracks.length, unavailable: input.uris.length - tracks.length };
 }
@@ -217,58 +246,63 @@ export async function addTrack(
 ): Promise<{ title: string; count: number; playlist: boolean; truncated: boolean }> {
   if (!input.query.trim()) throw new Error('Escribe el nombre de una canción o pega un enlace.');
   if (!client.lavalink.useable) throw new Error('El nodo de audio aún no está disponible.');
-  let player = client.lavalink.getPlayer(input.guildId);
-  if (player && player.voiceChannelId !== input.voiceChannelId) {
+  const activePlayer = client.lavalink.getPlayer(input.guildId);
+  if (activePlayer && activePlayer.voiceChannelId !== input.voiceChannelId) {
     throw new Error('Ya estoy reproduciendo en otro canal de voz de este servidor.');
   }
-
-  const created = !player;
-  player ??= getOrCreatePlayer(client, input);
-
-  try {
-    if (!player.connected) await player.connect();
-    const result = await searchWithFallback((identifier) => player.search(identifier, input.user, true), input.query);
-    if (!result?.tracks.length) {
-      if (youtubeVideoIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
-        throw new Error('No encontré ese video exacto en la búsqueda de YouTube. Prueba con el nombre de la canción y el artista.');
-      }
-      throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
+  const node = activePlayer?.node ?? client.lavalink.nodeManager.leastUsedNodes('memory').find((candidate) => candidate.connected);
+  if (!node) throw new Error('No hay nodos de audio conectados.');
+  const result = await searchWithFallback(
+    (identifier) => activePlayer ? activePlayer.search(identifier, input.user, true) : node.search(identifier, input.user, true),
+    input.query,
+  );
+  if (!result?.tracks.length) {
+    if (youtubeVideoIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
+      throw new Error('No encontré ese video exacto en la búsqueda de YouTube. Prueba con el nombre de la canción y el artista.');
     }
-
-    const first = result.tracks[0];
-    if (!first) throw new Error('La búsqueda no devolvió una canción reproducible.');
-    const selectedTracks = result.loadType === 'playlist' ? result.tracks.slice(0, 50) : [first];
-    if (player.queue.tracks.length + selectedTracks.length > 500) {
-      throw new Error('La cola llegó al límite de 500 canciones.');
-    }
-    await player.queue.add(selectedTracks);
-    if (!player.playing && !player.paused) await player.play();
-    return {
-      title: first.info.title,
-      count: selectedTracks.length,
-      playlist: result.loadType === 'playlist',
-      truncated: result.loadType === 'playlist' && result.tracks.length > selectedTracks.length,
-    };
-  } catch (error) {
-    if (created) await player.destroy('search failed').catch(() => undefined);
-    throw error;
+    throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
   }
+
+  const first = result.tracks[0];
+  if (!first) throw new Error('La búsqueda no devolvió una canción reproducible.');
+  const selectedTracks = result.loadType === 'playlist' ? result.tracks.slice(0, 50) : [first];
+  const player = activePlayer ?? await getOrCreatePlayer(client, input);
+  if (!player.connected) await player.connect();
+  if (player.queue.tracks.length + selectedTracks.length > 500) {
+    throw new Error('La cola llegó al límite de 500 canciones.');
+  }
+  await player.queue.add(selectedTracks);
+  rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
+  if (!player.playing && !player.paused) await player.play();
+  return {
+    title: first.info.title,
+    count: selectedTracks.length,
+    playlist: result.loadType === 'playlist',
+    truncated: result.loadType === 'playlist' && result.tracks.length > selectedTracks.length,
+  };
 }
 
-function getOrCreatePlayer(client: Client, input: { guildId: string; voiceChannelId: string; textChannelId: string }) {
+async function getOrCreatePlayer(client: Client, input: { guildId: string; voiceChannelId: string; textChannelId: string }): Promise<Player> {
   const existing = client.lavalink.getPlayer(input.guildId);
+  let player: Player;
   if (existing) {
     if (existing.voiceChannelId !== input.voiceChannelId) {
       throw new Error('Ya estoy reproduciendo en otro canal de voz de este servidor.');
     }
-    return existing;
+    player = existing;
+  } else {
+    player = client.lavalink.createPlayer({
+      guildId: input.guildId,
+      voiceChannelId: input.voiceChannelId,
+      textChannelId: input.textChannelId,
+      selfDeaf: true,
+      volume: 65,
+    });
   }
-  return client.lavalink.createPlayer({
-    guildId: input.guildId,
-    voiceChannelId: input.voiceChannelId,
-    textChannelId: input.textChannelId,
-    selfDeaf: true,
-    volume: 65,
-  });
+  if (!restoredQueues.has(player)) {
+    await player.queue.utils.sync(true, false);
+    restoredQueues.add(player);
+  }
+  return player;
 }
 

@@ -14,6 +14,7 @@ import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equip
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack, type MusicEffect } from '../services/music.js';
 import { getFavorite, getFavorites, removeFavorite } from '../services/music-library.js';
+import { removePersistedMusicQueueTrack } from '../storage/music-queue-store.js';
 import { ADMIN_OWNER_ID, adminAutocomplete } from '../commands/admin.js';
 import { catalogPanel } from '../ui/catalog.js';
 import { profileCardPanel, profileCustomizePanel, profileInventoryPanel, profileProgressPanel, profileRoomPanel, profileShopPanel } from '../ui/profile.js';
@@ -194,22 +195,29 @@ export function registerInteractionHandler(client: Client) {
           return;
         }
         if (interaction.isButton() && interaction.customId.startsWith('rpg:pvp:move:')) {
-          const [, , , matchId, moveId] = interaction.customId.split(':');
+          const parts = interaction.customId.split(':');
+          const matchId = parts[3];
+          const hasTurnOwner = parts.length >= 6;
+          const expectedTurnUserId = hasTurnOwner ? parts[4] : undefined;
+          const moveId = hasTurnOwner ? parts[5] : parts[4];
           if (!matchId || !moveId) { await interaction.reply({ content: 'Ese movimiento no es válido.', flags: MessageFlags.Ephemeral }); return; }
+          if (expectedTurnUserId && expectedTurnUserId !== interaction.user.id) {
+            await interaction.reply({ content: 'Este botón pertenece al turno de otra persona. El mismo panel se actualizará cuando llegue tu turno.', flags: MessageFlags.Ephemeral }); return;
+          }
           const result = await playRpgPvpTurn(guildId, matchId, interaction.user.id, 'move', moveId);
-          if (!result.ok && result.reason === 'expired') { await interaction.update(rpgPvpPanel(result.match)); return; }
+          if (!result.ok && result.reason === 'expired') { await interaction.update(componentUpdate(await rpgPvpPanel(result.match))); return; }
           if (!result.ok) {
             const message = result.reason === 'not_your_turn' ? 'Todavía no es tu turno.' : result.reason === 'low_energy' ? 'No tienes energía suficiente para esa técnica.' : result.reason === 'move_not_equipped' ? 'Esa técnica no está en la build de este combate.' : result.reason === 'not_participant' ? 'No participas en este duelo.' : result.reason === 'not_active' ? 'El duelo ya no está activo.' : 'No encontré ese duelo.';
             await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral }); return;
           }
-          await interaction.update(rpgPvpPanel(result.match)); return;
+          await interaction.update(componentUpdate(await rpgPvpPanel(result.match))); return;
         }
         if (interaction.isButton() && (interaction.customId.startsWith('rpg:pvp:accept:') || interaction.customId.startsWith('rpg:pvp:decline:'))) {
           const accepting = interaction.customId.startsWith('rpg:pvp:accept:');
           const matchId = interaction.customId.slice(accepting ? 'rpg:pvp:accept:'.length : 'rpg:pvp:decline:'.length);
           const result = await respondRpgPvpChallenge(guildId, matchId, interaction.user.id, accepting);
           if (!result.ok && result.reason === 'expired') {
-            await interaction.update(rpgPvpPanel(result.match));
+            await interaction.update(componentUpdate(await rpgPvpPanel(result.match)));
             return;
           }
           if (!result.ok) {
@@ -217,17 +225,24 @@ export function registerInteractionHandler(client: Client) {
               : result.reason === 'not_pending' ? 'Ese desafío ya fue respondido o terminó.' : 'No encontré ese desafío.';
             await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral }); return;
           }
-          await interaction.update(rpgPvpPanel(result.match));
+          await interaction.update(componentUpdate(await rpgPvpPanel(result.match)));
           return;
         }
         if (interaction.isButton() && interaction.customId.startsWith('rpg:pvp:turn:')) {
-          const [, , , matchId, action] = interaction.customId.split(':');
+          const parts = interaction.customId.split(':');
+          const [, , , matchId] = parts;
+          const hasTurnOwner = parts.length >= 6;
+          const expectedTurnUserId = hasTurnOwner ? parts[4] : undefined;
+          const action = hasTurnOwner ? parts[5] : parts[4];
           if (!matchId || !['attack', 'guard', 'special', 'surrender'].includes(action ?? '')) {
             await interaction.reply({ content: 'Esa acción de duelo no es válida.', flags: MessageFlags.Ephemeral }); return;
           }
+          if (expectedTurnUserId && expectedTurnUserId !== interaction.user.id) {
+            await interaction.reply({ content: 'Este botón pertenece al turno de otra persona. El mismo panel se actualizará cuando llegue tu turno.', flags: MessageFlags.Ephemeral }); return;
+          }
           const result = await playRpgPvpTurn(guildId, matchId, interaction.user.id, action as RpgPvpAction);
           if (!result.ok && result.reason === 'expired') {
-            await interaction.update(rpgPvpPanel(result.match));
+            await interaction.update(componentUpdate(await rpgPvpPanel(result.match)));
             return;
           }
           if (!result.ok) {
@@ -238,7 +253,7 @@ export function registerInteractionHandler(client: Client) {
                   : 'No encontré ese duelo.';
             await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral }); return;
           }
-          await interaction.update(rpgPvpPanel(result.match));
+          await interaction.update(componentUpdate(await rpgPvpPanel(result.match)));
           return;
         }
         if (interaction.customId === 'rpg:panel' || interaction.customId === 'rpg:refresh') {
@@ -597,7 +612,7 @@ export function registerInteractionHandler(client: Client) {
         }
 
         if (interaction.customId === 'music:queue') {
-          await interaction.reply(queuePanel(player, 0));
+          await interaction.reply(queuePanel(player, 0, interaction.guildId));
           return;
         }
         if (interaction.customId === 'music:queue:close') {
@@ -609,12 +624,15 @@ export function registerInteractionHandler(client: Client) {
         }
         if (interaction.customId.startsWith('music:queue:page:') || interaction.customId.startsWith('music:queue:refresh:')) {
           const page = Number(interaction.customId.split(':').at(-1));
-          await interaction.update(componentUpdate(queuePanel(player, Number.isFinite(page) ? page : 0)));
+          await interaction.update(componentUpdate(queuePanel(player, Number.isFinite(page) ? page : 0, interaction.guildId)));
           return;
         }
         if (interaction.customId.startsWith('music:queue:remove:') && interaction.isStringSelectMenu()) {
           if (!player) {
-            await interaction.update(componentUpdate(queuePanel(undefined, 0)));
+            const index = Number(interaction.values[0]);
+            const removed = removePersistedMusicQueueTrack(interaction.guildId, index);
+            await interaction.update(componentUpdate(queuePanel(undefined, Number(interaction.customId.split(':').at(-1)) || 0, interaction.guildId)));
+            if (removed) await interaction.followUp({ content: `🗑️ Quité **${removed.info.title}** de la cola guardada.`, flags: MessageFlags.Ephemeral });
             return;
           }
           const voiceChannelId = interaction.guild?.voiceStates.cache.get(interaction.user.id)?.channelId;
@@ -624,14 +642,14 @@ export function registerInteractionHandler(client: Client) {
           }
           const index = Number(interaction.values[0]);
           if (!Number.isSafeInteger(index) || index < 0 || index >= player.queue.tracks.length) {
-            await interaction.update(componentUpdate(queuePanel(player, 0)));
+            await interaction.update(componentUpdate(queuePanel(player, 0, interaction.guildId)));
             return;
           }
           const page = Number(interaction.customId.split(':').at(-1)) || 0;
           await interaction.deferUpdate();
           try {
             const removed = await player.queue.remove(index);
-            await interaction.editReply(componentUpdate(queuePanel(player, page)));
+            await interaction.editReply(componentUpdate(queuePanel(player, page, interaction.guildId)));
             if (removed?.removed[0]) {
               await interaction.followUp({ content: `🗑️ Quité **${removed.removed[0].info.title}** de la cola.`, flags: MessageFlags.Ephemeral });
             }

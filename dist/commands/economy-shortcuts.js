@@ -107,7 +107,7 @@ function createEconomyPanelCommand() {
 }
 function createFishCommand() {
     return {
-        data: new SlashCommandBuilder().setName('fish').setDescription('Pesca para ganar monedas cada 30 minutos.'),
+        data: new SlashCommandBuilder().setName('fish').setDescription('Pesca para ganar monedas cada hora.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La pesca solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -160,7 +160,7 @@ function createDailyCommand() {
 }
 function createWorkCommand() {
     return {
-        data: new SlashCommandBuilder().setName('work').setDescription('Trabaja para ganar monedas cada 45 minutos.'),
+        data: new SlashCommandBuilder().setName('work').setDescription('Gana entre 15 y 30 monedas cada hora.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -177,7 +177,7 @@ function createWorkCommand() {
 }
 function createCrimeCommand() {
     return {
-        data: new SlashCommandBuilder().setName('crime').setDescription('Intenta un golpe: puedes ganar botín o pagar una multa.'),
+        data: new SlashCommandBuilder().setName('crime').setDescription('Intenta un golpe cada 4 horas: puedes ganar o pagar una multa.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });

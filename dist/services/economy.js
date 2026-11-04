@@ -2,14 +2,14 @@ import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomBytes, randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
 import { economyPool, insertItemLedger, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
-export const DAILY_AMOUNT = 100;
+export const DAILY_AMOUNT = 75;
 const DAILY_COOLDOWN_SECONDS = 24 * 60 * 60;
-const WORK_COOLDOWN_SECONDS = 45 * 60;
-const FISH_COOLDOWN_SECONDS = 30 * 60;
+const WORK_COOLDOWN_SECONDS = 60 * 60;
+const FISH_COOLDOWN_SECONDS = 60 * 60;
 const ROB_COOLDOWN_SECONDS = 2 * 60 * 60;
-const CRIME_COOLDOWN_SECONDS = 2 * 60 * 60;
+const CRIME_COOLDOWN_SECONDS = 4 * 60 * 60;
 const BANK_INTEREST_INTERVAL_SECONDS = 24 * 60 * 60;
-const BANK_INTEREST_BASIS_POINTS = 10;
+const BANK_INTEREST_BASIS_POINTS = 1;
 const BANK_MAX_ACCRUAL_DAYS = 30;
 const ROB_SHIELD_SECONDS = 24 * 60 * 60;
 const MAX_BET = 100_000;
@@ -348,7 +348,7 @@ async function getInventoryQuantityMysql(connection, guildId, userId, itemId) {
 }
 export async function work(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
-    const amount = 25 + randomInt(41);
+    const amount = 15 + randomInt(16);
     const messages = [
         '🧰 Reparaste una nave en el muelle.', '📦 Repartiste paquetes por toda la ciudad.',
         '🍜 Cubriste un turno en el puesto de ramen.', '🪴 Ayudaste en el invernadero.',
@@ -400,7 +400,7 @@ const crimeFailLines = [
 ];
 export async function crime(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
-    const success = randomInt(100) < 45;
+    const success = randomInt(100) < 40;
     const now = nowSeconds();
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
@@ -409,8 +409,8 @@ export async function crime(guildId, userId, reference) {
             if (now < nextCrimeAt)
                 return { ok: false, secondsRemaining: nextCrimeAt - now };
             const amount = success
-                ? 70 + randomInt(71)
-                : Math.min(account.balance, 15 + randomInt(31));
+                ? 40 + randomInt(41)
+                : Math.min(account.balance, 10 + randomInt(21));
             const signedAmount = success ? amount : -amount;
             const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount });
             await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [signedAmount, now, now, guildId, userId]);
@@ -424,8 +424,8 @@ export async function crime(guildId, userId, reference) {
         if (now < nextCrimeAt)
             return { ok: false, secondsRemaining: nextCrimeAt - now };
         const amount = success
-            ? 70 + randomInt(71)
-            : Math.min(account.balance, 15 + randomInt(31));
+            ? 40 + randomInt(41)
+            : Math.min(account.balance, 10 + randomInt(21));
         const signedAmount = success ? amount : -amount;
         const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount });
         db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?')
@@ -477,10 +477,10 @@ export async function transferCoins(guildId, fromUserId, toUserId, amount, refer
 }
 export async function fish(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
-    const caught = randomInt(100) < 78;
-    const rare = caught && randomInt(100) < 8;
+    const caught = randomInt(100) < 70;
+    const rare = caught && randomInt(100) < 5;
     const fishName = pick(rare ? fishRare : fishCommon);
-    const amount = caught ? (rare ? 90 + randomInt(61) : 20 + randomInt(31)) : 0;
+    const amount = caught ? (rare ? 50 + randomInt(31) : 12 + randomInt(19)) : 0;
     const message = caught
         ? formatMessage(pick(fishCatchLines), { fish: fishName, amount })
         : pick(fishMissLines);
@@ -689,10 +689,10 @@ export async function useShopItem(guildId, userId, itemId, reference) {
     const item = storeItems.find((candidate) => candidate.id === itemId && candidate.usable);
     if (!item)
         return { ok: false, reason: 'invalid_item' };
-    const caught = randomInt(100) < 78;
-    const rare = caught && randomInt(100) < 8;
+    const caught = randomInt(100) < 70;
+    const rare = caught && randomInt(100) < 5;
     const fishName = pick(rare ? fishRare : fishCommon);
-    const amount = caught ? (rare ? 90 + randomInt(61) : 20 + randomInt(31)) * 2 : 0;
+    const amount = caught ? (rare ? 50 + randomInt(31) : 12 + randomInt(19)) * 2 : 0;
     const fishMessage = caught
         ? `¡El cebo premium atrajo un **${fishName}**! La captura salió excelente.`
         : 'El cebo premium se gastó, pero los peces no picaron. Inténtalo de nuevo después del enfriamiento.';
