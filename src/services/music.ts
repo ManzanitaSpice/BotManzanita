@@ -48,10 +48,29 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
   const trimmed = query.trim().replace(/^<(.+)>$/, '$1');
   const youtubeVideoId = youtubeVideoIdFromUrl(trimmed);
   if (youtubeVideoId) {
-    const result = await search(`ytsearch:${youtubeVideoId}`);
-    if (!result) return undefined;
-    const exactTracks = result.tracks.filter((track) => track.info.identifier === youtubeVideoId);
-    return { ...result, tracks: exactTracks } as T;
+    let resolved: T | undefined;
+    let lastError: unknown;
+    // Let the source plugin resolve the original URL first. Searching only by ID
+    // can return no result for valid YouTube URLs, especially music/watch links.
+    try {
+      resolved = await search(trimmed);
+      const exactTracks = resolved.tracks.filter((track) => track.info.identifier === youtubeVideoId);
+      if (exactTracks.length) return { ...resolved, tracks: exactTracks } as T;
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
+      const byId = await search(`ytsearch:${youtubeVideoId}`);
+      const exactTracks = byId.tracks.filter((track) => track.info.identifier === youtubeVideoId);
+      if (exactTracks.length) return { ...byId, tracks: exactTracks } as T;
+      resolved ??= byId;
+    } catch (error) {
+      lastError ??= error;
+    }
+
+    if (!resolved && lastError) throw lastError;
+    return resolved ? { ...resolved, tracks: [] } as T : undefined;
   }
 
   const isUrl = isHttpUrl(trimmed);

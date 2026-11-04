@@ -40,11 +40,32 @@ async function searchWithFallback(search, query) {
     const trimmed = query.trim().replace(/^<(.+)>$/, '$1');
     const youtubeVideoId = youtubeVideoIdFromUrl(trimmed);
     if (youtubeVideoId) {
-        const result = await search(`ytsearch:${youtubeVideoId}`);
-        if (!result)
-            return undefined;
-        const exactTracks = result.tracks.filter((track) => track.info.identifier === youtubeVideoId);
-        return { ...result, tracks: exactTracks };
+        let resolved;
+        let lastError;
+        // Let the source plugin resolve the original URL first. Searching only by ID
+        // can return no result for valid YouTube URLs, especially music/watch links.
+        try {
+            resolved = await search(trimmed);
+            const exactTracks = resolved.tracks.filter((track) => track.info.identifier === youtubeVideoId);
+            if (exactTracks.length)
+                return { ...resolved, tracks: exactTracks };
+        }
+        catch (error) {
+            lastError = error;
+        }
+        try {
+            const byId = await search(`ytsearch:${youtubeVideoId}`);
+            const exactTracks = byId.tracks.filter((track) => track.info.identifier === youtubeVideoId);
+            if (exactTracks.length)
+                return { ...byId, tracks: exactTracks };
+            resolved ??= byId;
+        }
+        catch (error) {
+            lastError ??= error;
+        }
+        if (!resolved && lastError)
+            throw lastError;
+        return resolved ? { ...resolved, tracks: [] } : undefined;
     }
     const isUrl = isHttpUrl(trimmed);
     const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch|spsearch):/i.test(trimmed);
