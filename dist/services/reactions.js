@@ -1,6 +1,8 @@
 import { randomInt } from 'node:crypto';
-import { EmbedBuilder } from 'discord.js';
+import { resolve } from 'node:path';
+import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 const definitions = {
+    cacawe: { localAsset: 'cacawe.gif', aliases: ['cacawe', 'caca'], targetRequired: false, text: (actor, target) => target ? `${actor} hizo cacawe con ${target}.` : `${actor} hizo cacawe.` },
     happy: { endpoint: 'happy', aliases: ['feliz', 'felicidad'], targetRequired: false, text: (actor, target) => target ? `${actor} celebra con ${target}.` : `${actor} está feliz.` },
     sip: { endpoint: 'sip', aliases: ['te', 'tea', 'tomar_te', 'tomarte'], targetRequired: false, text: (actor, target) => target ? `${actor} comparte té con ${target}. 🍵` : `${actor} toma té. 🍵`, sharedText: (actor, target) => [`${actor} sirve té a ${target}. 🍵`, `${actor} brinda con ${target}. ☕`, `${actor} comparte una taza con ${target}.`, `${actor} toma té con ${target}.`, `${actor} invita a ${target} a tomar té.`, `${actor} ofrece té a ${target}.`, `${actor} y ${target} hacen una pausa para el té.`, `${actor} prepara té para ${target}.`, `${actor} disfruta té con ${target}.`, `${actor} acompaña a ${target} con una taza.`] },
     slap: { endpoint: 'slap', aliases: ['golpear', 'golpe', 'pegar', 'bofetada'], targetRequired: true, text: (actor, target) => `${actor} abofeteó a ${target}.`, sharedText: (actor, target) => [`${actor} abofeteó a ${target}.`, `${actor} le dio una cachetada a ${target}.`, `${actor} le soltó un bofetón a ${target}.`, `${actor} le dio un manotazo a ${target}.`, `${actor} sorprendió a ${target} con una cachetada.`, `${actor} le dio una palmada a ${target}.`, `${actor} le acomodó el fleco a ${target}.`, `${actor} le dio un golpe a ${target}.`, `${actor} golpeó a ${target}; pide repetición el árbitro.`, `${actor} abofeteó a ${target}; el chat pide VAR.`] },
@@ -93,7 +95,7 @@ const REQUEST_COOLDOWN_MS = 2_500;
 const API_BASE = 'https://nekos.best/api/v2';
 export function findAnimeReaction(command) { return lookup.get(command.normalize('NFC').toLocaleLowerCase()); }
 export function animeReactionCatalog() {
-    return Object.entries(definitions).map(([id, definition]) => ({ id, aliases: definition.aliases, targetRequired: definition.targetRequired, variants: 10 }));
+    return Object.entries(definitions).map(([id, definition]) => ({ id, aliases: definition.aliases, targetRequired: definition.targetRequired, variants: definition.localAsset ? 1 : 10 }));
 }
 export async function createAnimeReaction(id, actor, target, cooldownKey) {
     const definition = definitions[id];
@@ -114,19 +116,31 @@ export async function createAnimeReaction(id, actor, target, cooldownKey) {
     lastRequest.set(cooldownKey, now);
     lastCategoryRequest.set(id, now);
     try {
-        const response = await fetch(`${API_BASE}/${definition.endpoint}`, {
-            headers: { 'User-Agent': 'BotManzanita (https://discord.com/oauth2/authorize?client_id=1567009025529352263&scope=bot)', Accept: 'application/json' },
-            signal: AbortSignal.timeout(7_000),
-        });
-        if (!response.ok)
-            return { ok: false, reason: 'unavailable' };
-        const payload = await response.json();
-        const image = payload.results?.[0];
-        if (!image?.url)
-            return { ok: false, reason: 'unavailable' };
-        const imageUrl = new URL(image.url);
-        if (imageUrl.protocol !== 'https:' || imageUrl.hostname !== 'nekos.best' || !imageUrl.pathname.toLowerCase().endsWith('.gif'))
-            return { ok: false, reason: 'unavailable' };
+        let imageUrl;
+        let files;
+        if (definition.localAsset) {
+            const filename = definition.localAsset;
+            imageUrl = `attachment://${filename}`;
+            files = [new AttachmentBuilder(resolve(process.cwd(), 'assets', 'reactions', filename), { name: filename })];
+        }
+        else {
+            if (!definition.endpoint)
+                return { ok: false, reason: 'unavailable' };
+            const response = await fetch(`${API_BASE}/${definition.endpoint}`, {
+                headers: { 'User-Agent': 'BotManzanita (https://discord.com/oauth2/authorize?client_id=1567009025529352263&scope=bot)', Accept: 'application/json' },
+                signal: AbortSignal.timeout(7_000),
+            });
+            if (!response.ok)
+                return { ok: false, reason: 'unavailable' };
+            const payload = await response.json();
+            const image = payload.results?.[0];
+            if (!image?.url)
+                return { ok: false, reason: 'unavailable' };
+            const remoteImageUrl = new URL(image.url);
+            if (remoteImageUrl.protocol !== 'https:' || remoteImageUrl.hostname !== 'nekos.best' || !remoteImageUrl.pathname.toLowerCase().endsWith('.gif'))
+                return { ok: false, reason: 'unavailable' };
+            imageUrl = remoteImageUrl.toString();
+        }
         const sharedTexts = target && definition.sharedText ? definition.sharedText(actor, target) : undefined;
         const interaction = sharedTexts?.length
             ? sharedTexts[randomInt(sharedTexts.length)]
@@ -135,9 +149,9 @@ export async function createAnimeReaction(id, actor, target, cooldownKey) {
         const embed = new EmbedBuilder()
             .setColor(0x9b78e8)
             .setDescription(caption)
-            .setImage(imageUrl.toString())
-            .setFooter({ text: 'GIF: NEKOS.BEST' });
-        return { ok: true, embed };
+            .setImage(imageUrl)
+            .setFooter({ text: definition.localAsset ? 'GIF: Bot Manzanita' : 'GIF: NEKOS.BEST' });
+        return { ok: true, embed, ...(files ? { files } : {}) };
     }
     catch {
         return { ok: false, reason: 'unavailable' };

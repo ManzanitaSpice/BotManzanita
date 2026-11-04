@@ -1,6 +1,6 @@
 # Despliegue en host Node.js
 
-Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `assets/rpg/` con las ilustraciones del módulo RPG, `package.json`, `package-lock.json`, la plantilla [`ECONOMY-MYSQL.env.example`](ECONOMY-MYSQL.env.example) y este instructivo. No incluye `.env`, `ECONOMY-MYSQL.env`, `data/` ni `node_modules/`.
+Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `assets/rpg/` y `assets/reactions/` con los recursos locales del bot, `package.json`, `package-lock.json`, la plantilla [`ECONOMY-MYSQL.env.example`](ECONOMY-MYSQL.env.example) y este instructivo. No incluye `.env`, `ECONOMY-MYSQL.env`, `data/` ni `node_modules/`.
 
 ## Instalación
 

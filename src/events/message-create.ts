@@ -69,7 +69,7 @@ async function routeMessage(message: Message): Promise<void> {
     const result = await createAnimeReaction(reactionId, actorName, targetName, `${guildId}:${userId}`);
     if (!result.ok) return say(message, result.reason === 'target_required' ? `Menciona a alguien: a!${reactionId} @persona.` : result.reason === 'cooldown' ? `Espera ${result.seconds ?? 1} s antes de otra expresión.` : 'No pude cargar el GIF ahora; intenta en un momento.');
     if (target && (reactionId === 'hug' || reactionId === 'pat')) await recordReceivedRpgReaction(target.id, reactionId);
-    await message.reply({ embeds: [result.embed], allowedMentions: { parse: [] } }); return;
+    await message.reply({ embeds: [result.embed], ...(result.files ? { files: result.files } : {}), allowedMentions: { parse: [] } }); return;
   }
 
   // MUSIC

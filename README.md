@@ -96,7 +96,7 @@ La reproducción usa un nodo Lavalink v4. `lavalink/application.yml` configura Y
 - `src/services`: reglas de economía y conexión/control del reproductor.
 - `src/storage`: SQLite, transacciones, inventario y ledger de monedas.
 - `src/services/rpg.ts`: mascotas, progresión, expediciones, PvE, tienda, equipo y misiones enlazados a la economía.
-- `assets/rpg`: ilustraciones pixel art de mascotas, huevos de rareza y mapa de zonas; el paquete del host debe conservar esta carpeta junto a `dist/`.
+- `assets/rpg`: ilustraciones pixel art de mascotas, huevos de rareza y mapa de zonas; `assets/reactions` contiene GIFs usados por expresiones locales como `a!cacawe`. El paquete del host debe conservar ambas carpetas junto a `dist/`.
 - `src/events`: despacho de interacciones.
 
 La economía se separa por servidor y usuario. El banco guarda una billetera y ahorro separados, acredita interés compuesto de 0.5% por día completo y limita cada actualización a 30 días de cálculo. Por defecto usa SQLite; en producción puedes elegir MySQL/MariaDB mediante `ECONOMY_DB_DRIVER=mysql` y las variables `ECONOMY_DB_*`. Apuestas, premios, robos, transferencias, compras y consumos usan transacciones y un ledger. El ranking suma billetera y banco. La tienda vende consumibles acumulables con efectos que se aplican al usarlos; la ruleta de artículos consume una unidad incluso al perder. Consulta [HOSTING.md](HOSTING.md) para configurar el panel y migrar saldos existentes. Favoritos y listas de música permanecen en SQLite. Lavalink mantiene el estado de la cola por servidor mientras el bot está activo.
