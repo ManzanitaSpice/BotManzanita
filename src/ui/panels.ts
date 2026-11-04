@@ -489,7 +489,8 @@ export async function bankPanel(guildId: string, userId: string) {
 export function blackjackPanel(game: BlackjackView) {
   const active = game.status === 'active';
   const accent = active ? 0x7c3aed : game.outcome === 'win' ? 0x22c55e : game.outcome === 'push' ? 0x0ea5e9 : 0xef4444;
-  const playerCards = game.playerCards.join('　');
+  const playerCards = game.playerCards.join('　＋　');
+  const scoreLine = game.playerCardValues.join(' + ');
   const dealerCards = game.dealerCards.join('　');
   const dealerHeading = active ? '### 🎩 CRUPIER · carta visible' : `### 🎩 CRUPIER · ${game.dealerTotal} puntos`;
   const playerBusted = game.playerTotal > 21;
@@ -506,7 +507,7 @@ export function blackjackPanel(game: BlackjackView) {
       `# 🃏 VEINTIUNO\n💵 **Apuesta:** ${money.format(game.bet)} monedas　 ·　 👛 **Saldo:** ${money.format(game.balance)} monedas`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 🙋 TU MANO · ${game.playerTotal} ${game.playerTotal === 1 ? 'punto' : 'puntos'}\n${playerCards}`))
+      `### 🙋 TU MANO · ${game.playerCards.length} ${game.playerCards.length === 1 ? 'carta' : 'cartas'}\n${playerCards}\n**${scoreLine} = ${game.playerTotal} ${game.playerTotal === 1 ? 'punto' : 'puntos'}**${game.lastDrawnCard ? `\n\n🎴 Carta nueva: ${game.lastDrawnCard}` : ''}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `${dealerHeading}\n${dealerCards}${active ? '\n_El crupier revela su mano al terminar tu turno._' : ''}`))

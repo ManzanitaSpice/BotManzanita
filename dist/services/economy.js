@@ -776,14 +776,27 @@ function total(cards) {
     return value;
 }
 function cardText(card) { return `**${card.rank}${card.suit}**`; }
+function effectiveCardValues(cards) {
+    const values = cards.map((card) => card.value);
+    let sum = values.reduce((value, cardValue) => value + cardValue, 0);
+    for (let index = 0; sum > 21 && index < cards.length; index++) {
+        if (cards[index]?.rank === 'A') {
+            values[index] = 1;
+            sum -= 10;
+        }
+    }
+    return values;
+}
 function isBlackjackFinished(state) { return state.status === 'finished'; }
-function blackjackView(gameId, bet, balance, state) {
+function blackjackView(gameId, bet, balance, state, lastDrawnCard) {
     const dealerCards = state.status === 'active'
         ? [cardText(state.dealerCards[0]), '🂠']
         : state.dealerCards.map(cardText);
     return {
         gameId, bet, balance,
         playerCards: state.playerCards.map(cardText),
+        playerCardValues: effectiveCardValues(state.playerCards),
+        ...(lastDrawnCard ? { lastDrawnCard: cardText(lastDrawnCard) } : {}),
         dealerCards,
         playerTotal: total(state.playerCards),
         ...(isBlackjackFinished(state) ? { dealerTotal: total(state.dealerCards) } : {}),
@@ -895,8 +908,11 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
             const state = JSON.parse(game.state_json);
             if (game.status !== 'active' || state.status !== 'active')
                 return blackjackView(game.id, Number(game.bet), account.balance, state);
-            if (action === 'hit')
-                state.playerCards.push(drawCard(state));
+            let lastDrawnCard;
+            if (action === 'hit') {
+                lastDrawnCard = drawCard(state);
+                state.playerCards.push(lastDrawnCard);
+            }
             else
                 settleAfterTurn(state, Number(game.bet));
             if (action === 'hit' && total(state.playerCards) > 21)
@@ -909,7 +925,7 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
                 await mysqlAddLedger(connection, guildId, userId, state.payout, 'blackjack:payout', `${game.id}:payout`, now);
             }
             await connection.execute('UPDATE economy_games SET status = ?, state_json = ?, updated_at = ? WHERE id = ?', [state.status, JSON.stringify(state), now, game.id]);
-            return blackjackView(game.id, Number(game.bet), balance, state);
+            return blackjackView(game.id, Number(game.bet), balance, state, lastDrawnCard);
         });
     const play = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
@@ -920,8 +936,11 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
         const state = JSON.parse(game.state_json);
         if (game.status !== 'active' || state.status !== 'active')
             return blackjackView(game.id, game.bet, account.balance, state);
-        if (action === 'hit')
-            state.playerCards.push(drawCard(state));
+        let lastDrawnCard;
+        if (action === 'hit') {
+            lastDrawnCard = drawCard(state);
+            state.playerCards.push(lastDrawnCard);
+        }
         else
             settleAfterTurn(state, game.bet);
         if (action === 'hit' && total(state.playerCards) > 21)
@@ -934,7 +953,7 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
             db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, userId, state.payout, 'blackjack:payout', `${game.id}:payout`, now);
         }
         db.prepare('UPDATE economy_games SET status = ?, state_json = ?, updated_at = ? WHERE id = ?').run(state.status, JSON.stringify(state), now, game.id);
-        return blackjackView(game.id, game.bet, balance, state);
+        return blackjackView(game.id, game.bet, balance, state, lastDrawnCard);
     });
     return play.immediate();
 }

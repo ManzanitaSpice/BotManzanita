@@ -82,6 +82,16 @@ const definitions = {
     relax: { endpoint: 'sip', aliases: ['relajarse', 'relajacion', 'relajación'], targetRequired: false, text: (actor, target) => target ? `${actor} invitó a ${target} a tomarse un respiro.` : `${actor} se tomó una pausa para relajarse.` },
     excited: { endpoint: 'happy', aliases: ['emocionado', 'emocionada', 'emocion'], targetRequired: false, text: (actor, target) => target ? `${actor} se emocionó muchísimo por ${target}.` : `${actor} no puede contener la emoción.` },
     thanks: { endpoint: 'thumbsup', aliases: ['gracias', 'agradecer'], targetRequired: false, text: (actor, target) => target ? `${actor} le dio las gracias a ${target}.` : `${actor} agradeció la buena onda del chat.` },
+    peek: { endpoint: 'lurk', aliases: ['asomar', 'espiar'], targetRequired: false, text: (actor, target) => target ? `${actor} se asomó para ver qué hacía ${target}.` : `${actor} se asomó discretamente al chat.` },
+    boop: { endpoint: 'poke', aliases: ['toque_nariz', 'tocarnariz'], targetRequired: true, text: (actor, target) => `${actor} le dio un toque en la nariz a ${target}.` },
+    gasp: { endpoint: 'shocked', aliases: ['jadear', 'sorpresa'], targetRequired: false, text: (actor, target) => target ? `${actor} se sorprendió por ${target}.` : `${actor} soltó un “¡ah!” de sorpresa.` },
+    headpat: { endpoint: 'pat', aliases: ['mimo_cabeza', 'palmadita_cabeza'], targetRequired: true, text: (actor, target) => `${actor} le dio una palmadita en la cabeza a ${target}.` },
+    cheerup: { endpoint: 'clap', aliases: ['echar_porras', 'levantar_animo'], targetRequired: true, text: (actor, target) => `${actor} le echó porras a ${target}: ¡tú puedes!` },
+    panic: { endpoint: 'run', aliases: ['panico', 'entrar_panico'], targetRequired: false, text: (actor, target) => target ? `${actor} entró en pánico junto a ${target}.` : `${actor} entró en pánico y salió corriendo.` },
+    snooze: { endpoint: 'sleep', aliases: ['dormitar', 'siestita'], targetRequired: false, text: (actor, target) => target ? `${actor} se quedó dormitando junto a ${target}.` : `${actor} se quedó dormitando un ratito.` },
+    giggle: { endpoint: 'teehee', aliases: ['risita_tonta', 'reirse_bajito'], targetRequired: false, text: (actor, target) => target ? `${actor} soltó una risita con ${target}.` : `${actor} soltó una risita.` },
+    grin: { endpoint: 'smile', aliases: ['sonrisa_grande', 'sonreir_amplio'], targetRequired: false, text: (actor, target) => target ? `${actor} le sonrió ampliamente a ${target}.` : `${actor} sonrió de oreja a oreja.` },
+    stretch: { endpoint: 'yawn', aliases: ['estirarse', 'desperezarse'], targetRequired: false, text: (actor, target) => target ? `${actor} se estiró junto a ${target}.` : `${actor} se desperezó después de una siesta.` },
 };
 const lookup = new Map();
 for (const [id, definition] of Object.entries(definitions)) {

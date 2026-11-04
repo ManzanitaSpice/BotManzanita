@@ -1,5 +1,6 @@
-import { EmbedBuilder, MessageFlags, escapeMarkdown } from 'discord.js';
+import { EmbedBuilder, MessageFlags, PermissionFlagsBits, escapeMarkdown } from 'discord.js';
 import { randomInt } from 'node:crypto';
+import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
 import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks } from '../services/music.js';
@@ -51,6 +52,10 @@ async function routeMessage(message) {
     const args = parts;
     if (!command || ['help', 'ayuda', 'h', 'catalog', 'catalogo', 'comandos'].includes(command)) {
         await sendPanel(message, catalogPanel(args[0]));
+        return;
+    }
+    if (command === 'say' || command === 'embed') {
+        await relayMessageCommand(message, command);
         return;
     }
     if (await routeUtilityMessage(message, command, args))
@@ -529,25 +534,121 @@ async function routeMessage(message) {
     }
     return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
 }
+async function relayMessageCommand(message, command) {
+    if (!message.channel.isSendable()) {
+        await say(message, 'No puedo publicar mensajes en este canal.');
+        return;
+    }
+    if (message.guild) {
+        const botMember = message.guild.members.me;
+        if (!botMember?.permissionsIn(message.channelId).has(PermissionFlagsBits.ManageMessages)) {
+            await say(message, 'Necesito el permiso **Administrar mensajes** para borrar el comando.');
+            return;
+        }
+    }
+    const body = message.content.slice(PREFIX.length).replace(/^\S+\s*/, '').trim();
+    const attachments = [...message.attachments.values()];
+    const totalBytes = attachments.reduce((sum, attachment) => sum + attachment.size, 0);
+    if (totalBytes > 25 * 1024 * 1024) {
+        await say(message, 'Los archivos adjuntos superan el límite de 25 MB.');
+        return;
+    }
+    let files;
+    try {
+        files = await Promise.all(attachments.map(async (attachment, index) => {
+            const response = await fetch(attachment.url);
+            if (!response.ok)
+                throw new Error(`No pude descargar ${attachment.name ?? 'un archivo adjunto'}.`);
+            const originalName = (attachment.name ?? `archivo-${index + 1}`).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+            const name = `${index + 1}-${originalName || `archivo-${index + 1}`}`;
+            return { attachment: Buffer.from(await response.arrayBuffer()), name, ...(attachment.contentType ? { contentType: attachment.contentType } : {}) };
+        }));
+    }
+    catch (error) {
+        await say(message, error instanceof Error ? error.message : 'No pude copiar los archivos adjuntos.');
+        return;
+    }
+    const firstImageIndex = attachments.findIndex((attachment) => attachment.contentType?.startsWith('image/'));
+    if (command === 'say') {
+        if (!body && !files.length) {
+            await say(message, 'Uso: `a!say texto` o adjunta un archivo o imagen.');
+            return;
+        }
+        await message.delete();
+        await message.channel.send({ ...(body ? { content: body } : {}), files, allowedMentions: { parse: [] } });
+        return;
+    }
+    const sections = body.split('|').map((section) => section.trim());
+    const title = sections.length > 1 ? sections[0] : '';
+    let description = sections.length > 1 ? sections[1] : sections[0];
+    const requestedColor = sections[2];
+    const imageUrl = sections[3];
+    if (!title && !description && !files.length && !imageUrl) {
+        await say(message, 'Uso: `a!embed título | descripción | #5865f2` o adjunta una imagen.');
+        return;
+    }
+    let color = 0x5865f2;
+    if (requestedColor) {
+        if (!/^#?[\da-fA-F]{6}$/.test(requestedColor)) {
+            await say(message, 'El color debe ser un hexadecimal de seis caracteres, como `#5865f2`.');
+            return;
+        }
+        color = Number.parseInt(requestedColor.replace(/^#/, ''), 16);
+    }
+    let parsedImageUrl;
+    if (imageUrl) {
+        try {
+            const parsed = new URL(imageUrl);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+                throw new Error();
+            parsedImageUrl = parsed.toString();
+        }
+        catch {
+            await say(message, 'La imagen debe ser un enlace HTTP o HTTPS válido.');
+            return;
+        }
+    }
+    if (!title && !description && !parsedImageUrl && firstImageIndex < 0 && files.length) {
+        description = `📎 Archivos adjuntos: ${files.map((file) => file.name.replace(/^\d+-/, '')).join(', ')}`;
+    }
+    const embed = new EmbedBuilder().setColor(color);
+    if (title)
+        embed.setTitle(title.slice(0, 256));
+    if (description)
+        embed.setDescription(description.slice(0, 4096));
+    if (parsedImageUrl)
+        embed.setImage(parsedImageUrl);
+    else if (firstImageIndex >= 0)
+        embed.setImage(`attachment://${files[firstImageIndex].name}`);
+    await message.delete();
+    await message.channel.send({ embeds: [embed], files, allowedMentions: { parse: [] } });
+}
 async function routeUtilityMessage(message, command, args) {
     const target = message.mentions.users.first() ?? message.author;
     const embed = new EmbedBuilder().setColor(0x38bdf8);
     if (['hack', 'hackear'].includes(command)) {
         const ipRanges = ['192.0.2', '198.51.100', '203.0.113'];
-        const fakeIp = `${ipRanges[randomInt(ipRanges.length)]}.${randomInt(1, 255)}`;
-        const token = Array.from({ length: 10 }, () => randomInt(16).toString(16)).join('');
-        const targetName = escapeMarkdown(message.mentions.users.first()?.username ?? 'servidor de prueba').replace(/@/g, '@\u200b');
+        const ip = `${ipRanges[randomInt(ipRanges.length)]}.${randomInt(1, 255)}`;
+        const token = Array.from({ length: 12 }, () => randomInt(16).toString(16)).join('');
+        const targetName = escapeMarkdown(message.mentions.users.first()?.username ?? `node-${randomInt(10, 99)}.local`).replace(/@/g, '@\u200b');
+        const portSet = [
+            '22/tcp open  ssh       OpenSSH 9.6',
+            '80/tcp open  http      nginx 1.24',
+            '443/tcp open https     TLS 1.3',
+            '3306/tcp open mysql    MySQL 8.0',
+        ];
+        const hostKey = Array.from({ length: 4 }, () => randomInt(256).toString(16).padStart(2, '0')).join(':');
         const stages = [
-            { progress: 15, line: 'Iniciando consola de utilería…', detail: 'Preparando escenario completamente ficticio.' },
-            { progress: 35, line: `Buscando ruta hacia ${fakeIp}…`, detail: 'IP reservada para ejemplos · TEST-NET.' },
-            { progress: 58, line: 'Escaneando puertos imaginarios…', detail: `22/tcp · 80/tcp · 443/tcp · huella ${token.slice(0, 6)}` },
-            { progress: 82, line: 'Descifrando archivos de mentira…', detail: `Clave de utilería: ${token} · cifrado: TACOS-256` },
-            { progress: 100, line: '¡Infiltración de película completada!', detail: 'Hallazgo: memes_secretos.txt · acceso real: ninguno.' },
+            { progress: 12, command: `ssh root@${ip}`, output: `Resolving ${targetName}…\nHost ${ip} found · ${randomInt(8, 42)} ms` },
+            { progress: 34, command: `nmap -sV ${ip}`, output: `PORT      STATE SERVICE\n${portSet[randomInt(portSet.length)]}\nHost key: SHA256:${token.slice(0, 8)}` },
+            { progress: 57, command: 'auth --negotiate --key-exchange', output: `Handshake accepted\nFingerprint: ${hostKey}\nSession token: ${token.slice(0, 10)}` },
+            { progress: 81, command: 'decrypt --source /var/cache/session.enc', output: `Cipher: AES-256-GCM\nBlocks processed: ${randomInt(128, 4096)}\nIndexing user directory…` },
+            { progress: 100, command: 'ls -la /home/root', output: `drwx------  profile.cache\n-rw-------  chat_archive_${randomInt(10, 99)}.dat\n-rw-------  credentials_${token.slice(-4)}.enc\nSession closed.` },
         ];
         const makeHackEmbed = (stage) => new EmbedBuilder().setColor(stage.progress === 100 ? 0x22c55e : 0x38bdf8)
-            .setTitle('🖥️ SIMULACIÓN DE HACKING')
-            .setDescription(`**Objetivo ficticio:** ${targetName}\n\`\`\`ansi\n[${'█'.repeat(Math.floor(stage.progress / 10))}${'░'.repeat(10 - Math.floor(stage.progress / 10))}] ${stage.progress}%\n> ${stage.line}\n> ${stage.detail}\n\`\`\``)
-            .setFooter({ text: 'Broma visual · no se conecta a ningún sistema ni revela datos reales.' });
+            .setAuthor({ name: 'root@manzanita:~#' })
+            .setTitle('⌁ ACCESS TERMINAL')
+            .setDescription(`**${targetName}** · \`${ip}\`\n\`\`\`ansi\n$ ${stage.command}\n[${'█'.repeat(Math.floor(stage.progress / 10))}${'░'.repeat(10 - Math.floor(stage.progress / 10))}] ${stage.progress}%\n${stage.output}\n\`\`\``);
         const response = await message.reply({ embeds: [makeHackEmbed(stages[0])], allowedMentions: { parse: [], repliedUser: false } });
         for (const stage of stages.slice(1)) {
             await new Promise((resolve) => setTimeout(resolve, 650 + randomInt(400)));
@@ -580,8 +681,7 @@ async function routeUtilityMessage(message, command, args) {
             await say(message, 'Uso: `a!8ball ¿debería pedir tacos?`');
             return true;
         }
-        const answers = ['Sí, y con bastante confianza.', 'Todo apunta a que sí.', 'Parece que sí, pero no lo grites todavía.', 'Hoy las probabilidades están de tu lado.', 'Mejor pregunta en un ratito.', 'No puedo prometerlo.', 'Las señales dicen que no.', 'No cuentes con ello.', 'Definitivamente no.', 'La respuesta está detrás de otra taza de té.'];
-        embed.setTitle('🔮 Bola de cristal').addFields({ name: question.slice(0, 256), value: answers[randomInt(answers.length)] });
+        embed.setTitle('🔮 Bola de cristal').addFields({ name: question.slice(0, 256), value: answerEightBall() });
     }
     else if (['avatar', 'av'].includes(command)) {
         embed.setTitle(`🖼️ Avatar de ${target.username}`).setImage(target.displayAvatarURL({ size: 1024 }));

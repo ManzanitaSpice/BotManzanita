@@ -42,38 +42,50 @@ async function searchWithFallback(search, query) {
     const trimmed = query.trim().replace(/^<(.+)>$/, '$1');
     const youtubeVideoId = youtubeVideoIdFromUrl(trimmed);
     if (youtubeVideoId) {
-        let resolved;
+        let metadataResult;
         let lastError;
-        // Let the source plugin resolve the original URL first. Searching only by ID
-        // can return no result for valid YouTube URLs, especially music/watch links.
-        try {
-            resolved = await search(trimmed);
-            const exactTracks = resolved.tracks.filter((track) => track.info.identifier === youtubeVideoId);
-            if (exactTracks.length)
-                return { ...resolved, tracks: exactTracks };
+        for (const identifier of [trimmed, `ytsearch:${youtubeVideoId}`]) {
+            try {
+                const result = await search(identifier);
+                if (!result.tracks.length)
+                    continue;
+                // Keep YouTube playlists intact. For a single video URL, use the video
+                // only to read its title/artist, then return a YouTube Music search hit.
+                if (result.loadType === 'playlist')
+                    return result;
+                metadataResult = result;
+                break;
+            }
+            catch (error) {
+                lastError ??= error;
+            }
         }
-        catch (error) {
-            lastError = error;
+        const sourceTrack = metadataResult?.tracks[0];
+        if (sourceTrack) {
+            const title = sourceTrack.info.title?.trim();
+            const author = sourceTrack.info.author?.trim();
+            const musicQuery = [title, author && author.toLowerCase() !== 'unknown artist' ? author : undefined].filter(Boolean).join(' ');
+            if (musicQuery) {
+                try {
+                    const musicResult = await search(`ytmsearch:${musicQuery}`);
+                    if (musicResult.tracks.length)
+                        return musicResult;
+                }
+                catch (error) {
+                    lastError ??= error;
+                }
+            }
+            return { ...metadataResult, tracks: [] };
         }
-        try {
-            const byId = await search(`ytsearch:${youtubeVideoId}`);
-            const exactTracks = byId.tracks.filter((track) => track.info.identifier === youtubeVideoId);
-            if (exactTracks.length)
-                return { ...byId, tracks: exactTracks };
-            resolved ??= byId;
-        }
-        catch (error) {
-            lastError ??= error;
-        }
-        if (!resolved && lastError)
+        if (lastError)
             throw lastError;
-        return resolved ? { ...resolved, tracks: [] } : undefined;
+        return metadataResult;
     }
     const isUrl = isHttpUrl(trimmed);
     const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch|spsearch):/i.test(trimmed);
     const identifiers = isUrl || hasSourcePrefix
         ? [trimmed]
-        : [`ytmsearch:${trimmed}`, `ytsearch:${trimmed}`, `scsearch:${trimmed}`];
+        : [`ytmsearch:${trimmed}`, `scsearch:${trimmed}`];
     let emptyResult;
     let lastError;
     for (const identifier of identifiers) {
@@ -102,6 +114,8 @@ function youtubeVideoIdFromUrl(value) {
         return undefined;
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:')
+        return undefined;
+    if (url.searchParams.has('list'))
         return undefined;
     const host = url.hostname.toLowerCase().replace(/^www\./, '');
     let videoId = null;
@@ -258,7 +272,7 @@ export async function addTrack(client, input) {
     const result = await searchWithFallback((identifier) => activePlayer ? activePlayer.search(identifier, input.user, true) : node.search(identifier, input.user, true), input.query);
     if (!result?.tracks.length) {
         if (youtubeVideoIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
-            throw new Error('No encontré ese video exacto en la búsqueda de YouTube. Prueba con el nombre de la canción y el artista.');
+            throw new Error('No encontré una canción de YouTube Music para ese enlace. Prueba con el nombre de la canción y el artista.');
         }
         throw new Error('No encontré canciones. Prueba con canción y artista o pega un enlace directo.');
     }

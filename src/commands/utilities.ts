@@ -1,13 +1,9 @@
 import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import type { BotCommand } from '../types.js';
+import { answerEightBall } from '../services/eight-ball.js';
 
 const colors = { utility: 0x38bdf8 };
-const eightBallAnswers = [
-  'Sí, y con bastante confianza.', 'Todo apunta a que sí.', 'Parece que sí, pero no lo grites todavía.',
-  'Hoy las probabilidades están de tu lado.', 'Mejor pregunta en un ratito.', 'No puedo prometerlo.',
-  'Las señales dicen que no.', 'No cuentes con ello.', 'Definitivamente no.', 'La respuesta está detrás de otra taza de té.',
-];
 
 export const utilitiesCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -43,7 +39,7 @@ export const utilitiesCommand: BotCommand = {
     }
     if (subcommand === 'bola') {
       const question = interaction.options.getString('pregunta', true);
-      await interaction.reply({ embeds: [new EmbedBuilder().setColor(colors.utility).setTitle('🔮 Bola de cristal').addFields({ name: question, value: eightBallAnswers[randomInt(eightBallAnswers.length)]! })] }); return;
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor(colors.utility).setTitle('🔮 Bola de cristal').addFields({ name: question, value: answerEightBall() })] }); return;
     }
     if (subcommand === 'avatar') {
       const user = interaction.options.getUser('persona') ?? interaction.user;
