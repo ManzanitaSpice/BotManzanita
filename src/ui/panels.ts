@@ -15,7 +15,7 @@ import {
 import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { bankAction, getAccountBalances, getBalance, getInventory, storeItems, type BlackjackView } from '../services/economy.js';
-import { getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
+import { getLatestExpeditionLog, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones, type ExpeditionLog, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { renderEggCard, renderPetCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
 import { equippedProfileBadges, getProfileProgress, getProfileSettings } from '../services/profile.js';
@@ -111,11 +111,13 @@ export async function rpgPanel(guildId: string, userId: string, username: string
   const selectedZone = rpgZones.find((zone) => zone.id === requestedZoneId) ?? rpgZones[0]!;
   const currentTime = Math.floor(Date.now() / 1000);
   const exploreReady = !pet.lastExploreAt || pet.lastExploreAt + RPG_EXPLORE_COOLDOWN <= currentTime;
-  const cooldownSeconds = pet.lastExploreAt ? Math.max(0, pet.lastExploreAt + RPG_EXPLORE_COOLDOWN - currentTime) : 0;
-  const exploreState = pet.level < selectedZone.minLevel ? `🔒 Requiere nivel ${selectedZone.minLevel}`
-    : pet.energy < 20 ? '⚡ Necesita 20 de energía'
+  const latestLog = pet.lastExploreAt ? await getLatestExpeditionLog(guildId, userId) : undefined;
+  const matchingLog = latestLog?.createdAt === pet.lastExploreAt ? latestLog : undefined;
+  const exploreState = !exploreReady ? `🧭 **${pet.name} está explorando ${matchingLog?.zoneName ?? 'la zona'}** · regresa <t:${pet.lastExploreAt! + RPG_EXPLORE_COOLDOWN}:R>. Al volver, abre este panel para leer la bitácora.`
+    : pet.level < selectedZone.minLevel ? `🔒 Requiere nivel ${selectedZone.minLevel}`
+      : pet.energy < 20 ? '⚡ Necesita 20 de energía'
         : pet.hunger < 15 ? '🍖 Necesita comer antes de salir'
-      : exploreReady ? '🟢 Lista para salir' : `🕒 Descanso · ${Math.ceil(cooldownSeconds / 60)} min`;
+          : '🟢 Lista para salir';
   const petCard = await renderPetCard(pet, selectedZone.background, selectedZone, xpNext);
   container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name}, ${pet.species} · tarjeta de mascota`),
@@ -125,11 +127,17 @@ export async function rpgPanel(guildId: string, userId: string, username: string
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('rpg:zone:preview').setPlaceholder('Elegir zona').addOptions(rpgZones.map((zone) => ({ label: `${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id, emoji: zone.emoji, description: `${zone.difficulty} · botín ${zone.lootChance}% · jefe ${zone.boss.spawnChance}%` }))),
     ))
+  if (exploreReady && matchingLog) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(expeditionLogContent(matchingLog)));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(pet.hunger < 15 ? 'Necesita comer' : exploreReady ? 'Explorar' : 'Descansando').setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20 || pet.hunger < 15),
     new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('📋').setStyle(ButtonStyle.Secondary),
   ));
   return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+function expeditionLogContent(log: ExpeditionLog) {
+  const events = log.events.map((event, index) => `**${String(index + 1).padStart(2, '0')} · ${event.emoji} ${event.title}**\n${event.detail}`).join('\n\n');
+  return `## 📜 BITÁCORA · ${log.zoneName}\n${events || '_La expedición terminó sin incidentes._'}\n\n**Recompensas:** ${log.coins} monedas · ${log.xp} XP${log.itemId ? ` · objeto: ${rpgItems.find((item) => item.id === log.itemId)?.name ?? log.itemId}` : ''}`;
 }
 
 export async function rpgMenuPanel(guildId: string, userId: string) {
@@ -489,7 +497,7 @@ export function blackjackPanel(game: BlackjackView) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `# 🃏 VEINTIUNO\nApuesta: **${money.format(game.bet)} monedas** · Saldo: **${money.format(game.balance)}**\n\n**Tu mano** · ${game.playerCards.join('  ')} · **${game.playerTotal}**\n**Crupier** · ${game.dealerCards.join('  ')}${dealerTotal}\n\n${status}`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`eco:blackjack:hit:${game.gameId}`).setLabel('Pedir carta').setEmoji('🂠').setStyle(ButtonStyle.Primary).setDisabled(!active),
+      new ButtonBuilder().setCustomId(`eco:blackjack:hit:${game.gameId}`).setLabel('Pedir carta').setEmoji('🎴').setStyle(ButtonStyle.Primary).setDisabled(!active),
       new ButtonBuilder().setCustomId(`eco:blackjack:stand:${game.gameId}`).setLabel('Plantarse').setEmoji('✋').setStyle(ButtonStyle.Success).setDisabled(!active),
     ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };

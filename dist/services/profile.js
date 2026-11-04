@@ -18,7 +18,7 @@ export async function initializeProfileStorage() {
     );
     CREATE TABLE IF NOT EXISTS user_progress (
       user_id TEXT PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0, level INTEGER NOT NULL DEFAULT 1, messages INTEGER NOT NULL DEFAULT 0, reputation INTEGER NOT NULL DEFAULT 0,
-      daily_xp INTEGER NOT NULL DEFAULT 0, daily_xp_date TEXT NOT NULL DEFAULT '', last_xp_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      hugs_received INTEGER NOT NULL DEFAULT 0, pats_received INTEGER NOT NULL DEFAULT 0, daily_xp INTEGER NOT NULL DEFAULT 0, daily_xp_date TEXT NOT NULL DEFAULT '', last_xp_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_user_progress_xp ON user_progress(xp DESC,user_id);
     CREATE TABLE IF NOT EXISTS shop_categories (category_id TEXT PRIMARY KEY, label TEXT NOT NULL, emoji TEXT NOT NULL);
@@ -29,8 +29,8 @@ export async function initializeProfileStorage() {
   `);
     if (economyPool) {
         await economyPool.query(`CREATE TABLE IF NOT EXISTS user_profiles (user_id VARCHAR(32) PRIMARY KEY, about VARCHAR(180) NOT NULL DEFAULT '', title VARCHAR(40) NOT NULL DEFAULT 'Aventurero/a', accent CHAR(7) NOT NULL DEFAULT '#8b75dc', profile_bg VARCHAR(48) NULL, rank_bg VARCHAR(48) NULL, wallet_bg VARCHAR(48) NULL, levelup_bg VARCHAR(48) NULL, tag VARCHAR(48) NULL, frame VARCHAR(48) NULL, sticker VARCHAR(48) NULL, housing VARCHAR(48) NULL, updated_at BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_progress (user_id VARCHAR(32) PRIMARY KEY, xp BIGINT NOT NULL DEFAULT 0, level INT NOT NULL DEFAULT 1, messages BIGINT NOT NULL DEFAULT 0, reputation INT NOT NULL DEFAULT 0, daily_xp INT NOT NULL DEFAULT 0, daily_xp_date VARCHAR(10) NOT NULL DEFAULT '', last_xp_at BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL, KEY idx_user_progress_xp (xp,user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-        for (const [column, definition] of [['daily_xp', 'INT NOT NULL DEFAULT 0'], ['daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''"], ['last_xp_at', 'BIGINT NOT NULL DEFAULT 0']]) {
+        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_progress (user_id VARCHAR(32) PRIMARY KEY, xp BIGINT NOT NULL DEFAULT 0, level INT NOT NULL DEFAULT 1, messages BIGINT NOT NULL DEFAULT 0, reputation INT NOT NULL DEFAULT 0, hugs_received BIGINT NOT NULL DEFAULT 0, pats_received BIGINT NOT NULL DEFAULT 0, daily_xp INT NOT NULL DEFAULT 0, daily_xp_date VARCHAR(10) NOT NULL DEFAULT '', last_xp_at BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL, KEY idx_user_progress_xp (xp,user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+        for (const [column, definition] of [['hugs_received', 'BIGINT NOT NULL DEFAULT 0'], ['pats_received', 'BIGINT NOT NULL DEFAULT 0'], ['daily_xp', 'INT NOT NULL DEFAULT 0'], ['daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''"], ['last_xp_at', 'BIGINT NOT NULL DEFAULT 0']]) {
             try {
                 await economyPool.query(`ALTER TABLE user_progress ADD COLUMN ${column} ${definition}`);
             }
@@ -51,7 +51,7 @@ export async function initializeProfileStorage() {
         await economyPool.execute('DELETE FROM items WHERE item_id=?', ['pet_rpg_link']);
     }
     else {
-        for (const [column, definition] of [['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['last_xp_at', 'INTEGER NOT NULL DEFAULT 0']]) {
+        for (const [column, definition] of [['hugs_received', 'INTEGER NOT NULL DEFAULT 0'], ['pats_received', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['last_xp_at', 'INTEGER NOT NULL DEFAULT 0']]) {
             try {
                 db.exec(`ALTER TABLE user_progress ADD COLUMN ${column} ${definition}`);
             }
@@ -135,7 +135,7 @@ export async function getProfileSettings(userId) {
 export async function getProfileProgress(_guildId, userId) {
     const today = new Date().toISOString().slice(0, 10);
     if (economyPool) {
-        const [rows] = await economyPool.execute('SELECT xp,level,messages,reputation,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?', [userId]);
+        const [rows] = await economyPool.execute('SELECT xp,level,messages,reputation,hugs_received AS hugsReceived,pats_received AS patsReceived,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?', [userId]);
         const row = (rows[0] ?? {});
         const xp = Number(row.xp ?? 0);
         const level = Number(row.level ?? 1);
@@ -143,15 +143,26 @@ export async function getProfileProgress(_guildId, userId) {
         const dailyXp = String(row.dailyXpDate ?? '') === today ? Number(row.dailyXp ?? 0) : 0;
         const [ranks] = await economyPool.execute('SELECT COUNT(*)+1 rank FROM user_progress WHERE xp>(SELECT COALESCE(xp,0) FROM user_progress WHERE user_id=?)', [userId]);
         const rank = Number(ranks[0]?.rank ?? 1);
-        return { xp, level, messages, reputation: Number(row.reputation ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank: rank, serverRank: rank };
+        return { xp, level, messages, reputation: Number(row.reputation ?? 0), hugsReceived: Number(row.hugsReceived ?? 0), patsReceived: Number(row.patsReceived ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank: rank, serverRank: rank };
     }
-    const row = db.prepare('SELECT COALESCE(xp,0) xp,COALESCE(level,1) level,COALESCE(messages,0) messages,COALESCE(reputation,0) reputation,COALESCE(daily_xp,0) dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?').get(userId);
+    const row = db.prepare('SELECT COALESCE(xp,0) xp,COALESCE(level,1) level,COALESCE(messages,0) messages,COALESCE(reputation,0) reputation,COALESCE(hugs_received,0) hugsReceived,COALESCE(pats_received,0) patsReceived,COALESCE(daily_xp,0) dailyXp,daily_xp_date AS dailyXpDate FROM user_progress WHERE user_id=?').get(userId);
     const xp = Number(row?.xp ?? 0);
     const level = Number(row?.level ?? 1);
     const messages = Number(row?.messages ?? 0);
     const globalRank = Number(db.prepare('SELECT COUNT(*)+1 rank FROM user_progress WHERE xp>(SELECT COALESCE(xp,0) FROM user_progress WHERE user_id=?)').get(userId).rank);
     const dailyXp = String(row?.dailyXpDate ?? '') === today ? Number(row?.dailyXp ?? 0) : 0;
-    return { xp, level, messages, reputation: Number(row?.reputation ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank, serverRank: globalRank };
+    return { xp, level, messages, reputation: Number(row?.reputation ?? 0), hugsReceived: Number(row?.hugsReceived ?? 0), patsReceived: Number(row?.patsReceived ?? 0), dailyXp, serverXp: xp, serverLevel: level, serverMessages: messages, globalRank, serverRank: globalRank };
+}
+export async function recordReceivedRpgReaction(userId, kind) {
+    const column = kind === 'hug' ? 'hugs_received' : 'pats_received';
+    const at = Math.floor(Date.now() / 1000);
+    if (economyPool) {
+        await economyPool.execute('INSERT IGNORE INTO user_progress(user_id,updated_at) VALUES(?,?)', [userId, at]);
+        await economyPool.execute(`UPDATE user_progress SET ${column}=${column}+1,updated_at=? WHERE user_id=?`, [at, userId]);
+        return;
+    }
+    db.prepare('INSERT OR IGNORE INTO user_progress(user_id) VALUES(?)').run(userId);
+    db.prepare(`UPDATE user_progress SET ${column}=${column}+1,updated_at=? WHERE user_id=?`).run(at, userId);
 }
 export async function getProfileInventory(guildId, userId) {
     guildId = GLOBAL_SCOPE_ID;

@@ -1,4 +1,4 @@
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { EmbedBuilder, MessageFlags, escapeMarkdown } from 'discord.js';
 import type { Message } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
@@ -6,13 +6,13 @@ import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, getFavorites, getPlaylist, getPlaylists, removeFavorite, saveTrackToPlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
 import { catalogPanel } from '../ui/catalog.js';
 import { profileCardPanel, levelUpCardMessage } from '../ui/profile.js';
-import { giveReputation, recordChatActivity } from '../services/profile.js';
+import { giveReputation, recordChatActivity, recordReceivedRpgReaction } from '../services/profile.js';
 
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
@@ -62,9 +62,13 @@ async function routeMessage(message: Message): Promise<void> {
   const reactionId = findAnimeReaction(command);
   if (reactionId) {
     const target = message.mentions.users.first();
-    if (target?.id === userId) return say(message, 'Manzanita no puede hacer esa acción consigo misma.');
-    const result = await createAnimeReaction(reactionId, '🌿 Manzanita', target?.username, `${guildId}:${userId}`);
-    if (!result.ok) return say(message, result.reason === 'target_required' ? `Menciona a alguien: a!${reactionId} @persona.` : result.reason === 'self' ? 'Manzanita no puede hacer esa acción consigo misma.' : result.reason === 'cooldown' ? `Espera ${result.seconds ?? 1} s antes de otra expresión.` : 'No pude cargar el GIF ahora; intenta en un momento.');
+    if (target?.id === userId) return say(message, 'No puedes dirigirte la acción a ti mismo.');
+    const actorName = escapeMarkdown(message.member?.displayName ?? message.author.globalName ?? message.author.username).replace(/@/g, '@\u200b');
+    const targetMember = target ? message.mentions.members?.get(target.id) : undefined;
+    const targetName = target ? escapeMarkdown(targetMember?.displayName ?? target.globalName ?? target.username).replace(/@/g, '@\u200b') : undefined;
+    const result = await createAnimeReaction(reactionId, actorName, targetName, `${guildId}:${userId}`);
+    if (!result.ok) return say(message, result.reason === 'target_required' ? `Menciona a alguien: a!${reactionId} @persona.` : result.reason === 'cooldown' ? `Espera ${result.seconds ?? 1} s antes de otra expresión.` : 'No pude cargar el GIF ahora; intenta en un momento.');
+    if (target && (reactionId === 'hug' || reactionId === 'pat')) await recordReceivedRpgReaction(target.id, reactionId);
     await message.reply({ embeds: [result.embed], allowedMentions: { parse: [] } }); return;
   }
 
@@ -200,7 +204,7 @@ async function routeMessage(message: Message): Promise<void> {
     if (['name', 'nombrar'].includes(action)) { const { renameRpgPet } = await import('../services/rpg.js'); const result = await renameRpgPet(guildId, userId, args.join(' ')); return say(message, result.ok ? `🏷️ Ahora se llama **${result.pet.name}**.` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'already_used' ? 'Ya usaste el cambio gratuito.' : 'Nombre inválido.'); }
     if (['attacks', 'ataques', 'build'].includes(action)) { await sendPanel(message, await rpgBuildPanel(guildId, userId)); return; }
     if (['shop', 'tienda', 'rpgshop'].includes(action)) { await sendPanel(message, await rpgShopPanel(guildId, userId)); return; }
-    if (['explore', 'explorar'].includes(action)) { const zoneInput = args.join(' ').toLowerCase(); const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput); if (!zone) return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`); const result = await exploreRpg(guildId, userId, zone.id, message.id); if (!result.ok) return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : result.reason === 'low_hunger' ? 'Dale de comer antes de explorar.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.'); await sendPanel(message, expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy, result.pet.hunger, result.pet.affection)); return; }
+    if (['explore', 'explorar'].includes(action)) { const zoneInput = args.join(' ').toLowerCase(); const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput); if (!zone) return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`); const result = await exploreRpg(guildId, userId, zone.id, message.id); if (!result.ok) return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'Dale de comer y recupera energía antes de explorar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de explorar.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.'); await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
     if (['fight', 'battle', 'combatir'].includes(action)) { const result = await battleRpg(guildId, userId, message.id); return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : 'Tu mascota está debilitada.'); }
     if (['train', 'entrenar'].includes(action)) { const stat = ({ fuerza: 'strength', strength: 'strength', defensa: 'defense', defense: 'defense', agilidad: 'agility', agility: 'agility' } as const)[(args[0] ?? '').toLowerCase()]; if (!stat) return say(message, 'Uso: `a!rpg train fuerza|defensa|agilidad`.'); const result = await trainRpgPet(guildId, userId, stat, message.id); return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'Necesitas 180 monedas.'); }
     if (['buy', 'comprar'].includes(action)) { const item = findRpgItem(args.join(' ')); if (!item) return say(message, 'Indica el nombre del objeto: `a!rpg buy nombre`.'); const result = await buyRpgItem(guildId, userId, item.id, message.id); return say(message, result.ok ? `🛒 Compraste **${item.name}** · mochila x${result.quantity}.` : 'No tienes monedas suficientes.'); }

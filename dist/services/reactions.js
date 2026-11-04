@@ -1,14 +1,14 @@
 import { randomInt } from 'node:crypto';
 import { EmbedBuilder } from 'discord.js';
 const definitions = {
-    happy: { endpoint: 'happy', aliases: ['feliz', 'felicidad'], targetRequired: false, text: (actor, target) => target ? `${actor} celebró con ${target}; hoy sí salió una bien.` : `${actor} está tan feliz que hasta contestó los mensajes.` },
-    sip: { endpoint: 'sip', aliases: ['te', 'tea', 'tomar_te', 'tomarte'], targetRequired: false, text: (actor, target) => target ? `${actor} comparte un té con ${target}. 🍵` : `${actor} está tomando té. 🍵`, sharedText: (actor, target) => [`${actor} invita a ${target} a tomar el té. 🍵`, `${actor} prepara una taza y la comparte con ${target}.`, `${actor} brinda con su taza junto a ${target}. ☕`, `${actor} disfruta una pausa para el té con ${target}.`, `${actor} le acerca una taza calentita a ${target}.`, `${actor} comparte su té favorito con ${target}.`, `${actor} y ${target} se toman un descanso con té.`, `${actor} sirve otra taza para ${target}.`, `${actor} propone una merienda de té a ${target}.`, `${actor} acompaña a ${target} con una taza de té.`] },
-    slap: { endpoint: 'slap', aliases: ['golpear', 'golpe', 'pegar', 'bofetada'], targetRequired: true, text: (actor, target) => `${actor} le dio un golpe a ${target}.`, sharedText: (actor, target) => [`${actor} le dio un manotazo a ${target}; el eco llegó primero al otro canal.`, `${actor} le acomodó las ideas a ${target} de un bofetón.`, `${actor} le soltó un cachetadón a ${target}. El árbitro pide repetición.`, `${actor} le dio una palmada a ${target} con demasiada confianza.`, `${actor} sorprendió a ${target} con un golpe y luego preguntó “¿todo bien?”.`, `${actor} le dio un manotazo a ${target}. La dignidad salió del servidor.`, `${actor} le plantó un bofetón a ${target}; el chat exige VAR.`, `${actor} le dio un golpe a ${target} y ahora ambos fingen que no pasó.`, `${actor} le acomodó el fleco a ${target} con la mano abierta.`, `${actor} le propinó a ${target} el clásico “piensa antes de escribir”.`] },
+    happy: { endpoint: 'happy', aliases: ['feliz', 'felicidad'], targetRequired: false, text: (actor, target) => target ? `${actor} celebra con ${target}.` : `${actor} está feliz.` },
+    sip: { endpoint: 'sip', aliases: ['te', 'tea', 'tomar_te', 'tomarte'], targetRequired: false, text: (actor, target) => target ? `${actor} comparte té con ${target}. 🍵` : `${actor} toma té. 🍵`, sharedText: (actor, target) => [`${actor} sirve té a ${target}. 🍵`, `${actor} brinda con ${target}. ☕`, `${actor} comparte una taza con ${target}.`, `${actor} toma té con ${target}.`, `${actor} invita a ${target} a tomar té.`, `${actor} ofrece té a ${target}.`, `${actor} y ${target} hacen una pausa para el té.`, `${actor} prepara té para ${target}.`, `${actor} disfruta té con ${target}.`, `${actor} acompaña a ${target} con una taza.`] },
+    slap: { endpoint: 'slap', aliases: ['golpear', 'golpe', 'pegar', 'bofetada'], targetRequired: true, text: (actor, target) => `${actor} abofeteó a ${target}.`, sharedText: (actor, target) => [`${actor} abofeteó a ${target}.`, `${actor} le dio una cachetada a ${target}.`, `${actor} le soltó un bofetón a ${target}.`, `${actor} le dio un manotazo a ${target}.`, `${actor} sorprendió a ${target} con una cachetada.`, `${actor} le dio una palmada a ${target}.`, `${actor} le acomodó el fleco a ${target}.`, `${actor} le dio un golpe a ${target}.`, `${actor} golpeó a ${target}; pide repetición el árbitro.`, `${actor} abofeteó a ${target}; el chat pide VAR.`] },
     hug: { endpoint: 'hug', aliases: ['abrazo', 'abrazar'], targetRequired: true, text: (actor, target) => `${actor} le dio un abrazo a ${target}.` },
     pat: { endpoint: 'pat', aliases: ['acariciar', 'caricia', 'mimos'], targetRequired: true, text: (actor, target) => `${actor} acarició a ${target}.` },
-    punch: { endpoint: 'punch', aliases: ['puñetazo', 'punetazo'], targetRequired: true, text: (actor, target) => `${actor} le dio un puñetazo a ${target}.`, sharedText: (actor, target) => [`${actor} le dio un puñetazo a ${target}; se escuchó hasta en el chat de voz.`, `${actor} lanzó un derechazo y ${target} pidió que lo repitieran en cámara lenta.`, `${actor} retó a ${target} a resolverlo con piedra, papel o puñetazo.`, `${actor} soltó un golpe y luego revisó si tenía las manos bien.`, `${actor} le dio a ${target} el puñetazo más innecesariamente dramático del día.`, `${actor} lanzó un puñetazo; ${target} esquivó con el poder de la lag.`, `${actor} le dio un golpe a ${target}. El teclado presentó una queja.`, `${actor} retó a ${target} a un duelo y olvidó las reglas.`, `${actor} lanzó el puño; el sentido común llegó tarde.`, `${actor} le dio un puñetazo a ${target} y ambos culparon al ping.`] },
-    kick: { endpoint: 'kick', aliases: ['patada', 'patear'], targetRequired: true, text: (actor, target) => `${actor} le lanzó una patada a ${target}.`, sharedText: (actor, target) => [`${actor} le lanzó una patada a ${target}; el árbitro pide VAR.`, `${actor} hizo una patada voladora y aterrizó con cero elegancia.`, `${actor} retó a ${target} a esquivar una patada que todavía no decide lanzar.`, `${actor} le soltó una patada a ${target}. El ping se llevó parte del impacto.`, `${actor} intentó una patada giratoria y casi se golpea a sí mismo.`, `${actor} lanzó una patada; ${target} ya está redactando el reporte.`, `${actor} pateó el aire junto a ${target}. El aire no se lo esperaba.`, `${actor} le lanzó a ${target} una patada con puntería de lunes.`, `${actor} hizo una patada tan dramática que el chat pidió subtítulos.`, `${actor} desafió a ${target} a esquivar su patada. No había premio.`] },
-    bite: { endpoint: 'bite', aliases: ['morder', 'mordida'], targetRequired: true, text: (actor, target) => `${actor} le dio un mordisquito a ${target}.`, sharedText: (actor, target) => [`${actor} le dio un mordisquito a ${target}. No se aceptan devoluciones.`, `${actor} amenazó con morder a ${target}; el snack de emergencia sigue intacto.`, `${actor} mordió la manga de ${target} porque claramente era una botana.`, `${actor} sorprendió a ${target} con un mordisquito y cara de inocencia.`, `${actor} le dio a ${target} una mordida pequeña, pero con mucha actitud.`, `${actor} intentó morder a ${target}; el dentista del servidor está preocupado.`, `${actor} mordió a ${target} y ahora ofrece disculpas con galletas.`, `${actor} se acercó a ${target} con cara de “esto no es lo que parece”.`, `${actor} le dio un mordisco a ${target}; la botana oficial levantó una queja.`, `${actor} y ${target} negociaron la mordida con términos y condiciones.`] },
+    punch: { endpoint: 'punch', aliases: ['puñetazo', 'punetazo'], targetRequired: true, text: (actor, target) => `${actor} golpeó a ${target}.`, sharedText: (actor, target) => [`${actor} golpeó a ${target}.`, `${actor} le dio un puñetazo a ${target}.`, `${actor} lanzó un derechazo a ${target}.`, `${actor} retó a ${target} a un duelo.`, `${actor} atacó a ${target}; el ping ayudó a esquivar.`, `${actor} lanzó un puñetazo a ${target}.`, `${actor} le dio un golpe a ${target}.`, `${actor} y ${target} iniciaron un duelo.`, `${actor} lanzó el puño contra ${target}.`, `${actor} dio un puñetazo a ${target}.`] },
+    kick: { endpoint: 'kick', aliases: ['patada', 'patear'], targetRequired: true, text: (actor, target) => `${actor} pateó a ${target}.`, sharedText: (actor, target) => [`${actor} pateó a ${target}.`, `${actor} le lanzó una patada a ${target}.`, `${actor} intentó una patada voladora.`, `${actor} retó a ${target} a esquivar.`, `${actor} soltó una patada a ${target}.`, `${actor} lanzó una patada giratoria.`, `${actor} pateó el aire junto a ${target}.`, `${actor} atacó a ${target} con una patada.`, `${actor} falló la patada frente a ${target}.`, `${actor} desafió a ${target} a esquivar.`] },
+    bite: { endpoint: 'bite', aliases: ['morder', 'mordida'], targetRequired: true, text: (actor, target) => `${actor} mordió a ${target}.`, sharedText: (actor, target) => [`${actor} mordió a ${target}.`, `${actor} le dio un mordisquito a ${target}.`, `${actor} intentó morder a ${target}.`, `${actor} mordió la manga de ${target}.`, `${actor} sorprendió a ${target} con una mordida.`, `${actor} le dio una mordida a ${target}.`, `${actor} ofreció galletas a ${target} después de morderle.`, `${actor} se acercó a ${target} con cara inocente.`, `${actor} mordió a ${target}; sin devoluciones.`, `${actor} y ${target} negociaron la mordida.`] },
     kiss: { endpoint: 'kiss', aliases: ['besar', 'beso'], targetRequired: true, text: (actor, target) => `${actor} le dio un beso a ${target}.` },
     cuddle: { endpoint: 'cuddle', aliases: ['acurrucar', 'acurrucarse'], targetRequired: true, text: (actor, target) => `${actor} se acurrucó con ${target}.` },
     cry: { endpoint: 'cry', aliases: ['llorar', 'lloro'], targetRequired: false, text: (actor, target) => target ? `${actor} llora junto a ${target}.` : `${actor} está llorando.` },
@@ -60,6 +60,26 @@ const definitions = {
     shoot: { endpoint: 'shoot', aliases: ['disparar'], targetRequired: true, text: (actor, target) => `${actor} retó a ${target} a un duelo de pistolas de agua.` },
     tableflip: { endpoint: 'tableflip', aliases: ['voltear_mesa', 'voltearmesa'], targetRequired: false, text: (actor) => `${actor} volteó la mesa. El inventario de muebles presentará cargos.` },
     shake: { endpoint: 'shake', aliases: ['sacudir', 'temblar'], targetRequired: true, text: (actor, target) => `${actor} sacudió a ${target} para que volviera al tema.` },
+    hello: { endpoint: 'wave', aliases: ['buenas', 'holi'], targetRequired: false, text: (actor, target) => target ? `${actor} llegó y saludó a ${target} con entusiasmo.` : `${actor} llegó al chat y dijo hola.` },
+    hi: { endpoint: 'wave', aliases: ['hey', 'que_hay'], targetRequired: false, text: (actor, target) => target ? `${actor} le dijo “¡hey!” a ${target}.` : `${actor} saludó al chat con un “¡hey!”.` },
+    bye: { endpoint: 'wave', aliases: ['adios', 'adiós', 'hasta_luego', 'nos_vemos'], targetRequired: false, text: (actor, target) => target ? `${actor} se despidió de ${target}; nos vemos pronto.` : `${actor} se despidió del chat. ¡Hasta luego!` },
+    goodbye: { endpoint: 'wave', aliases: ['chao', 'hasta_pronto', 'despedida'], targetRequired: false, text: (actor, target) => target ? `${actor} le dijo adiós a ${target} con cariño.` : `${actor} cerró la sesión con una despedida dramática.` },
+    goodmorning: { endpoint: 'wave', aliases: ['buenos_dias', 'buenosdias'], targetRequired: false, text: (actor, target) => target ? `${actor} le deseó buenos días a ${target}.` : `${actor} llegó con un alegre “¡buenos días!”.` },
+    goodnight: { endpoint: 'sleep', aliases: ['buenas_noches', 'buenasnoches'], targetRequired: false, text: (actor, target) => target ? `${actor} le deseó buenas noches a ${target}.` : `${actor} se despidió hasta mañana y se fue a dormir.` },
+    welcome: { endpoint: 'wave', aliases: ['bienvenido', 'bienvenida', 'dar_la_bienvenida'], targetRequired: false, text: (actor, target) => target ? `${actor} le dio la bienvenida a ${target}.` : `${actor} dio la bienvenida a todas las personas que llegaron.` },
+    congrats: { endpoint: 'clap', aliases: ['felicidades', 'felicitar'], targetRequired: false, text: (actor, target) => target ? `${actor} felicitó a ${target} por su logro. ¡Bien hecho!` : `${actor} celebró un logro del chat. ¡Felicidades!` },
+    celebrate: { endpoint: 'dance', aliases: ['celebrar', 'festejar'], targetRequired: false, text: (actor, target) => target ? `${actor} se puso a festejar con ${target}. ¡Que siga la celebración!` : `${actor} empezó a celebrar como si fuera viernes.` },
+    sorry: { endpoint: 'cry', aliases: ['perdon', 'perdón', 'disculparse', 'lo_siento'], targetRequired: false, text: (actor, target) => target ? `${actor} le pidió disculpas a ${target}; promete portarse mejor.` : `${actor} ofreció una disculpa sincera al chat.` },
+    comfort: { endpoint: 'hug', aliases: ['consolar', 'consuelo'], targetRequired: false, text: (actor, target) => target ? `${actor} acompañó a ${target} con un abrazo reconfortante.` : `${actor} dejó un abrazo reconfortante para quien lo necesite.` },
+    love: { endpoint: 'kiss', aliases: ['amor', 'te_amo', 'te_quiero'], targetRequired: false, text: (actor, target) => target ? `${actor} le mandó mucho cariño a ${target}.` : `${actor} mandó amor para todo el chat.` },
+    missyou: { endpoint: 'cuddle', aliases: ['te_extraño', 'te_extrano', 'extrañar', 'extranar'], targetRequired: false, text: (actor, target) => target ? `${actor} extrañaba a ${target} y fue a buscar un abrazo.` : `${actor} extraña a alguien y dejó un abrazo pendiente.` },
+    goodluck: { endpoint: 'salute', aliases: ['buena_suerte', 'suerte'], targetRequired: false, text: (actor, target) => target ? `${actor} le deseó mucha suerte a ${target}.` : `${actor} desea buena suerte a quienes la necesiten.` },
+    cheer: { endpoint: 'clap', aliases: ['animar', 'animo', 'ánimo'], targetRequired: false, text: (actor, target) => target ? `${actor} animó a ${target}: ¡tú puedes!` : `${actor} animó al chat con toda su energía.` },
+    yay: { endpoint: 'happy', aliases: ['yupi', 'hurra'], targetRequired: false, text: (actor, target) => target ? `${actor} celebró con ${target}: ¡yupi!` : `${actor} gritó “¡yupi!” de pura felicidad.` },
+    proud: { endpoint: 'smug', aliases: ['orgulloso', 'orgullosa', 'orgullo'], targetRequired: false, text: (actor, target) => target ? `${actor} está orgulloso de ${target}.` : `${actor} se siente orgulloso de lo que logró.` },
+    relax: { endpoint: 'sip', aliases: ['relajarse', 'relajacion', 'relajación'], targetRequired: false, text: (actor, target) => target ? `${actor} invitó a ${target} a tomarse un respiro.` : `${actor} se tomó una pausa para relajarse.` },
+    excited: { endpoint: 'happy', aliases: ['emocionado', 'emocionada', 'emocion'], targetRequired: false, text: (actor, target) => target ? `${actor} se emocionó muchísimo por ${target}.` : `${actor} no puede contener la emoción.` },
+    thanks: { endpoint: 'thumbsup', aliases: ['gracias', 'agradecer'], targetRequired: false, text: (actor, target) => target ? `${actor} le dio las gracias a ${target}.` : `${actor} agradeció la buena onda del chat.` },
 };
 const lookup = new Map();
 for (const [id, definition] of Object.entries(definitions)) {
@@ -75,24 +95,10 @@ export function findAnimeReaction(command) { return lookup.get(command.normalize
 export function animeReactionCatalog() {
     return Object.entries(definitions).map(([id, definition]) => ({ id, aliases: definition.aliases, targetRequired: definition.targetRequired, variants: 10 }));
 }
-const captionStyles = [
-    (line) => `🚨 El chat solicita explicaciones: ${line}`,
-    (line) => `📋 El comité de convivencia tomó nota: ${line}`,
-    (line) => `Los testigos dicen que fue “sin querer”: ${line}`,
-    (line) => `Última hora: nadie estaba preparado para esto. ${line}`,
-    (line) => `La moderación está redactando el reporte: ${line}`,
-    (line) => `El grupo familiar ya se enteró: ${line}`,
-    (line) => `Se escuchó un “yo no fui” a lo lejos. ${line}`,
-    (line) => `Esto se pudo resolver con una galleta, pero: ${line}`,
-    (line) => `El sentido común llegó tarde. ${line}`,
-    (line) => `Quedó registrado en el acta de asuntos pendientes: ${line}`,
-];
 export async function createAnimeReaction(id, actor, target, cooldownKey) {
     const definition = definitions[id];
     if (definition.targetRequired && !target)
         return { ok: false, reason: 'target_required' };
-    if (target && actor === target)
-        return { ok: false, reason: 'self' };
     const now = Date.now();
     const previous = lastRequest.get(cooldownKey) ?? 0;
     if (now - previous < REQUEST_COOLDOWN_MS)
@@ -125,7 +131,7 @@ export async function createAnimeReaction(id, actor, target, cooldownKey) {
         const interaction = sharedTexts?.length
             ? sharedTexts[randomInt(sharedTexts.length)]
             : definition.text(actor, target);
-        const caption = captionStyles[randomInt(captionStyles.length)](interaction);
+        const caption = interaction;
         const embed = new EmbedBuilder()
             .setColor(0x9b78e8)
             .setDescription(caption)

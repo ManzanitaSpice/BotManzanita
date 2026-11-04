@@ -1,7 +1,7 @@
 import { LabelBuilder, MessageFlags, ModalBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle, } from 'discord.js';
-import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
 import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, storeItems, useShopItem } from '../services/economy.js';
-import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, trainRpgPet, useRpgItem } from '../services/rpg.js';
+import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, RPG_EXPLORE_COOLDOWN, rpgItems, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack } from '../services/music.js';
 import { getFavorite, getFavorites, removeFavorite } from '../services/music-library.js';
@@ -395,10 +395,10 @@ export function registerInteractionHandler(client) {
                     const message = !result.ok ? result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
                         : result.reason === 'zone_locked' ? 'Tu mascota aún no tiene nivel para esa zona.'
                             : result.reason === 'low_energy' ? 'Le falta energía. Usa éter o bayas.' : result.reason === 'low_hunger' ? 'Dale de comer antes de enviarla.' : `Está descansando; vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`
-                        : `${result.message}\n❤️ ${result.pet.hp}/${result.pet.maxHp} PV · ⚡ ${result.pet.energy}/${result.pet.maxEnergy} energía.`;
+                        : `🧭 **${result.pet.name} salió a explorar ${result.zone.name}.** Regresará <t:${(result.pet.lastExploreAt ?? Math.floor(Date.now() / 1000)) + RPG_EXPLORE_COOLDOWN}:R>.`;
                     await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
                     if (result.ok)
-                        await interaction.followUp(expeditionPanel(result.events, message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy, result.pet.hunger, result.pet.affection));
+                        await interaction.followUp({ content: `${message} Al volver, abre de nuevo el panel RPG para leer la bitácora.`, flags: MessageFlags.Ephemeral });
                     else
                         await interaction.followUp({ content: `🧭 ${message}`, flags: MessageFlags.Ephemeral });
                     return;

@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, createRpgPvpChallenge, exploreRpg, renameRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem, type PetElement } from '../services/rpg.js';
-import { expeditionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel } from '../ui/panels.js';
+import { rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 
 export const rpgCommand: BotCommand = {
@@ -101,7 +101,7 @@ export const rpgCommand: BotCommand = {
               : `Tu mascota está descansando. Prueba en **${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos**.`;
         await interaction.reply({ content: `🧭 ${message}`, flags: MessageFlags.Ephemeral }); return;
       }
-      await interaction.reply(expeditionPanel(result.events, result.message, result.pet.hp, result.pet.maxHp, result.pet.energy, result.pet.maxEnergy, result.pet.hunger, result.pet.affection)); return;
+      await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username)); return;
     }
     if (action === 'combatir') {
       const result = await battleRpg(guildId, userId, interaction.id);

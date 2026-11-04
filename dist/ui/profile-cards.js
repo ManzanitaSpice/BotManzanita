@@ -195,6 +195,7 @@ async function drawProfile(ctx, input, accent, rankMode) {
     label(ctx, `${progress.messages.toLocaleString('es-MX')} mensajes globales`, 296, 435, 17, '#c2c9dc', 500);
     label(ctx, `Reputación ${progress.reputation}`, 296, 466, 17, '#c2c9dc', 500);
     label(ctx, input.petName ? `🐾 ${input.petName}` : '🐾 Sin mascota activa', 296, 508, 18, '#f5e8ff', 600);
+    label(ctx, `🤗 Abrazos ${progress.hugsReceived}  ·  🫳 Pats ${progress.patsReceived}`, 296, 539, 16, '#c2c9dc', 500);
     label(ctx, settings.about ? truncate(settings.about, 58) : 'Cuéntale algo de ti desde Personalizar.', 72, 583, 16, '#c0c8dc', 500);
     const sticker = profileItem(settings.sticker);
     if (sticker)
@@ -298,7 +299,7 @@ async function drawAvatar(ctx, input, x, y, size, frameId) {
     ctx.stroke();
 }
 function itemForMode(input) { const id = input.mode === 'wallet' ? input.settings.walletBg : input.mode === 'levelup' ? input.settings.levelupBg : input.mode === 'rank' ? input.settings.rankBg : input.mode === 'room' ? input.settings.housing : input.settings.profileBg; return profileItem(id); }
-function cacheKey(input) { return `${input.mode}:${input.userId}:${input.username}:${input.progress.level}:${input.progress.xp}:${input.progress.globalRank}:${input.progress.serverLevel}:${input.progress.serverXp}:${input.progress.serverRank}:${input.progress.messages}:${input.progress.reputation}:${input.wallet}:${input.bank}:${input.premium}:${input.settings.accent}:${input.settings.profileBg}:${input.settings.rankBg}:${input.settings.walletBg}:${input.settings.levelupBg}:${input.settings.housing}:${input.settings.frame}:${input.settings.tag}:${input.settings.sticker}:${input.settings.about}:${input.settings.title}:${input.badges.join(',')}:${input.petName ?? ''}:${input.petSpritePath ?? ''}:${input.levelUpTo ?? ''}`; }
+function cacheKey(input) { return `${input.mode}:${input.userId}:${input.username}:${input.progress.level}:${input.progress.xp}:${input.progress.globalRank}:${input.progress.serverLevel}:${input.progress.serverXp}:${input.progress.serverRank}:${input.progress.messages}:${input.progress.reputation}:${input.progress.hugsReceived}:${input.progress.patsReceived}:${input.wallet}:${input.bank}:${input.premium}:${input.settings.accent}:${input.settings.profileBg}:${input.settings.rankBg}:${input.settings.walletBg}:${input.settings.levelupBg}:${input.settings.housing}:${input.settings.frame}:${input.settings.tag}:${input.settings.sticker}:${input.settings.about}:${input.settings.title}:${input.badges.join(',')}:${input.petName ?? ''}:${input.petSpritePath ?? ''}:${input.levelUpTo ?? ''}`; }
 function label(ctx, text, x, y, size, color, weight, align = 'left') { ctx.font = `${weight} ${size}px Arial, sans-serif`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillText(text, x, y); }
 function pill(ctx, text, x, y, color) { ctx.font = '600 14px Arial,sans-serif'; const w = ctx.measureText(text).width + 24; ctx.fillStyle = hexAlpha(color, .28); roundRect(ctx, x, y, w, 29, 14); ctx.fill(); label(ctx, text, x + 12, y + 20, 14, '#fff', 600); }
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
