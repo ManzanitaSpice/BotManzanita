@@ -1,4 +1,5 @@
-import { MessageFlags } from 'discord.js';
+import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { randomInt } from 'node:crypto';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
 import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, searchTracks } from '../services/music.js';
@@ -40,6 +41,8 @@ async function routeMessage(message) {
         await sendPanel(message, catalogPanel(args[0]));
         return;
     }
+    if (await routeUtilityMessage(message, command, args))
+        return;
     if (command === 'admin') {
         if (userId !== ADMIN_OWNER_ID) {
             await say(message, 'Comando privado.');
@@ -487,6 +490,65 @@ async function routeMessage(message) {
         return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore zona`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
     }
     return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
+}
+async function routeUtilityMessage(message, command, args) {
+    const target = message.mentions.users.first() ?? message.author;
+    const embed = new EmbedBuilder().setColor(0x38bdf8);
+    if (['roll', 'dado'].includes(command)) {
+        const sides = args[0] === undefined ? 100 : Number(args[0]);
+        if (!Number.isSafeInteger(sides) || sides < 2 || sides > 1_000_000) {
+            await say(message, 'Uso: `a!roll [caras]` · elige entre 2 y 1,000,000.');
+            return true;
+        }
+        embed.setTitle('🎲 Dado').setDescription(`Salió **${randomInt(1, sides + 1)}** de **${sides}**.`);
+    }
+    else if (['coin', 'moneda'].includes(command)) {
+        embed.setTitle('🪙 Volado').setDescription(`Cayó **${randomInt(0, 2) ? 'Sol' : 'Águila'}**.`);
+    }
+    else if (['choose', 'elegir'].includes(command)) {
+        const choices = args.join(' ').split(',').map((choice) => choice.trim()).filter(Boolean).slice(0, 25);
+        if (choices.length < 2) {
+            await say(message, 'Uso: `a!choose pizza, tacos, sushi` · escribe al menos dos opciones separadas por coma.');
+            return true;
+        }
+        embed.setTitle('🧭 Decisión tomada').setDescription(`Entre ${choices.length} opciones, elijo **${choices[randomInt(choices.length)]}**.`);
+    }
+    else if (['8ball', 'bola'].includes(command)) {
+        const question = args.join(' ').trim();
+        if (!question) {
+            await say(message, 'Uso: `a!8ball ¿debería pedir tacos?`');
+            return true;
+        }
+        const answers = ['Sí, y con bastante confianza.', 'Todo apunta a que sí.', 'Parece que sí, pero no lo grites todavía.', 'Hoy las probabilidades están de tu lado.', 'Mejor pregunta en un ratito.', 'No puedo prometerlo.', 'Las señales dicen que no.', 'No cuentes con ello.', 'Definitivamente no.', 'La respuesta está detrás de otra taza de té.'];
+        embed.setTitle('🔮 Bola de cristal').addFields({ name: question.slice(0, 256), value: answers[randomInt(answers.length)] });
+    }
+    else if (['avatar', 'av'].includes(command)) {
+        embed.setTitle(`🖼️ Avatar de ${target.username}`).setImage(target.displayAvatarURL({ size: 1024 }));
+    }
+    else if (['userinfo', 'whois', 'usuario'].includes(command)) {
+        const member = message.guild?.members.cache.get(target.id);
+        embed.setAuthor({ name: target.username, iconURL: target.displayAvatarURL() }).setTitle('👤 Información de usuario')
+            .addFields({ name: 'Cuenta', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true }, ...(member?.joinedTimestamp ? [{ name: 'Se unió', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>`, inline: true }] : []), { name: 'ID', value: `\`${target.id}\``, inline: true });
+    }
+    else if (['serverinfo', 'server', 'servidor'].includes(command)) {
+        const guild = message.guild;
+        if (!guild) {
+            await say(message, 'Este comando necesita ejecutarse dentro de un servidor.');
+            return true;
+        }
+        const channels = guild.channels.cache;
+        const textChannels = channels.filter((channel) => channel.isTextBased() && !channel.isDMBased()).size;
+        const voiceChannels = channels.filter((channel) => channel.isVoiceBased()).size;
+        embed.setTitle(`🏠 ${guild.name}`).setThumbnail(guild.iconURL({ size: 256 }))
+            .addFields({ name: 'Miembros', value: guild.memberCount.toLocaleString('es-MX'), inline: true }, { name: 'Canales', value: `${textChannels} texto · ${voiceChannels} voz`, inline: true }, { name: 'Creado', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true });
+    }
+    else if (command === 'ping') {
+        embed.setTitle('🏓 Pong').setDescription(`Gateway de Discord: **${Math.max(0, Math.round(message.client.ws.ping))} ms**.`);
+    }
+    else
+        return false;
+    await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+    return true;
 }
 async function adminDmCommands(message, args) {
     const [action = 'help', guildId = '', targetId = '', ...rest] = args;

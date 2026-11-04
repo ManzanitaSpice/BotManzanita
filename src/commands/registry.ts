@@ -5,6 +5,7 @@ import { musicShortcutCommands } from './music-shortcuts.js';
 import { rpgCommand } from './rpg.js';
 import { adminCommand } from './admin.js';
 import { catalogCommand } from './catalog.js';
+import { utilitiesCommand } from './utilities.js';
 import type { BotCommand } from '../types.js';
 
 // Keep runtime dispatch and Discord command deployment on one source of truth.
@@ -13,6 +14,7 @@ export const commands: BotCommand[] = [
   rpgCommand,
   adminCommand,
   catalogCommand,
+  utilitiesCommand,
   musicCommand,
   ...economyShortcutCommands,
   ...musicShortcutCommands,

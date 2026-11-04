@@ -46,6 +46,20 @@ const definitions = {
     shocked: { endpoint: 'shocked', aliases: ['impactado', 'sorprendido'], targetRequired: false, text: (actor, target) => target ? `${actor} se quedó en shock por lo que hizo ${target}.` : `${actor} se quedó en shock.` },
     spin: { endpoint: 'spin', aliases: ['girar', 'dar_vueltas'], targetRequired: false, text: (actor, target) => target ? `${actor} dio una vuelta alrededor de ${target}.` : `${actor} empezó a dar vueltas.` },
     think: { endpoint: 'think', aliases: ['pensar', 'reflexionar'], targetRequired: false, text: (actor, target) => target ? `${actor} se quedó pensando en ${target}.` : `${actor} está pensando.` },
+    sleep: { endpoint: 'sleep', aliases: ['dormir', 'siesta'], targetRequired: false, text: (actor, target) => target ? `${actor} se quedó dormido mientras ${target} explicaba el chisme.` : `${actor} se fue a dormir; que el chat se cuide solo.` },
+    smile: { endpoint: 'smile', aliases: ['sonreir', 'sonreír', 'sonrisa'], targetRequired: false, text: (actor, target) => target ? `${actor} le sonrió a ${target}; ya mejoró el ambiente.` : `${actor} apareció con una sonrisa sospechosamente tranquila.` },
+    yawn: { endpoint: 'yawn', aliases: ['bostezar', 'bostezo'], targetRequired: false, text: (actor, target) => target ? `${actor} bostezó mientras ${target} contaba una historia larguísima.` : `${actor} soltó un bostezo que contagió a medio chat.` },
+    stare: { endpoint: 'stare', aliases: ['mirar_fijo', 'mirada'], targetRequired: false, text: (actor, target) => target ? `${actor} se quedó mirando a ${target} en completo silencio.` : `${actor} mira fijamente al vacío esperando una respuesta.` },
+    lurk: { endpoint: 'lurk', aliases: ['acechar', 'vigilar'], targetRequired: false, text: (actor, target) => target ? `${actor} apareció silenciosamente detrás de ${target}.` : `${actor} está leyendo el chat sin hacer ruido.` },
+    nope: { endpoint: 'nope', aliases: ['nel', 'negativo'], targetRequired: false, text: (actor, target) => target ? `${actor} respondió “ni de broma” a ${target}.` : `${actor} acaba de votar que no, sin explicar por qué.` },
+    nya: { endpoint: 'nya', aliases: ['miau', 'nyaa'], targetRequired: false, text: (actor, target) => target ? `${actor} saludó a ${target} con un “nya”.` : `${actor} soltó un “nya” y siguió con su día.` },
+    teehee: { endpoint: 'teehee', aliases: ['jeje', 'risita'], targetRequired: false, text: (actor, target) => target ? `${actor} se rio bajito después de lo que dijo ${target}.` : `${actor} soltó una risita y no piensa explicar el motivo.` },
+    thumbsup: { endpoint: 'thumbsup', aliases: ['pulgar_arriba', 'bien_hecho'], targetRequired: false, text: (actor, target) => target ? `${actor} le dio el visto bueno a ${target}. 👍` : `${actor} aprueba el plan con un pulgar arriba. 👍` },
+    tickle: { endpoint: 'tickle', aliases: ['hacer_cosquillas', 'cosquillas'], targetRequired: true, text: (actor, target) => `${actor} le hizo cosquillas a ${target}; se cancela toda conversación seria.` },
+    wag: { endpoint: 'wag', aliases: ['mover_colita', 'cola'], targetRequired: false, text: (actor, target) => target ? `${actor} movió la cola al ver a ${target}.` : `${actor} está tan feliz que no puede dejar quieta la cola.` },
+    shoot: { endpoint: 'shoot', aliases: ['disparar'], targetRequired: true, text: (actor, target) => `${actor} retó a ${target} a un duelo de pistolas de agua.` },
+    tableflip: { endpoint: 'tableflip', aliases: ['voltear_mesa', 'voltearmesa'], targetRequired: false, text: (actor) => `${actor} volteó la mesa. El inventario de muebles presentará cargos.` },
+    shake: { endpoint: 'shake', aliases: ['sacudir', 'temblar'], targetRequired: true, text: (actor, target) => `${actor} sacudió a ${target} para que volviera al tema.` },
 };
 const lookup = new Map();
 for (const [id, definition] of Object.entries(definitions)) {

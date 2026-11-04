@@ -1,5 +1,5 @@
 import { LabelBuilder, MessageFlags, ModalBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle, } from 'discord.js';
-import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionPanel, favoritesPanel, inventoryPanel, musicPanel, premiumStorePanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
 import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, storeItems, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
@@ -124,6 +124,10 @@ export function registerInteractionHandler(client) {
             }
             if (interaction.customId.startsWith('rpg:')) {
                 const guildId = interaction.guildId;
+                if (interaction.customId === 'rpg:ranking') {
+                    await interaction.update(componentUpdate(await rpgRankingPanel(guildId)));
+                    return;
+                }
                 if (interaction.customId === 'rpg:menu:home') {
                     await interaction.update(componentUpdate(await rpgMenuPanel(guildId, interaction.user.id)));
                     return;
@@ -134,18 +138,8 @@ export function registerInteractionHandler(client) {
                         await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
                         return;
                     }
-                    if (category === 'feed') {
+                    if (category === 'care' || category === 'feed') {
                         await interaction.update(componentUpdate(await rpgFeedPanel(guildId, interaction.user.id)));
-                        return;
-                    }
-                    if (category === 'care') {
-                        const result = await careForRpgPet(guildId, interaction.user.id);
-                        if (!result.ok) {
-                            const message = result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${formatCooldown(result.secondsRemaining ?? 0)}.`;
-                            await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
-                            return;
-                        }
-                        await interaction.update(componentUpdate(rpgCareResultPanel(result.pet, `Pasaste tiempo con ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`)));
                         return;
                     }
                     if (category === 'battle') {
@@ -164,12 +158,20 @@ export function registerInteractionHandler(client) {
                         await interaction.update(componentUpdate(await rpgShopPanel(guildId, interaction.user.id)));
                         return;
                     }
+                    if (category === 'manage') {
+                        await interaction.update(componentUpdate(await rpgManagePanel(guildId, interaction.user.id)));
+                        return;
+                    }
                     if (category === 'pvp') {
                         await interaction.update(componentUpdate(await rpgPvPHelpPanel(guildId)));
                         return;
                     }
                     if (category === 'ranking') {
                         await interaction.update(componentUpdate(await rpgRankingPanel(guildId)));
+                        return;
+                    }
+                    if (category === 'social') {
+                        await interaction.update(componentUpdate(await rpgPvPHelpPanel(guildId)));
                         return;
                     }
                 }
@@ -446,6 +448,19 @@ export function registerInteractionHandler(client) {
                 }
             }
             if (interaction.customId.startsWith('eco:')) {
+                if (interaction.customId === 'eco:section' && interaction.isStringSelectMenu()) {
+                    const section = interaction.values[0];
+                    const panel = section === 'inventory' ? await inventoryPanel(interaction.guildId, interaction.user.id)
+                        : section === 'bank' ? await bankPanel(interaction.guildId, interaction.user.id)
+                            : section === 'casino' ? await casinoPanel(interaction.guildId, interaction.user.id)
+                                : section === 'premium' ? await premiumStorePanel(interaction.guildId, interaction.user.id) : undefined;
+                    if (!panel) {
+                        await interaction.reply({ content: 'Esa sección ya no está disponible.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+                    await interaction.update(componentUpdate(panel));
+                    return;
+                }
                 if (interaction.customId === 'eco:bank' || interaction.customId === 'eco:bank:refresh') {
                     const result = await bankAction(interaction.guildId, interaction.user.id, 'view');
                     await interaction.update(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
