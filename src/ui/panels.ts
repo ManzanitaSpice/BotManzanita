@@ -127,7 +127,7 @@ export async function rpgPanel(guildId: string, userId: string, username: string
     ))
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`rpg:explore:${selectedZone.id}`).setLabel(pet.hunger < 15 ? 'Necesita comer' : exploreReady ? 'Explorar' : 'Descansando').setEmoji('🧭').setStyle(ButtonStyle.Success).setDisabled(!exploreReady || pet.level < selectedZone.minLevel || pet.energy < 20 || pet.hunger < 15),
-    new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('☰').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('📋').setStyle(ButtonStyle.Secondary),
   ));
   return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }

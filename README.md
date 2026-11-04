@@ -104,3 +104,5 @@ La economía se separa por servidor y usuario. El banco guarda una billetera y a
 ### Comandos privados de administración
 
 `/admin` está bloqueado por defecto y el código solo acepta el ID propietario `931978822323159111`; todas las respuestas son efímeras. Para que aparezca en el selector, permite ese usuario en cada servidor desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos**. Discord puede seguir mostrando el comando a miembros con permiso Administrador, pero el bot les rechaza cualquier acción si su ID no coincide. Incluye saldo de billetera/banco/gemas, rollback de movimientos administrativos, entrega y retiro de mascotas/artículos, curación, XP, atributos, nombre, enfriamientos, escudo antirobo, inspección y auditoría.
+
+En DM, los comandos administrativos por texto aceptan alias cortos: `a!mq <guildID> <userID>` retira la mascota; también están `md` (dar), `mc` (curar), `mxp` (XP), `mn` (nombre), `ma` (atributo), `rt` (enfriamiento), `i` (inspeccionar), `pr` (protección) y `rb` (rollback). Se puede anteponer `a!admin` a cualquiera, por ejemplo `a!admin mq <guildID> <userID>`. Los comandos slash conservan sus nombres actuales.

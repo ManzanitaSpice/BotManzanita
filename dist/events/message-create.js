@@ -14,6 +14,18 @@ import { profileCardPanel, levelUpCardMessage } from '../ui/profile.js';
 import { giveReputation, recordChatActivity } from '../services/profile.js';
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
+const adminActionAliases = {
+    mq: 'remove', mascota_quitar: 'remove', resetpet: 'remove',
+    md: 'pet', mascota_dar: 'pet',
+    mc: 'heal', mascota_curar: 'heal',
+    mxp: 'xp', mascota_xp: 'xp',
+    mn: 'rename', mascota_nombre: 'rename',
+    ma: 'stat', mascota_atributo: 'stat',
+    rt: 'cooldown', reiniciar_tiempo: 'cooldown',
+    i: 'inspect', inspeccionar: 'inspect',
+    pr: 'shield', proteger_robo: 'shield',
+    rb: 'rollback', h: 'history', historial: 'history',
+};
 export function registerMessageCommandHandler(client) {
     client.on('messageCreate', (message) => {
         if (message.author.bot)
@@ -43,6 +55,10 @@ async function routeMessage(message) {
     }
     if (await routeUtilityMessage(message, command, args))
         return;
+    if (adminActionAliases[command]) {
+        args.unshift(adminActionAliases[command]);
+        command = 'admin';
+    }
     if (command === 'admin') {
         if (userId !== ADMIN_OWNER_ID) {
             await say(message, 'Comando privado.');
@@ -551,10 +567,11 @@ async function routeUtilityMessage(message, command, args) {
     return true;
 }
 async function adminDmCommands(message, args) {
-    const [action = 'help', guildId = '', targetId = '', ...rest] = args;
+    const [requestedAction = 'help', guildId = '', targetId = '', ...rest] = args;
+    const action = adminActionAliases[requestedAction.toLocaleLowerCase()] ?? requestedAction.toLocaleLowerCase();
     const actorId = message.author.id;
     if (action === 'help')
-        return say(message, 'Admin por DM: wallet|bank|premium <guildID> <userID> ±cantidad · pet <guildID> <userID> <especie exacta> · remove|heal|xp|rename|stat|item|cooldown|shield|inspect <guildID> <userID> ... · rollback <guildID> <ledgerID> · history <guildID>.');
+        return say(message, 'Admin por DM: wallet|bank|premium <guildID> <userID> ±cantidad · pet|md <guildID> <userID> <especie> · remove|mq|resetpet <guildID> <userID> · heal|mc · xp|mxp · rename|mn · stat|ma · item · cooldown|rt · shield|pr · inspect|i · rollback|rb · history|h. También puedes usar los alias directamente: `a!mq <guildID> <userID>`.');
     if (!/^\d{17,20}$/.test(guildId))
         return say(message, 'Falta un ID de servidor válido. Usa a!admin help.');
     if (action === 'history') {

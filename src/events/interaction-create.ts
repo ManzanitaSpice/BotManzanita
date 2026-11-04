@@ -290,7 +290,7 @@ export function registerInteractionHandler(client: Client) {
           if (!rpgEggOptions.some((entry) => entry.element === element)) { await interaction.reply({ content: 'Ese huevo no existe.', flags: MessageFlags.Ephemeral }); return; }
           const adopted = await adoptRpgPet(guildId, interaction.user.id, '', element);
           if (!adopted.ok) {
-            await interaction.reply({ content: 'Ya tienes una mascota; tu colección se comparte entre servidores.', flags: MessageFlags.Ephemeral });
+            await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
             return;
           }
           await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
