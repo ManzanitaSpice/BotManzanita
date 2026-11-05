@@ -61,9 +61,9 @@ La migración se puede repetir sin insertar dos veces movimientos o artículos; 
 
 ### Egg Generic Discord.js con instalación desde Git
 
-Este egg ejecuta `npm install` y luego `node /home/container/${BOT_JS_FILE}`; no ejecuta automáticamente el script de compilación de TypeScript. El repositorio incluye `dist/` para este flujo. Configura `BOT_JS_FILE=dist/index.js`. Cuando actualices el código fuente, vuelve a compilar con `npm run build` y sube juntos `src/` y `dist/`.
+Este egg ejecuta `npm install` y luego `node /home/container/${BOT_JS_FILE}`; no ejecuta automáticamente el script de compilación de TypeScript. Configura `BOT_JS_FILE=dist/index.js`. Las actualizaciones deben incluir el `dist/` ya compilado: si Pterodactyl tiene `.git`, actualiza desde el commit que contiene `src/` y `dist/`; si subes archivos manualmente, compila localmente con `npm run build` y sube ambos directorios. El servidor solo necesita ejecutar `npm install` e iniciar `dist/index.js`.
 
-Si `USER UPLOADED FILES=1`, el instalador omite la clonación y el servidor puede no tener `.git`; en ese caso `AUTO_UPDATE=1` no tiene nada que actualizar. Instala una nueva versión extrayendo el ZIP de release en la raíz del servidor. El ZIP no incluye `.env`, `ECONOMY-MYSQL.env` ni `data/`; conserva los archivos de configuración y datos del servidor.
+Si `USER UPLOADED FILES=1`, el instalador omite la clonación y el servidor puede no tener `.git`; en ese caso `AUTO_UPDATE=1` no tiene nada que actualizar. Instala una nueva versión extrayendo el ZIP de release en la raíz del servidor y verifica que incluya el `dist/` compilado. El ZIP no incluye `.env`, `ECONOMY-MYSQL.env` ni `data/`; conserva los archivos de configuración y datos del servidor.
 
 ## Lavalink y Spotify
 

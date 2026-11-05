@@ -43,7 +43,7 @@ function createPlayCommand(name, description) {
                     query: interaction.options.getString('cancion', true).trim(),
                 });
                 const added = result.playlist
-                    ? `Añadí **${result.count} canciones** de la lista${result.truncated ? ' (límite de 50 por solicitud)' : ''}.`
+                    ? `Añadí **${result.count} canciones** de la lista a la cola.`
                     : `Añadí **${result.title}** a la cola.`;
                 await interaction.editReply(`🎶 ${added}`);
                 await refreshMusicPanel(interaction.client, context.guildId);

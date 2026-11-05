@@ -4,6 +4,7 @@ import { getMusicQueueRecovery, rememberMusicQueueChannel } from '../storage/mus
 const panelReferences = new Map();
 const searchSessions = new Map();
 const MAX_SEARCH_SESSIONS = 1_000;
+const MAX_MUSIC_QUEUE_TRACKS = 1_000;
 const restoredQueues = new WeakSet();
 export function rememberMusicPanel(guildId, message) {
     panelReferences.set(guildId, { message });
@@ -40,6 +41,27 @@ export async function searchTracks(client, query, user) {
 }
 async function searchWithFallback(search, query) {
     const trimmed = query.trim().replace(/^<(.+)>$/, '$1');
+    const youtubePlaylistId = youtubePlaylistIdFromUrl(trimmed);
+    if (youtubePlaylistId) {
+        let lastError;
+        const playlistUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(youtubePlaylistId)}`;
+        const musicPlaylistUrl = `https://music.youtube.com/playlist?list=${encodeURIComponent(youtubePlaylistId)}`;
+        const identifiers = [...new Set([trimmed, playlistUrl, musicPlaylistUrl])];
+        for (const identifier of identifiers) {
+            try {
+                const result = await search(identifier);
+                if (result.loadType === 'playlist' && result.tracks.length)
+                    return result;
+            }
+            catch (error) {
+                if (!isNothingFoundError(error))
+                    lastError ??= error;
+            }
+        }
+        if (lastError)
+            throw lastError;
+        return undefined;
+    }
     const youtubeVideoId = youtubeVideoIdFromUrl(trimmed);
     if (youtubeVideoId) {
         let metadataResult;
@@ -57,7 +79,8 @@ async function searchWithFallback(search, query) {
                 break;
             }
             catch (error) {
-                lastError ??= error;
+                if (!isNothingFoundError(error))
+                    lastError ??= error;
             }
         }
         const sourceTrack = metadataResult?.tracks[0];
@@ -72,7 +95,8 @@ async function searchWithFallback(search, query) {
                         return musicResult;
                 }
                 catch (error) {
-                    lastError ??= error;
+                    if (!isNothingFoundError(error))
+                        lastError ??= error;
                 }
             }
             return { ...metadataResult, tracks: [] };
@@ -96,7 +120,8 @@ async function searchWithFallback(search, query) {
             emptyResult ??= result;
         }
         catch (error) {
-            lastError = error;
+            if (!isNothingFoundError(error))
+                lastError ??= error;
         }
     }
     if (emptyResult)
@@ -115,8 +140,6 @@ function youtubeVideoIdFromUrl(value) {
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:')
         return undefined;
-    if (url.searchParams.has('list'))
-        return undefined;
     const host = url.hostname.toLowerCase().replace(/^www\./, '');
     let videoId = null;
     if (host === 'youtu.be') {
@@ -129,6 +152,23 @@ function youtubeVideoIdFromUrl(value) {
     }
     return videoId && /^[\w-]{11}$/.test(videoId) ? videoId : undefined;
 }
+function youtubePlaylistIdFromUrl(value) {
+    let url;
+    try {
+        url = new URL(value);
+    }
+    catch {
+        return undefined;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:')
+        return undefined;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (!['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com', 'youtu.be'].includes(host)) {
+        return undefined;
+    }
+    const playlistId = url.searchParams.get('list')?.trim();
+    return playlistId || undefined;
+}
 function isHttpUrl(value) {
     try {
         const url = new URL(value);
@@ -137,6 +177,9 @@ function isHttpUrl(value) {
     catch {
         return false;
     }
+}
+function isNothingFoundError(error) {
+    return error instanceof Error && error.message === 'Nothing found';
 }
 export function rememberSearch(guildId, userId, tracks) {
     const now = Date.now();
@@ -169,8 +212,8 @@ export function takeSearchTrack(id, guildId, userId, index) {
 }
 export async function addSelectedTrack(client, input, track) {
     const player = await getOrCreatePlayer(client, input);
-    if (player.queue.tracks.length >= 500)
-        throw new Error('La cola llegó al límite de 500 canciones.');
+    if (player.queue.tracks.length >= MAX_MUSIC_QUEUE_TRACKS)
+        throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
     if (!player.connected)
         await player.connect();
     await player.queue.add(track);
@@ -224,8 +267,9 @@ export async function addSavedTracks(client, input) {
     if (!input.uris.length)
         throw new Error('Esta lista no tiene canciones guardadas.');
     const player = await getOrCreatePlayer(client, input);
-    if (player.queue.tracks.length + input.uris.length > 500)
-        throw new Error('La cola llegó al límite de 500 canciones.');
+    if (player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
+        throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
+    }
     if (!player.connected)
         await player.connect();
     const resolved = new Array(input.uris.length);
@@ -271,6 +315,9 @@ export async function addTrack(client, input) {
         throw new Error('No hay nodos de audio conectados.');
     const result = await searchWithFallback((identifier) => activePlayer ? activePlayer.search(identifier, input.user, true) : node.search(identifier, input.user, true), input.query);
     if (!result?.tracks.length) {
+        if (youtubePlaylistIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
+            throw new Error('No pude cargar esa playlist. Comprueba que el enlace sea accesible y vuelve a intentarlo.');
+        }
         if (youtubeVideoIdFromUrl(input.query.trim().replace(/^<(.+)>$/, '$1'))) {
             throw new Error('No encontré una canción de YouTube Music para ese enlace. Prueba con el nombre de la canción y el artista.');
         }
@@ -279,13 +326,13 @@ export async function addTrack(client, input) {
     const first = result.tracks[0];
     if (!first)
         throw new Error('La búsqueda no devolvió una canción reproducible.');
-    const selectedTracks = result.loadType === 'playlist' ? result.tracks.slice(0, 50) : [first];
+    const selectedTracks = result.loadType === 'playlist' ? result.tracks : [first];
     const player = activePlayer ?? await getOrCreatePlayer(client, input);
+    if (player.queue.tracks.length + selectedTracks.length > MAX_MUSIC_QUEUE_TRACKS) {
+        throw new Error(`No caben todas las canciones: la cola admite hasta ${MAX_MUSIC_QUEUE_TRACKS}.`);
+    }
     if (!player.connected)
         await player.connect();
-    if (player.queue.tracks.length + selectedTracks.length > 500) {
-        throw new Error('La cola llegó al límite de 500 canciones.');
-    }
     await player.queue.add(selectedTracks);
     rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
     if (!player.playing && !player.paused)
@@ -294,7 +341,6 @@ export async function addTrack(client, input) {
         title: first.info.title,
         count: selectedTracks.length,
         playlist: result.loadType === 'playlist',
-        truncated: result.loadType === 'playlist' && result.tracks.length > selectedTracks.length,
     };
 }
 async function getOrCreatePlayer(client, input) {
