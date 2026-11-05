@@ -81,7 +81,7 @@ export function registerInteractionHandler(client: Client) {
             query,
           });
           const description = result.playlist
-            ? `Añadí **${result.count} canciones** de la lista${result.truncated ? ' (límite de 50 por solicitud)' : ''}.`
+            ? `Añadí **${result.count} canciones** de la lista a la cola.`
             : `Añadí **${result.title}** a la cola.`;
           await interaction.editReply(`🎶 ${description}`);
           await refreshMusicPanel(interaction.client, interaction.guildId);

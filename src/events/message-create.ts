@@ -81,7 +81,7 @@ async function routeMessage(message: Message): Promise<void> {
     if (!voiceChannelId) return say(message, 'Entra a un canal de voz antes de usar música.');
     const result = await addTrack(client, { guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message), query });
     await refreshMusicPanel(client, guildId);
-    await say(message, result.playlist ? `🎶 Añadí **${result.count} canciones** a la cola${result.truncated ? ' (límite de 50)' : ''}.` : `🎶 Añadí **${result.title}** a la cola.`); return;
+    await say(message, result.playlist ? `🎶 Añadí **${result.count} canciones** de la playlist a la cola.` : `🎶 Añadí **${result.title}** a la cola.`); return;
   }
   if (['search', 's', 'buscar'].includes(command)) {
     const query = args.join(' ').trim(); if (!query) return say(message, 'Uso: `a!search artista y canción`.');

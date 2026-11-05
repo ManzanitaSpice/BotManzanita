@@ -11,6 +11,7 @@ lavalink:
       snapshot: false
   server:
     password: "${LAVALINK_SERVER_PASSWORD}"
+    youtubePlaylistLoadLimit: 10 # Hasta 1,000 canciones por playlist (10 páginas de 100)
     sources:
       youtube: false
       bandcamp: true
