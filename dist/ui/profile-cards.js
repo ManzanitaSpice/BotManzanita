@@ -12,7 +12,7 @@ export async function renderProfileCard(input) {
     const profileMode = input.mode === 'profile' || input.mode === 'rank';
     const levelUpMode = input.mode === 'levelup';
     const simpleBannerMode = profileMode || levelUpMode;
-    const cardHeight = input.mode === 'wallet' ? 540 : simpleBannerMode ? 420 : height;
+    const cardHeight = input.mode === 'wallet' ? 500 : simpleBannerMode ? 420 : height;
     const canvas = createCanvas(width, cardHeight);
     const ctx = canvas.getContext('2d');
     const accent = input.settings.accent;
@@ -21,9 +21,9 @@ export async function renderProfileCard(input) {
     const cardAccent = input.mode === 'wallet' ? (background?.color ?? (defaultAccent ? '#0876d8' : accent)) : profileMode ? (background?.color ?? accent) : levelUpMode ? (background?.color ?? (defaultAccent ? '#929497' : accent)) : accent;
     const gradient = ctx.createLinearGradient(0, 0, width, cardHeight);
     if (input.mode === 'wallet') {
-        gradient.addColorStop(0, cardAccent);
-        gradient.addColorStop(.56, cardAccent === '#0876d8' ? '#0755bf' : cardAccent);
-        gradient.addColorStop(1, cardAccent === '#0876d8' ? '#079fda' : '#087fc1');
+        gradient.addColorStop(0, '#0b1422');
+        gradient.addColorStop(.56, '#182638');
+        gradient.addColorStop(1, '#102a35');
     }
     else if (simpleBannerMode) {
         gradient.addColorStop(0, defaultAccent ? '#929497' : cardAccent);
@@ -49,9 +49,9 @@ export async function renderProfileCard(input) {
         }
         const shade = ctx.createLinearGradient(0, 0, width, 0);
         if (input.mode === 'wallet') {
-            shade.addColorStop(0, 'rgba(5,20,55,.12)');
-            shade.addColorStop(.56, 'rgba(5,20,55,.04)');
-            shade.addColorStop(1, 'rgba(5,20,55,.12)');
+            shade.addColorStop(0, 'rgba(5,10,22,.64)');
+            shade.addColorStop(.56, 'rgba(5,10,22,.48)');
+            shade.addColorStop(1, 'rgba(5,10,22,.68)');
         }
         else if (simpleBannerMode) {
             shade.addColorStop(0, 'rgba(5,8,19,.28)');
@@ -72,9 +72,9 @@ export async function renderProfileCard(input) {
         ctx.fillRect(0, 0, width, cardHeight);
     }
     ctx.restore();
-    // Low-contrast ambient light keeps labels readable while preserving the wallet's brighter card look.
+    // Subtle ambient light keeps the cards readable and adds depth to the background.
     const orb = ctx.createRadialGradient(1010, 90, 20, 1010, 90, 520);
-    orb.addColorStop(0, hexAlpha(cardAccent, input.mode === 'wallet' ? .24 : simpleBannerMode ? .18 : .44));
+    orb.addColorStop(0, hexAlpha(cardAccent, input.mode === 'wallet' ? .17 : simpleBannerMode ? .18 : .44));
     orb.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = orb;
     roundRect(ctx, 0, 0, width, cardHeight, 38);
@@ -97,12 +97,12 @@ export async function renderProfileCard(input) {
         ctx.fill();
     }
     ctx.restore();
-    ctx.strokeStyle = hexAlpha(cardAccent, .8);
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = hexAlpha(cardAccent, input.mode === 'wallet' ? .52 : .8);
+    ctx.lineWidth = input.mode === 'wallet' ? 2 : 3;
     roundRect(ctx, 3, 3, width - 6, cardHeight - 6, 38);
     ctx.stroke();
     if (input.mode === 'wallet')
-        await drawWallet(ctx, input, cardAccent, background, cardHeight);
+        await drawWallet(ctx, input, cardAccent);
     else if (input.mode === 'levelup')
         await drawLevelup(ctx, input);
     else
@@ -231,8 +231,8 @@ async function drawProfile(ctx, input, accent, rankMode, cardHeight) {
     roundRect(ctx, 435, 178, 730, 54, 16);
     ctx.fill();
     label(ctx, truncate(headline, 48), 800, 214, 29, '#fff', 600, 'center');
-    label(ctx, 'Server Score', 438, 278, 25, 'rgba(255,255,255,.76)', 500);
-    label(ctx, progress.serverXp.toLocaleString('es-MX'), 1164, 278, 25, '#fff', 700, 'right');
+    label(ctx, 'XP de perfil', 438, 278, 25, 'rgba(255,255,255,.76)', 500);
+    label(ctx, progress.xp.toLocaleString('es-MX'), 1164, 278, 25, '#fff', 700, 'right');
     ctx.fillStyle = 'rgba(0,0,0,.09)';
     roundRect(ctx, 435, 308, 730, 74, 20);
     ctx.fill();
@@ -309,86 +309,84 @@ function drawSpeechBubble(ctx, x, y) {
         ctx.fill();
     }
 }
-async function drawWallet(ctx, input, accent, background, cardHeight) {
+async function drawWallet(ctx, input, accent) {
     const fmt = new Intl.NumberFormat('es-MX');
-    const themeName = background?.name ?? (input.settings.accent.toLocaleLowerCase() === '#8b75dc' ? 'standard' : 'personalizado');
-    ctx.save();
-    roundRect(ctx, 0, 0, width, cardHeight, 38);
-    ctx.clip();
-    // Layered flowing bands echo the reference card and remain visible over future wallet background art.
-    ctx.fillStyle = hexAlpha(accent, .14);
-    ctx.beginPath();
-    ctx.moveTo(430, 0);
-    ctx.bezierCurveTo(710, 34, 740, 172, 1200, 208);
-    ctx.lineTo(1200, 0);
-    ctx.closePath();
+    label(ctx, 'MANZANITA', 72, 86, 25, hexAlpha(accent, .96), 800);
+    label(ctx, 'BILLETERA', 72, 145, 49, '#fff', 800);
+    label(ctx, 'Monedas y gemas premium', 74, 175, 21, 'rgba(232,239,248,.74)', 500);
+    await drawAvatar(ctx, input, 1046, 48, 72, input.settings.frame);
+    label(ctx, `@${truncate(input.username, 18)}`, 1138, 159, 23, '#f4f7fb', 700, 'right');
+    drawWalletBalanceCard(ctx, 72, 202, 512, 224, 'MONEDAS', fmt.format(input.wallet), 'Disponible en billetera', `En banco: ${fmt.format(input.bank)} monedas`, '#e8b95b', 'coin');
+    drawWalletBalanceCard(ctx, 616, 202, 512, 224, 'GEMAS PREMIUM', fmt.format(input.premium), 'Gemas disponibles', 'Cuenta separada de monedas', '#ad9aff', 'gem');
+    ctx.fillStyle = 'rgba(255,255,255,.16)';
+    roundRect(ctx, 72, 453, 1056, 1, 1);
     ctx.fill();
-    ctx.fillStyle = 'rgba(8,42,149,.16)';
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(315, 160, 540, 18, 770, 0);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
+    label(ctx, 'El banco guarda monedas; las gemas premium son una moneda aparte.', 74, 482, 18, 'rgba(232,239,248,.72)', 500);
+}
+function drawWalletBalanceCard(ctx, x, y, w, h, title, amount, caption, detail, color, icon) {
+    ctx.fillStyle = 'rgba(7,13,24,.66)';
+    roundRect(ctx, x, y, w, h, 26);
     ctx.fill();
-    ctx.fillStyle = 'rgba(0,217,255,.11)';
-    ctx.beginPath();
-    ctx.moveTo(0, 322);
-    ctx.bezierCurveTo(345, 262, 650, 484, 1200, 340);
-    ctx.lineTo(1200, cardHeight);
-    ctx.lineTo(0, cardHeight);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    label(ctx, 'manzanita.', 72, 137, 72, '#fff', 800);
-    label(ctx, truncate(themeName.toLocaleLowerCase(), 16), 1128, 137, 39, '#f7fbff', 500, 'right');
-    // Card chip on the right balances the text column and gives the card a physical-wallet silhouette.
-    ctx.fillStyle = 'rgba(239,247,252,.94)';
-    roundRect(ctx, 724, 253, 182, 120, 26);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.84)';
+    ctx.strokeStyle = 'rgba(255,255,255,.18)';
     ctx.lineWidth = 2;
-    roundRect(ctx, 726, 255, 178, 116, 24);
+    roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 25);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(120,145,160,.38)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(724, 293);
-    ctx.lineTo(906, 293);
-    ctx.moveTo(724, 333);
-    ctx.lineTo(906, 333);
-    ctx.moveTo(784, 253);
-    ctx.bezierCurveTo(762, 282, 762, 344, 784, 373);
-    ctx.moveTo(846, 253);
-    ctx.bezierCurveTo(868, 282, 868, 344, 846, 373);
-    ctx.stroke();
-    drawWalletIcon(ctx, 78, 216, accent);
-    label(ctx, `${fmt.format(input.wallet)} Credits`, 145, 250, 43, '#fff', 600);
-    label(ctx, '🪙', 78, 330, 42, '#ffe54b', 700);
-    label(ctx, `${fmt.format(input.premium)} Tokens`, 145, 330, 43, '#ffe54b', 600);
-    label(ctx, '✦', 84, 414, 40, '#fff', 700);
-    label(ctx, `${fmt.format(input.progress.serverXp)} Server Points`, 145, 414, 42, '#fff', 600);
-    label(ctx, 'BANCO', 824, 416, 18, 'rgba(245,250,255,.78)', 700);
-    label(ctx, `${fmt.format(input.bank)} monedas`, 824, 451, 30, '#fff', 700);
-    await drawAvatar(ctx, input, 74, 480, 52, input.settings.frame);
-    label(ctx, truncate(input.username.toLocaleUpperCase(), 24), 142, 532, 38, '#fff', 700);
-    for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = color;
+    roundRect(ctx, x + 26, y + 25, 7, h - 50, 4);
+    ctx.fill();
+    label(ctx, title, x + 54, y + 58, 19, 'rgba(233,240,249,.78)', 700);
+    label(ctx, amount, x + 54, y + 132, fitFontSize(ctx, amount, w - 190, 58, 38, 800), '#fff', 800);
+    label(ctx, caption, x + 56, y + 164, 17, 'rgba(233,240,249,.68)', 500);
+    label(ctx, detail, x + 56, y + 199, fitFontSize(ctx, detail, w - 190, 18, 13, 600), 'rgba(245,248,252,.92)', 600);
+    const cx = x + w - 77;
+    const cy = y + 108;
+    if (icon === 'coin') {
         ctx.beginPath();
-        ctx.arc(730 + i * 54, 520, 9, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,.96)';
+        ctx.arc(cx, cy, 35, 0, Math.PI * 2);
+        ctx.fillStyle = hexAlpha(color, .16);
+        ctx.fill();
+        ctx.strokeStyle = hexAlpha(color, .88);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+        ctx.strokeStyle = hexAlpha(color, .56);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
         ctx.fill();
     }
-}
-function drawWalletIcon(ctx, x, y, accent) {
-    ctx.fillStyle = 'rgba(255,255,255,.98)';
-    roundRect(ctx, x, y, 44, 31, 6);
-    ctx.fill();
-    ctx.fillStyle = accent;
-    roundRect(ctx, x + 25, y + 8, 22, 15, 4);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(x + 38, y + 15.5, 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
+    else {
+        const gem = ctx.createLinearGradient(cx - 28, cy - 30, cx + 28, cy + 30);
+        gem.addColorStop(0, '#fff1be');
+        gem.addColorStop(.5, color);
+        gem.addColorStop(1, '#f59e0b');
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 36);
+        ctx.lineTo(cx + 32, cy - 8);
+        ctx.lineTo(cx + 22, cy + 26);
+        ctx.lineTo(cx, cy + 39);
+        ctx.lineTo(cx - 22, cy + 26);
+        ctx.lineTo(cx - 32, cy - 8);
+        ctx.closePath();
+        ctx.fillStyle = hexAlpha(color, .2);
+        ctx.fill();
+        ctx.strokeStyle = gem;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 32, cy - 8);
+        ctx.lineTo(cx + 32, cy - 8);
+        ctx.moveTo(cx, cy - 36);
+        ctx.lineTo(cx - 8, cy - 8);
+        ctx.lineTo(cx, cy + 39);
+        ctx.lineTo(cx + 8, cy - 8);
+        ctx.strokeStyle = 'rgba(255,255,255,.55)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
 }
 async function drawLevelup(ctx, input) {
     const newLevel = input.levelUpTo ?? input.progress.level;
@@ -496,6 +494,12 @@ async function drawAvatar(ctx, input, x, y, size, frameId) {
 function itemForMode(input) { const id = input.mode === 'wallet' ? input.settings.walletBg : input.mode === 'levelup' ? input.settings.levelupBg : input.mode === 'rank' ? input.settings.rankBg : input.settings.profileBg; return profileItem(id); }
 function cacheKey(input) { return `${input.mode}:${input.userId}:${input.username}:${input.avatarUrl}:${input.progress.level}:${input.progress.xp}:${input.progress.globalRank}:${input.progress.serverLevel}:${input.progress.serverXp}:${input.progress.serverRank}:${input.progress.messages}:${input.progress.reputation}:${input.progress.hugsReceived}:${input.progress.patsReceived}:${input.wallet}:${input.bank}:${input.premium}:${input.settings.accent}:${input.settings.profileBg}:${input.settings.rankBg}:${input.settings.walletBg}:${input.settings.levelupBg}:${input.settings.frame}:${input.settings.tag}:${input.settings.sticker}:${input.settings.about}:${input.settings.title}:${input.badges.join(',')}:${input.levelUpTo ?? ''}`; }
 function label(ctx, text, x, y, size, color, weight, align = 'left') { ctx.font = `${weight} ${size}px Arial, sans-serif`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillText(text, x, y); }
+function fitFontSize(ctx, text, maxWidth, start, min, weight) { let size = start; while (size > min) {
+    ctx.font = `${weight} ${size}px Arial, sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth)
+        break;
+    size -= 2;
+} return size; }
 function pill(ctx, text, x, y, color) { ctx.font = '600 14px Arial,sans-serif'; const w = ctx.measureText(text).width + 24; ctx.fillStyle = hexAlpha(color, .28); roundRect(ctx, x, y, w, 29, 14); ctx.fill(); label(ctx, text, x + 12, y + 20, 14, '#fff', 600); }
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
 function truncate(value, max) { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }

@@ -24,8 +24,8 @@ export async function profileCardPanel(guildId, user, viewerId = user.id, mode =
         rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(viewerId, 'customize')).setLabel('Personalizar').setEmoji('🎨').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(viewerId, 'inventory')).setLabel('Inventario').setEmoji('🎒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'shop')).setLabel('Tienda').setEmoji('🛒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'progress')).setLabel('Progreso').setEmoji('📈').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'wallet')).setLabel('Wallet').setEmoji('💰').setStyle(ButtonStyle.Secondary)));
         rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(viewerId, 'rank')).setLabel('Rank card').setEmoji('🏆').setStyle(ButtonStyle.Secondary)));
     }
-    const title = mode === 'wallet' ? 'WALLET CARD' : mode === 'rank' ? 'RANK CARD' : 'PROFILE CARD';
-    const description = mode === 'rank' ? 'Rango global y actividad de usuario' : 'Tarjeta de comunidad de Manzanita';
+    const title = mode === 'wallet' ? 'BILLETERA' : mode === 'rank' ? 'TARJETA DE RANGO' : mode === 'levelup' ? 'NUEVO NIVEL' : 'TARJETA DE PERFIL';
+    const description = mode === 'wallet' ? 'Monedas y gemas premium' : mode === 'rank' ? 'Rango global y actividad de usuario' : 'Tarjeta de comunidad de Manzanita';
     return panelContainer(buffer, title, description, settings.accent, `card-${mode}-${user.id}`, rows);
 }
 export async function profileCustomizePanel(guildId, userId, user) {

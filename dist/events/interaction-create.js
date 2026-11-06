@@ -1,6 +1,6 @@
 import { LabelBuilder, MessageFlags, ModalBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle, } from 'discord.js';
-import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, musicPanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
-import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, storeItems, useShopItem } from '../services/economy.js';
+import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, selectJob, storeItems, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack } from '../services/music.js';
@@ -120,13 +120,30 @@ export function registerInteractionHandler(client) {
             }
             if (!interaction.isMessageComponent() || !interaction.guildId)
                 return;
+            if (interaction.customId.startsWith('jobs:select:') && interaction.isStringSelectMenu()) {
+                const ownerId = interaction.customId.slice('jobs:select:'.length);
+                if (interaction.user.id !== ownerId) {
+                    await interaction.reply({ content: 'Este selector de trabajos pertenece a otra persona.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+                const jobId = interaction.values[0] ?? '';
+                const result = await selectJob(interaction.guildId, ownerId, jobId);
+                if (!result.ok) {
+                    await interaction.reply({ content: 'Ese trabajo ya no está disponible. Vuelve a abrir `a!jobs`.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+                const notice = `✅ Elegiste **${result.progress.job.name}** · nivel ${result.progress.level}. Plazas ocupadas: **${result.activeJobIds.length}/${result.slotLimit}**.`;
+                await interaction.update(componentUpdate(await jobsPanel(interaction.guildId, ownerId, notice)));
+                return;
+            }
             if (interaction.customId === 'catalog:category' && interaction.isStringSelectMenu()) {
                 await interaction.update(componentUpdate(catalogPanel(interaction.values[0])));
                 return;
             }
             if (interaction.customId.startsWith('shop:')) {
                 if (interaction.customId === 'shop:category' && interaction.isStringSelectMenu()) {
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, interaction.values[0] ?? 'all')));
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, interaction.values[0] ?? 'all')));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:item:') && interaction.isStringSelectMenu()) {
@@ -143,7 +160,8 @@ export function registerInteractionHandler(client) {
                     catch {
                         category = 'all';
                     }
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId)));
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, '', kind)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:page:') && interaction.isButton()) {
@@ -155,7 +173,8 @@ export function registerInteractionHandler(client) {
                     catch {
                         category = 'all';
                     }
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue))));
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue))));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:buy:') && interaction.isButton()) {
@@ -170,11 +189,12 @@ export function registerInteractionHandler(client) {
                         await interaction.reply({ content: 'Ese producto ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
+                    await interaction.deferUpdate();
                     const result = await purchaseStoreProduct(interaction.guildId, interaction.user.id, kind, itemId, interaction.id);
                     if (!result.ok) {
                         const message = result.reason === 'insufficient_funds' ? `No tienes monedas suficientes para **${item.name}**.`
                             : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.` : 'Ese producto ya no está disponible.';
-                        await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+                        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
                         return;
                     }
                     let category = 'all';
@@ -184,16 +204,11 @@ export function registerInteractionHandler(client) {
                     catch {
                         category = 'all';
                     }
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} monedas.`)));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} monedas.`, kind)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:equip:') && interaction.isButton()) {
                     const [, , itemId = '', categoryValue = 'all', pageValue = '0'] = interaction.customId.split(':');
-                    const result = await equipProfileItem(interaction.guildId, interaction.user.id, itemId);
-                    if (!result.ok) {
-                        await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
-                        return;
-                    }
                     let category = 'all';
                     try {
                         category = decodeURIComponent(categoryValue);
@@ -201,7 +216,13 @@ export function registerInteractionHandler(client) {
                     catch {
                         category = 'all';
                     }
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, result.message)));
+                    await interaction.deferUpdate();
+                    const result = await equipProfileItem(interaction.guildId, interaction.user.id, itemId);
+                    if (!result.ok) {
+                        await interaction.followUp({ content: result.message, flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, result.message, 'profile')));
                     return;
                 }
             }
@@ -964,8 +985,12 @@ export function registerInteractionHandler(client) {
         }
         catch (error) {
             console.error('Error procesando interacción:', error);
-            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: 'Ocurrió un error al procesar esta acción.', flags: MessageFlags.Ephemeral }).catch(() => undefined);
+            if (interaction.isRepliable()) {
+                const payload = { content: 'Ocurrió un error al procesar esta acción. Inténtalo de nuevo.', flags: MessageFlags.Ephemeral };
+                if (interaction.deferred || interaction.replied)
+                    await interaction.followUp(payload).catch(() => undefined);
+                else
+                    await interaction.reply(payload).catch(() => undefined);
             }
         }
     });

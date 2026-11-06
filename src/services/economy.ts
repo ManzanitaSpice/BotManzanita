@@ -492,8 +492,9 @@ export async function getJobRoster(guildId: string, userId: string): Promise<Job
     const saved = progressById.get(job.id);
     return { ...makeJobProgress(job.id, saved?.level ?? 1, saved?.xp ?? 0)!, active: Boolean(saved?.active) };
   });
+  const primaryJobId = rows.find((row) => Boolean(row.active))?.jobId;
   return { jobs, activeCount: jobs.filter((job) => job.active).length, slotLimit: secondSlotUnlocked ? 2 : 1, secondSlotUnlocked,
-    primaryJobId: rows.find((row) => Boolean(row.active))?.jobId };
+    ...(primaryJobId ? { primaryJobId } : {}) };
 }
 
 type JobSelectionRow = { jobId: string; level: number; xp: number; active: number | boolean; updatedAt: number };
