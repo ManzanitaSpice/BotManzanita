@@ -2,10 +2,10 @@ import { EmbedBuilder, MessageFlags, PermissionFlagsBits, escapeMarkdown } from 
 import { randomInt } from 'node:crypto';
 import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
-import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
+import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, resignJob, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
-import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
+import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, releaseRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield } from '../services/admin.js';
@@ -87,7 +87,7 @@ async function routeMessage(message) {
         await sendPanel(message, await expeditionLogPanel(guildId, userId));
         return;
     }
-    if (['adopt', 'adoptar', 'name', 'nombrar', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) {
+    if (['adopt', 'adoptar', 'release', 'liberar', 'soltar', 'releasepet', 'name', 'nombrar', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) {
         args.unshift(command);
         command = 'rpg';
     }
@@ -392,6 +392,10 @@ async function routeMessage(message) {
     }
     if (['job', 'jobs', 'empleo', 'empleos', 'trabajo'].includes(command)) {
         const action = (args[0] ?? '').toLocaleLowerCase();
+        if (['renunciar', 'resign', 'quit'].includes(action)) {
+            await resignMessageJob(message, guildId, userId, args.slice(1).join(' '));
+            return;
+        }
         const selectionWords = ['elegir', 'seleccionar', 'select', 'choose'];
         const listing = !args.length || ['lista', 'list', 'ver', 'help', 'ayuda'].includes(action);
         const query = selectionWords.includes(action) ? args.slice(1).join(' ') : args.join(' ');
@@ -407,6 +411,10 @@ async function routeMessage(message) {
         if (query && !selectedJob && !listing)
             return say(message, 'No reconocí ese trabajo. Usa `a!jobs` y selecciónalo en el panel, o escribe `a!jobs elegir minero`.');
         return sendPanel(message, await jobsPanel(guildId, userId));
+    }
+    if (['renunciar', 'resign', 'quitjob'].includes(command)) {
+        await resignMessageJob(message, guildId, userId, args.join(' '));
+        return;
     }
     if (['work', 'w', 'trabajar'].includes(command)) {
         const result = await work(guildId, userId, message.id);
@@ -538,6 +546,15 @@ async function routeMessage(message) {
         }
         if (['panel', 'profile', 'perfil'].includes(action)) {
             await sendPanel(message, await rpgPanel(guildId, userId, message.author.username));
+            return;
+        }
+        if (['release', 'liberar', 'soltar', 'releasepet'].includes(action)) {
+            if ((args[0] ?? '').toLocaleLowerCase() !== 'confirmar')
+                return say(message, '⚠️ Esto borrará tu mascota actual, incluyendo su nivel, estadísticas, equipo y progreso. Tu mochila RPG y la bitácora se conservan. Para continuar, escribe `a!liberar confirmar`.');
+            const released = await releaseRpgPet(guildId, userId);
+            if (!released)
+                return say(message, 'No tienes una mascota para liberar. Usa `a!pet` para abrir la incubadora.');
+            await sendPanel(message, await rpgAdoptionPanel(message.author.username, 'Fuego', '✅ Mascota liberada. Tu nueva adopción empezará desde nivel 1.'));
             return;
         }
         if (['bitacora', 'bitácora', 'log', 'logs', 'historial'].includes(action)) {
@@ -967,6 +984,26 @@ async function adminDmCommands(message, args) {
 function findRpgItem(query) { const normalized = query.toLocaleLowerCase().replace(/\s+/g, ' ').trim(); return rpgItems.find((item) => item.id.toLowerCase() === normalized || item.name.toLocaleLowerCase() === normalized) ?? rpgItems.find((item) => normalized.length >= 3 && item.name.toLocaleLowerCase().includes(normalized)); }
 function normalizeColor(value) { const color = value?.toLowerCase(); return color === 'red' ? 'rojo' : color === 'black' ? 'negro' : color === 'green' ? 'verde' : color === 'rojo' || color === 'negro' || color === 'verde' ? color : undefined; }
 function requester(message) { return { id: message.author.id, username: message.author.username }; }
+async function resignMessageJob(message, guildId, userId, query) {
+    const normalized = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
+    const job = normalized ? economyJobs.find((candidate) => candidate.id === normalized || candidate.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalized) : undefined;
+    if (normalized && !job)
+        return say(message, `No reconocí ese oficio. Uso: \`a!renunciar [${economyJobs.map((entry) => entry.id).join('|')}]\`.`);
+    const result = await resignJob(guildId, userId, job?.id);
+    if (!result.ok) {
+        if (result.reason === 'no_active_job')
+            return say(message, 'No tienes un oficio activo. Usa `a!jobs` para elegir uno.');
+        if (result.reason === 'choose_job')
+            return say(message, `Tienes varios oficios activos. Indica cuál quieres dejar: ${result.activeJobs.map((entry) => `\`a!renunciar ${entry.id}\``).join(' · ')}.`);
+        if (result.reason === 'not_active')
+            return say(message, `No tienes activo el oficio **${result.job.name}**. Revisa tus trabajos con \`a!jobs\`.`);
+        return say(message, 'No reconocí ese oficio. Usa `a!jobs` para ver la lista.');
+    }
+    const remaining = result.remainingJobs.length
+        ? ` Sigue activo: **${result.remainingJobs.map((entry) => entry.name).join(', ')}**.`
+        : ' Ya no tienes un oficio activo; elige otro con `a!jobs` para volver a trabajar.';
+    await sendPanel(message, await jobsPanel(guildId, userId, `📤 Renunciaste a **${result.job.name} · nivel ${result.level}**. Tu nivel y XP se conservan si eliges ese oficio otra vez.${remaining}`));
+}
 async function say(message, content) { await message.reply({ content, allowedMentions: { repliedUser: false } }); }
 async function sendPanel(message, panel) {
     await message.reply({ components: panel.components, ...(panel.files ? { files: panel.files } : {}), flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], repliedUser: false } });

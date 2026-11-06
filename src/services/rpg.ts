@@ -570,13 +570,17 @@ export async function adminEditRpgPet(
   return run.immediate();
 }
 
-export async function adminRemoveRpgPet(guildId: string, userId: string): Promise<boolean> {
+export async function releaseRpgPet(guildId: string, userId: string): Promise<boolean> {
   guildId = GLOBAL_SCOPE_ID;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const [result] = await connection.execute('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?', [guildId, userId]);
     return Number((result as { affectedRows: number }).affectedRows) > 0;
   });
   return db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+}
+
+export async function adminRemoveRpgPet(guildId: string, userId: string): Promise<boolean> {
+  return releaseRpgPet(guildId, userId);
 }
 
 export async function exploreRpg(guildId: string, userId: string, zoneId: string, reference: string): Promise<

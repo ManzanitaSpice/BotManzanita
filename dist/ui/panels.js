@@ -89,7 +89,7 @@ export async function jobsPanel(guildId, userId, notice = '') {
         ? '🔓 Alcanzaste el nivel máximo en un oficio: tienes **dos plazas**. Si ambas están ocupadas, se prioriza conservar el oficio al máximo y el más reciente; el progreso de los demás también queda guardado.'
         : `🔒 Llega al nivel ${MAX_JOB_LEVEL} en cualquier oficio para desbloquear una segunda plaza.`}`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Trabajos disponibles\n${jobList}\n\nUsa **a!work** para cobrar. Necesitas la herramienta indicada; puedes comprarla con **a!shop**.`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Trabajos disponibles\n${jobList}\n\nUsa **a!work** para cobrar. Necesitas la herramienta indicada; puedes comprarla con **a!shop**. Renuncia con **a!renunciar [oficio]**; el nivel y la experiencia quedan guardados.`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`jobs:select:${userId}`).setPlaceholder('Elegir o cambiar de trabajo').addOptions(roster.jobs.map((entry) => ({
         label: `${entry.job.name} · Nv. ${entry.level}`,
         value: entry.job.id,
@@ -269,11 +269,11 @@ export async function rpgMissionsPanel(guildId, userId) {
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:panel').setLabel('Mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
-export async function rpgAdoptionPanel(username, selectedElement = 'Fuego') {
+export async function rpgAdoptionPanel(username, selectedElement = 'Fuego', notice = '') {
     const option = rpgEggOptions.find((entry) => entry.element === selectedElement) ?? rpgEggOptions[0];
     const card = await renderEggCard(username, option.element);
     const container = new ContainerBuilder().setAccentColor(0x14b8a6)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥚 INCUBADORA DEL GREMIO\nElige una afinidad. La mascota sale al azar entre las especies de ese elemento.`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥚 INCUBADORA DEL GREMIO\n${notice ? `${notice}\n\n` : ''}Elige una afinidad. La mascota sale al azar entre las especies de ese elemento.`))
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rpg-egg-selection.png').setDescription(`${option.title} · afinidad ${option.element}`)))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:egg:element').setPlaceholder('Selecciona un huevo elemental')
         .addOptions(rpgEggOptions.map((entry) => ({ label: `${entry.title} · ${entry.element}`, value: entry.element, emoji: entry.emoji, description: entry.flavor, default: entry.element === option.element })))))

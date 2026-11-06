@@ -404,6 +404,49 @@ export async function getJobRoster(guildId, userId) {
     return { jobs, activeCount: jobs.filter((job) => job.active).length, slotLimit: secondSlotUnlocked ? 2 : 1, secondSlotUnlocked,
         ...(primaryJobId ? { primaryJobId } : {}) };
 }
+function planJobResignation(rows, requestedJobId) {
+    const activeJobs = rows.flatMap((row) => {
+        const job = economyJobs.find((candidate) => candidate.id === row.jobId);
+        return job ? [{ job, level: Number(row.level), jobId: row.jobId }] : [];
+    });
+    if (!activeJobs.length)
+        return { ok: false, reason: 'no_active_job' };
+    const selected = requestedJobId
+        ? activeJobs.find((entry) => entry.jobId === requestedJobId)
+        : activeJobs.length === 1 ? activeJobs[0] : undefined;
+    if (!selected) {
+        if (requestedJobId) {
+            const job = economyJobs.find((candidate) => candidate.id === requestedJobId);
+            return job ? { ok: false, reason: 'not_active', job } : { ok: false, reason: 'invalid_job' };
+        }
+        return { ok: false, reason: 'choose_job', activeJobs: activeJobs.map((entry) => entry.job) };
+    }
+    return { ok: true, job: selected.job, level: selected.level, remainingJobs: activeJobs.filter((entry) => entry.jobId !== selected.jobId).map((entry) => entry.job), jobId: selected.jobId };
+}
+export async function resignJob(guildId, userId, requestedJobId) {
+    guildId = GLOBAL_SCOPE_ID;
+    if (requestedJobId && !economyJobs.some((job) => job.id === requestedJobId))
+        return { ok: false, reason: 'invalid_job' };
+    if (economyPool)
+        return withEconomyTransaction(async (connection) => {
+            const [result] = await connection.execute('SELECT job_id AS jobId,level FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC FOR UPDATE', [guildId, userId]);
+            const plan = planJobResignation(result.map((row) => ({ jobId: String(row.jobId), level: Number(row.level) })), requestedJobId);
+            if (!plan.ok)
+                return plan;
+            await connection.execute('UPDATE economy_jobs SET is_active=0 WHERE guild_id=? AND user_id=? AND job_id=? AND is_active=1', [guildId, userId, plan.jobId]);
+            return { ok: true, job: plan.job, level: plan.level, remainingJobs: plan.remainingJobs };
+        });
+    const run = db.transaction(() => {
+        const rows = db.prepare('SELECT job_id AS jobId,level FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC')
+            .all(guildId, userId);
+        const plan = planJobResignation(rows, requestedJobId);
+        if (!plan.ok)
+            return plan;
+        db.prepare('UPDATE economy_jobs SET is_active=0 WHERE guild_id=? AND user_id=? AND job_id=? AND is_active=1').run(guildId, userId, plan.jobId);
+        return { ok: true, job: plan.job, level: plan.level, remainingJobs: plan.remainingJobs };
+    });
+    return run.immediate();
+}
 function planActiveJobs(rows, selectedJobId) {
     const secondSlotUnlocked = rows.some((row) => Number(row.level) >= MAX_JOB_LEVEL);
     const slotLimit = secondSlotUnlocked ? 2 : 1;

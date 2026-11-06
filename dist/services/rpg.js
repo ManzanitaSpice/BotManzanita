@@ -639,7 +639,7 @@ export async function adminEditRpgPet(guildId, userId, edit) {
     });
     return run.immediate();
 }
-export async function adminRemoveRpgPet(guildId, userId) {
+export async function releaseRpgPet(guildId, userId) {
     guildId = GLOBAL_SCOPE_ID;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
@@ -647,6 +647,9 @@ export async function adminRemoveRpgPet(guildId, userId) {
             return Number(result.affectedRows) > 0;
         });
     return db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+}
+export async function adminRemoveRpgPet(guildId, userId) {
+    return releaseRpgPet(guildId, userId);
 }
 export async function exploreRpg(guildId, userId, zoneId, reference) {
     guildId = GLOBAL_SCOPE_ID;

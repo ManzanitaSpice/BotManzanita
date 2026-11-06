@@ -32,8 +32,13 @@ const categories = {
 export function catalogPanel(selected = 'inicio') {
     const key = selected in categories ? selected : 'inicio';
     const category = categories[key];
+    const helpAddition = key === 'economia'
+        ? '\n\n`a!renunciar [oficio]` deja un trabajo activo y conserva su nivel/XP; con dos trabajos, indica cuál.'
+        : key === 'rpg'
+            ? '\n\n`a!liberar` explica el reinicio · `a!liberar confirmar` borra tu mascota y abre la incubadora. La mochila y la bitácora se conservan.'
+            : '';
     const container = new ContainerBuilder().setAccentColor(0x8b75dc)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(category.body))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${category.body}${helpAddition}`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('catalog:category').setPlaceholder('📚 Explorar categorías').setOptions(...Object.entries(categories).map(([value, entry]) => ({ label: entry.label, description: entry.description, value, emoji: entry.emoji, default: value === key })))));
     return { components: [container], flags: ['IsComponentsV2'] };
 }
