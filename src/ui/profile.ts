@@ -34,8 +34,8 @@ export async function profileCardPanel(guildId:string,user:User,viewerId=user.id
       new ButtonBuilder().setCustomId(pid(viewerId,'rank')).setLabel('Rank card').setEmoji('🏆').setStyle(ButtonStyle.Secondary),
     ));
   }
-  const title=mode==='wallet'?'WALLET CARD':mode==='rank'?'RANK CARD':'PROFILE CARD';
-  const description=mode==='rank'?'Rango global y actividad de usuario':'Tarjeta de comunidad de Manzanita';
+  const title=mode==='wallet'?'BILLETERA':mode==='rank'?'TARJETA DE RANGO':mode==='levelup'?'NUEVO NIVEL':'TARJETA DE PERFIL';
+  const description=mode==='wallet'?'Monedas y gemas premium':mode==='rank'?'Rango global y actividad de usuario':'Tarjeta de comunidad de Manzanita';
   return panelContainer(buffer,title,description,settings.accent,`card-${mode}-${user.id}`,rows);
 }
 

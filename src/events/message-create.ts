@@ -3,11 +3,11 @@ import type { Message } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
-import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getActiveJob, getInventory, getLeaderboard, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
+import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
@@ -250,25 +250,16 @@ async function routeMessage(message: Message): Promise<void> {
     if (selectedJob && (selectionWords.includes(action) || !['lista', 'list', 'ver', 'help', 'ayuda'].includes(action))) {
       const result = await selectJob(guildId, userId, selectedJob.id);
       if (!result.ok) return say(message, 'Ese trabajo no está disponible. Usa `a!jobs` para ver las opciones.');
-      return say(message, `✅ Elegiste **${result.progress.job.name}** · nivel ${result.progress.level}. Necesitas **${result.progress.job.toolName}** para trabajar; cómpralo en a!shop. El trabajo gana experiencia cada vez que usas a!work.`);
+      const notice = `✅ Elegiste **${result.progress.job.name}** · nivel ${result.progress.level}. Plazas ocupadas: **${result.activeJobIds.length}/${result.slotLimit}**. ${result.secondSlotUnlocked ? 'El segundo espacio está desbloqueado.' : `Alcanza el nivel ${MAX_JOB_LEVEL} en cualquier oficio para desbloquearlo.`}`;
+      return sendPanel(message, await jobsPanel(guildId, userId, notice));
     }
-    if (query && !selectedJob && !listing) return say(message, 'No reconocí ese trabajo. Usa `a!jobs` para ver la lista y `a!jobs elegir minero` para escoger uno.');
-    const activeJob = await getActiveJob(guildId, userId);
-    const inventory = await getInventory(guildId, userId);
-    const owned = new Set(inventory.filter((item) => item.quantity > 0).map((item) => item.itemId));
-    const current = activeJob
-      ? `**Trabajo actual:** ${activeJob.job.emoji} ${activeJob.job.name} · nivel ${activeJob.level} · ${activeJob.level >= MAX_JOB_LEVEL ? 'nivel máximo' : `${activeJob.xp}/${activeJob.xpToNext} XP`}\n\n`
-      : '**Todavía no tienes un trabajo elegido.**\n\n';
-    const options = economyJobs.map((job) => {
-      const item = storeItems.find((entry) => entry.id === job.toolId)!;
-      return `${job.emoji} **${job.name}** · herramienta: ${job.toolName} (${money.format(item.cost)} monedas) · nivel 1: ${job.minPay}–${job.maxPay} monedas · ${owned.has(job.toolId) ? '✅ tienes la herramienta' : '🛒 se compra en a!shop'}\n   Elegir: a!jobs elegir ${job.id}`;
-    }).join('\n');
-    return say(message, `## 🧰 TRABAJOS\n${current}${options}\n\nCada turno de trabajo da **${JOB_XP_PER_SHIFT} XP** y aumenta el pago al subir de nivel. Cambiar de trabajo conserva el progreso de cada oficio. Usa a!work para trabajar.`);
+    if (query && !selectedJob && !listing) return say(message, 'No reconocí ese trabajo. Usa `a!jobs` y selecciónalo en el panel, o escribe `a!jobs elegir minero`.');
+    return sendPanel(message, await jobsPanel(guildId, userId));
   }
   if (['work', 'w', 'trabajar'].includes(command)) {
     const result = await work(guildId, userId, message.id);
     if (!result.ok) return say(message, result.reason === 'no_job'
-      ? 'Primero elige un trabajo con `a!jobs elegir minero`.'
+      ? 'Primero elige un trabajo con `a!jobs`.'
       : result.reason === 'missing_tool'
         ? `Para trabajar como **${result.job?.name ?? 'este oficio'}** necesitas **${result.job?.toolName ?? 'su herramienta'}**. Cómprala en a!shop.`
         : `🧰 Ya trabajaste. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
@@ -281,9 +272,9 @@ async function routeMessage(message: Message): Promise<void> {
     if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
     return sendPanel(message, economyActionPanel('🐓 Duelo de gallos', result.message, result.won ? result.payout - result.bet : -result.bet, result.balance));
   }
-  if (['slots', 'slot', 'tragamonedas'].includes(command)) {
+  if (['slots', 'slot', 'tragamonedas', 'machine', 'maquina', 'máquina'].includes(command)) {
     const bet = Number(args[0]);
-    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!slots apuesta` · apuesta entre 1 y 100000 monedas.');
+    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!machine apuesta` · también puedes usar `a!slots` · apuesta entre 1 y 100000 monedas.');
     const result = await playSlots(guildId, userId, bet, message.id);
     if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
     return sendPanel(message, economyActionPanel('🎰 Tragamonedas', `${result.reels.join('　│　')}\n${result.message}`, result.payout - result.bet, result.balance));

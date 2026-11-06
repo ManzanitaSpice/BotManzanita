@@ -15,9 +15,10 @@ import {
 import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
-import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, storeItems, type BlackjackView } from '../services/economy.js';
+import { profileShopCategories } from '../data/profile-shop.js';
+import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BlackjackView } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_COIN_REWARD_SCALE, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
-import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
+import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
 import { equippedProfileBadges, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
@@ -84,22 +85,60 @@ export async function economyPanel(guildId: string, userId: string, username = `
   const container = new ContainerBuilder()
     .setAccentColor(Number.parseInt(walletTheme.slice(1),16)||0x0876d8)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 💳 ECONOMÍA\nBilletera · banco · gemas premium\n🎁 Diaria: **+${money.format(DAILY_AMOUNT)} monedas**`))
+      `# 💰 ECONOMÍA\nMonedas y gemas premium\n🎁 Recompensa diaria: **+${money.format(DAILY_AMOUNT)} monedas**`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://economy-wallet.png').setDescription(`Wallet de ${username}`)))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:daily').setLabel('Reclamar diaria').setEmoji('🎁').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`profile:${userId}:customize`).setLabel('Personalizar').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
     ))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más de economía').addOptions(
+      new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más opciones de economía').addOptions(
         { label: 'Inventario', value: 'inventory', emoji: '🎒', description: 'Revisar y usar tus objetos' },
-        { label: 'Banco', value: 'bank', emoji: '🏦', description: 'Ahorrar y retirar monedas' },
+        { label: 'Banco de monedas', value: 'bank', emoji: '🏦', description: 'Guardar o retirar tus monedas' },
         { label: 'Casino', value: 'casino', emoji: '🎰', description: 'Juegos y apuestas' },
         { label: 'Tienda completa', value: 'store', emoji: '🛍️', description: 'Herramientas, consumibles, personalización y RPG' },
       ),
     ));
   return { components: [container], files: [new AttachmentBuilder(walletCard).setName('economy-wallet.png')], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function jobsPanel(guildId: string, userId: string, notice = '') {
+  const [roster, inventory] = await Promise.all([getJobRoster(guildId, userId), getInventory(guildId, userId)]);
+  const owned = new Set(inventory.filter((item) => item.quantity > 0).map((item) => item.itemId));
+  const activeJobs = roster.jobs.filter((entry) => entry.active);
+  const activeSummary = activeJobs.length
+    ? activeJobs.map((entry) => `› ${entry.job.emoji} **${entry.job.name} · nivel ${entry.level}**${entry.level >= MAX_JOB_LEVEL ? ' · máximo' : ` · ${entry.xp}/${entry.xpToNext} XP`}${entry.job.id === roster.primaryJobId ? ' · en uso con a!work' : ''}`).join('\n')
+    : 'Todavía no tienes un oficio elegido. Selecciona uno abajo.';
+  const jobList = roster.jobs.map((entry) => {
+    const { job, level, xp, xpToNext } = entry;
+    const payBonus = Math.min(level - 1, MAX_JOB_LEVEL - 1) * 3;
+    const progress = level >= MAX_JOB_LEVEL ? 'nivel máximo' : `${xp}/${xpToNext} XP`;
+    const toolCost = storeItems.find((item) => item.id === job.toolId)?.cost;
+    const tool = owned.has(job.toolId) ? '✅ herramienta disponible' : `🛒 ${job.toolName} · ${toolCost === undefined ? 'precio por confirmar' : `${money.format(toolCost)} monedas`} en a!shop`;
+    return `${job.emoji} **${job.name} · Nv. ${level}** (${progress})\nPaga: **${money.format(job.minPay + payBonus)}–${money.format(job.maxPay + payBonus)}** monedas · ${tool}`;
+  }).join('\n\n');
+  const container = new ContainerBuilder().setAccentColor(colors.economy)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `# 🧰 OFICIOS\nElige el trabajo con el que quieres generar monedas. Cada turno de trabajo da **${JOB_XP_PER_SHIFT} XP** y el pago aumenta con cada nivel.${notice ? `\n\n${notice}` : ''}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## Plazas de trabajo · ${roster.activeCount}/${roster.slotLimit}\n${activeSummary}\n\n${roster.secondSlotUnlocked
+        ? '🔓 Alcanzaste el nivel máximo en un oficio: tienes **dos plazas**. Si ambas están ocupadas, se prioriza conservar el oficio al máximo y el más reciente; el progreso de los demás también queda guardado.'
+        : `🔒 Llega al nivel ${MAX_JOB_LEVEL} en cualquier oficio para desbloquear una segunda plaza.`}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Trabajos disponibles\n${jobList}\n\nUsa **a!work** para cobrar. Necesitas la herramienta indicada; puedes comprarla con **a!shop**.`))
+    .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId(`jobs:select:${userId}`).setPlaceholder('Elegir o cambiar de trabajo').addOptions(
+        roster.jobs.map((entry) => ({
+          label: `${entry.job.name} · Nv. ${entry.level}`,
+          value: entry.job.id,
+          emoji: entry.job.emoji,
+          description: `${entry.level >= MAX_JOB_LEVEL ? 'Nivel máximo' : `${entry.xp}/${entry.xpToNext} XP`} · ${owned.has(entry.job.toolId) ? 'herramienta disponible' : `requiere ${entry.job.toolName}`}`.slice(0, 100),
+          default: entry.job.id === roster.primaryJobId,
+        })),
+      ),
+    ));
+  return { components: [container], flags: ['IsComponentsV2'] as const };
 }
 
 function statBar(value: number, max: number, width = 10): string {
@@ -480,7 +519,7 @@ export async function inventoryPanel(guildId: string, userId: string) {
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export async function storePanel(guildId: string, userId: string, requestedCategory = 'all', requestedPage = 0, requestedItemId?: string, notice = '') {
+export async function storePanel(guildId: string, userId: string, requestedCategory = 'all', requestedPage = 0, requestedItemId?: string, notice = '', requestedKind?: StoreKind) {
   const selectedCategory = storeCategoryOptions.some((entry) => entry.id === requestedCategory) ? requestedCategory : 'all';
   const categoryState = selectedCategory;
   const catalogFilter = selectedCategory;
@@ -491,11 +530,17 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = Math.max(0, Math.min(pageCount - 1, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 0));
   const pageItems = filtered.slice(page * pageSize, (page + 1) * pageSize);
-  const selected = pageItems.find((item) => item.id === requestedItemId) ?? pageItems[0];
+  const selected = pageItems.find((item) => item.id === requestedItemId && (!requestedKind || item.kind === requestedKind)) ?? pageItems[0];
   const categoryLabel = storeCategoryOptions.find((entry) => entry.id === selectedCategory)?.label ?? 'Todo';
-  const listing = pageItems.map((item) => `${item.emoji} **${item.name}** · ${item.rarity}\n${money.format(item.price)} monedas · ${item.quantity ? `tienes x${item.quantity}` : 'sin comprar'}`).join('\n\n');
+  const getProductCategoryLabel = (item: (typeof snapshot.products)[number]) => {
+    const categoryId = item.kind === 'profile' ? `profile:${item.category}` : item.kind === 'economy' ? item.category : `rpg:${item.category}`;
+    return storeCategoryOptions.find((entry) => entry.id === categoryId)?.label
+      ?? (item.kind === 'profile' ? profileShopCategories.find((entry) => entry.id === item.category)?.label : undefined)
+      ?? (item.kind === 'profile' ? 'Personalización' : item.kind === 'economy' ? 'Consumibles' : item.category);
+  };
+  const listing = pageItems.map((item) => `${item.emoji} **${item.name} (${getProductCategoryLabel(item)})** · ${item.rarity}\n${money.format(item.price)} monedas · ${item.quantity ? `tienes x${item.quantity}` : 'sin comprar'}`).join('\n\n');
   const selectedDetails = selected
-    ? `### ${selected.emoji} ${selected.name}\n${selected.description}\n**Precio:** ${money.format(selected.price)} monedas · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
+    ? `### ${selected.emoji} ${selected.name} (${getProductCategoryLabel(selected)})\n${selected.description}\n**Precio:** ${money.format(selected.price)} monedas · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
     : '_No hay productos en esta categoría._';
   const accentCategoryNote = selectedCategory === 'profile:accent' ? '\n\nEl estilo Lavanda predeterminado es gratis; los demás estilos se compran aquí.' : '';
   const status = notice ? `\n\n${notice}` : '';
@@ -510,7 +555,7 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
     ));
   if (pageItems.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId(`shop:item:${encodeURIComponent(categoryState)}:${page}`).setPlaceholder('Seleccionar producto')
-      .addOptions(pageItems.map((item) => ({ label: item.name, value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${money.format(item.price)} monedas · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind }))),
+      .addOptions(pageItems.map((item) => ({ label: `${item.name} (${getProductCategoryLabel(item)})`.slice(0, 100), value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${money.format(item.price)} monedas · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind }))),
   ));
   if (selected) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     selected.kind === 'profile' && selected.quantity > 0 && !selected.repeatable
@@ -530,11 +575,19 @@ export async function casinoPanel(guildId: string, userId: string) {
   const container = new ContainerBuilder()
     .setAccentColor(0xf59e0b)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🎰 CASINO\n💰 ${money.format(balance)} monedas`))
+      `# 🎰 CASINO\nSaldo disponible: **${money.format(balance)} monedas**\nElige un juego y escribe su comando con la cantidad que quieras apostar.`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      '🐓 Gallo: gana rachas y sube hasta 70% de probabilidad · 🎰 Slots: pares devuelven la apuesta y triples pagan premios\nPrueba `a!gallo 100` o `a!slots 100`. También tienes ruleta, blackjack, pesca y robos.'))
+      `## 🎰 Máquinas y ruletas\n**Tragamonedas** · **a!machine 100** / **a!slots 100**\nTres símbolos iguales dan premio; con dos iguales recuperas la apuesta.\n\n**Ruleta** · **a!ruleta 100 rojo**\nApuesta a **rojo**, **negro** o **verde**. Rojo y negro pagan ×2; verde paga ×36.\n\n**Ruleta de objetos** · **a!itembet cebo_premium rojo**\nApuesta un objeto de tu inventario a un color.`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## 🃏 Cartas\n**Blackjack / 21** · **a!21 100** / **a!bj 100** / **a!blackjack 100**\nJuega contra el crupier; pide cartas o plántate con los botones de la partida.`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## 🐓 Retos y actividades\n**Pelea de gallos** · **a!gallo 100**\nEmpiezas con 50% de probabilidad; cada victoria suma 1% hasta 70%. Si pierdes, la racha vuelve a cero.\n\n**Crimen** · **a!crime** · puedes ganar monedas o recibir una multa.\n**Robo** · **a!rob @persona** · intenta quitarle monedas a otra persona.\n**Pesca** · **a!fish** · necesitas una Caña de pescar de **a!shop**.`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:casino:fish').setLabel('Ir a pescar').setEmoji('🎣').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('eco:casino:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('eco:back').setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
     ));

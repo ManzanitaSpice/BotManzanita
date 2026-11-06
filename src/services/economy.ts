@@ -29,6 +29,8 @@ export const economyJobs = [
 
 export type EconomyJob = typeof economyJobs[number];
 export type ActiveJobProgress = { job: EconomyJob; level: number; xp: number; xpToNext: number };
+export type JobRosterEntry = ActiveJobProgress & { active: boolean };
+export type JobRoster = { jobs: JobRosterEntry[]; activeCount: number; slotLimit: 1 | 2; secondSlotUnlocked: boolean; primaryJobId?: string };
 
 function jobXpToNext(level: number): number { return level >= MAX_JOB_LEVEL ? 0 : 100 + (level - 1) * 25; }
 function makeJobProgress(jobId: string, level: number, xp: number): ActiveJobProgress | undefined {
@@ -459,19 +461,54 @@ export async function getActiveJob(guildId: string, userId: string): Promise<Act
   guildId = GLOBAL_SCOPE_ID;
   if (economyPool) {
     const [rows] = await economyPool.execute<RowDataPacket[]>(
-      'SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1',
+      'SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1',
       [guildId, userId],
     );
     const row = rows[0];
     return row ? makeJobProgress(String(row.jobId), Number(row.level), Number(row.xp)) : undefined;
   }
-  const row = db.prepare('SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1')
+  const row = db.prepare('SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1')
     .get(guildId, userId) as { jobId: string; level: number; xp: number } | undefined;
   return row ? makeJobProgress(row.jobId, row.level, row.xp) : undefined;
 }
 
+export async function getJobRoster(guildId: string, userId: string): Promise<JobRoster> {
+  guildId = GLOBAL_SCOPE_ID;
+  type JobRow = { jobId: string; level: number; xp: number; active: number | boolean };
+  let rows: JobRow[];
+  if (economyPool) {
+    const [result] = await economyPool.execute<RowDataPacket[]>(
+      'SELECT job_id AS jobId,level,xp,is_active AS active FROM economy_jobs WHERE guild_id=? AND user_id=? ORDER BY updated_at DESC,job_id ASC',
+      [guildId, userId],
+    );
+    rows = result.map((row) => ({ jobId: String(row.jobId), level: Number(row.level), xp: Number(row.xp), active: Number(row.active) }));
+  } else {
+    rows = db.prepare('SELECT job_id AS jobId,level,xp,is_active AS active FROM economy_jobs WHERE guild_id=? AND user_id=? ORDER BY updated_at DESC,job_id ASC')
+      .all(guildId, userId) as JobRow[];
+  }
+  const progressById = new Map<string, JobRow>(rows.map((row) => [row.jobId, row] as const));
+  const secondSlotUnlocked = rows.some((row) => row.level >= MAX_JOB_LEVEL);
+  const jobs = economyJobs.map((job) => {
+    const saved = progressById.get(job.id);
+    return { ...makeJobProgress(job.id, saved?.level ?? 1, saved?.xp ?? 0)!, active: Boolean(saved?.active) };
+  });
+  return { jobs, activeCount: jobs.filter((job) => job.active).length, slotLimit: secondSlotUnlocked ? 2 : 1, secondSlotUnlocked,
+    primaryJobId: rows.find((row) => Boolean(row.active))?.jobId };
+}
+
+type JobSelectionRow = { jobId: string; level: number; xp: number; active: number | boolean; updatedAt: number };
+
+function planActiveJobs(rows: JobSelectionRow[], selectedJobId: string) {
+  const secondSlotUnlocked = rows.some((row) => Number(row.level) >= MAX_JOB_LEVEL);
+  const slotLimit: 1 | 2 = secondSlotUnlocked ? 2 : 1;
+  const activeRows = rows.filter((row) => Boolean(row.active) && row.jobId !== selectedJobId);
+  // Keep a maxed job and the most recently used other job when an occupied slot must be replaced.
+  activeRows.sort((a, b) => Number(b.level >= MAX_JOB_LEVEL) - Number(a.level >= MAX_JOB_LEVEL) || Number(b.updatedAt) - Number(a.updatedAt));
+  return { activeJobIds: [selectedJobId, ...activeRows.slice(0, slotLimit - 1).map((row) => row.jobId)], slotLimit, secondSlotUnlocked };
+}
+
 export async function selectJob(guildId: string, userId: string, jobId: string): Promise<
-  | { ok: true; progress: ActiveJobProgress }
+  | { ok: true; progress: ActiveJobProgress; activeJobIds: string[]; slotLimit: 1 | 2; secondSlotUnlocked: boolean }
   | { ok: false; reason: 'invalid_job' }
 > {
   guildId = GLOBAL_SCOPE_ID;
@@ -480,22 +517,41 @@ export async function selectJob(guildId: string, userId: string, jobId: string):
   const now = nowSeconds();
   if (economyPool) return withEconomyTransaction(async (connection) => {
     await mysqlEnsureAccount(connection, guildId, userId, true);
-    await connection.execute('UPDATE economy_jobs SET is_active=0,updated_at=? WHERE guild_id=? AND user_id=?', [now, guildId, userId]);
+    const [savedRows] = await connection.execute<RowDataPacket[]>(
+      'SELECT job_id AS jobId,level,xp,is_active AS active,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? FOR UPDATE',
+      [guildId, userId],
+    );
+    const rows: JobSelectionRow[] = savedRows.map((row) => ({ jobId: String(row.jobId), level: Number(row.level), xp: Number(row.xp), active: Number(row.active), updatedAt: Number(row.updatedAt) }));
+    const plan = planActiveJobs(rows, jobId);
+    const selectedAt = Math.max(now, ...rows.map((row) => row.updatedAt + 1));
     await connection.execute(`INSERT INTO economy_jobs (guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at)
-      VALUES (?,?,?,1,0,1,?,?) ON DUPLICATE KEY UPDATE is_active=1,updated_at=VALUES(updated_at)`, [guildId, userId, jobId, now, now]);
-    const [rows] = await connection.execute<RowDataPacket[]>('SELECT level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=?', [guildId, userId, jobId]);
-    const row = rows[0];
-    return { ok: true as const, progress: makeJobProgress(job.id, Number(row?.level ?? 1), Number(row?.xp ?? 0))! };
+      VALUES (?,?,?,1,0,1,?,?) ON DUPLICATE KEY UPDATE is_active=1,updated_at=VALUES(updated_at)`, [guildId, userId, jobId, selectedAt, selectedAt]);
+    await connection.execute('UPDATE economy_jobs SET is_active=0 WHERE guild_id=? AND user_id=?', [guildId, userId]);
+    for (const activeJobId of plan.activeJobIds) {
+      await connection.execute('UPDATE economy_jobs SET is_active=1,updated_at=IF(job_id=?, ?, updated_at) WHERE guild_id=? AND user_id=? AND job_id=?',
+        [jobId, selectedAt, guildId, userId, activeJobId]);
+    }
+    const [jobProgressRows] = await connection.execute<RowDataPacket[]>('SELECT level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=?', [guildId, userId, jobId]);
+    const row = jobProgressRows[0];
+    return { ok: true as const, progress: makeJobProgress(job.id, Number(row?.level ?? 1), Number(row?.xp ?? 0))!, ...plan };
   });
 
   const select = db.transaction(() => {
     sqliteEnsureAccount(guildId, userId);
-    db.prepare('UPDATE economy_jobs SET is_active=0,updated_at=? WHERE guild_id=? AND user_id=?').run(now, guildId, userId);
+    const rows = db.prepare('SELECT job_id AS jobId,level,xp,is_active AS active,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=?')
+      .all(guildId, userId) as JobSelectionRow[];
+    const plan = planActiveJobs(rows, jobId);
+    const selectedAt = Math.max(now, ...rows.map((row) => row.updatedAt + 1));
     db.prepare(`INSERT INTO economy_jobs (guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at)
-      VALUES (?,?,?,1,0,1,?,?) ON CONFLICT(guild_id,user_id,job_id) DO UPDATE SET is_active=1,updated_at=excluded.updated_at`).run(guildId, userId, jobId, now, now);
+      VALUES (?,?,?,1,0,1,?,?) ON CONFLICT(guild_id,user_id,job_id) DO UPDATE SET is_active=1,updated_at=excluded.updated_at`).run(guildId, userId, jobId, selectedAt, selectedAt);
+    db.prepare('UPDATE economy_jobs SET is_active=0 WHERE guild_id=? AND user_id=?').run(guildId, userId);
+    for (const activeJobId of plan.activeJobIds) {
+      db.prepare('UPDATE economy_jobs SET is_active=1,updated_at=CASE WHEN job_id=? THEN ? ELSE updated_at END WHERE guild_id=? AND user_id=? AND job_id=?')
+        .run(jobId, selectedAt, guildId, userId, activeJobId);
+    }
     const row = db.prepare('SELECT level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=?')
       .get(guildId, userId, jobId) as { level: number; xp: number };
-    return { ok: true as const, progress: makeJobProgress(job.id, row.level, row.xp)! };
+    return { ok: true as const, progress: makeJobProgress(job.id, row.level, row.xp)!, ...plan };
   });
   return select.immediate();
 }
@@ -522,7 +578,7 @@ export async function work(guildId: string, userId: string, reference: string): 
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
     const [jobRows] = await connection.execute<RowDataPacket[]>(
-      'SELECT job_id AS jobId,level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1 FOR UPDATE',
+      'SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1 FOR UPDATE',
       [guildId, userId],
     );
     const current = jobRows[0];
@@ -535,13 +591,14 @@ export async function work(guildId: string, userId: string, reference: string): 
     );
     if (Number(tools[0]?.quantity ?? 0) < 1) return { ok: false as const, reason: 'missing_tool' as const, job };
     const now = nowSeconds();
+    const selectedAt = Math.max(now, Number(current.updatedAt ?? 0) + 1);
     const nextWorkAt = (account.lastWorkAt ?? 0) + WORK_COOLDOWN_SECONDS;
     if (now < nextWorkAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextWorkAt - now, job };
     const level = Number(current.level);
     const xp = Number(current.xp);
     const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(level - 1, MAX_JOB_LEVEL - 1) * 3;
     const progress = addJobExperience(level, xp);
-    await connection.execute('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?', [progress.level, progress.xp, now, guildId, userId, job.id]);
+    await connection.execute('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?', [progress.level, progress.xp, selectedAt, guildId, userId, job.id]);
     await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
     await mysqlAddLedger(connection, guildId, userId, amount, `work_reward:${job.id}:lv${level}`, reference, now);
     const xpText = progress.level >= MAX_JOB_LEVEL ? ' · nivel máximo' : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`;
@@ -552,8 +609,8 @@ export async function work(guildId: string, userId: string, reference: string): 
 
   const earn = db.transaction((): WorkResult => {
     const account = sqliteEnsureAccount(guildId, userId);
-    const current = db.prepare('SELECT job_id AS jobId,level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1')
-      .get(guildId, userId) as { jobId: string; level: number; xp: number } | undefined;
+    const current = db.prepare('SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1')
+      .get(guildId, userId) as { jobId: string; level: number; xp: number; updatedAt: number } | undefined;
     if (!current) return { ok: false, reason: 'no_job' };
     const job = economyJobs.find((candidate) => candidate.id === current.jobId);
     if (!job) return { ok: false, reason: 'no_job' };
@@ -561,12 +618,13 @@ export async function work(guildId: string, userId: string, reference: string): 
       .get(guildId, userId, job.toolId) as { quantity: number } | undefined;
     if (!tools || tools.quantity < 1) return { ok: false, reason: 'missing_tool', job };
     const now = nowSeconds();
+    const selectedAt = Math.max(now, Number(current.updatedAt ?? 0) + 1);
     const nextWorkAt = (account.lastWorkAt ?? 0) + WORK_COOLDOWN_SECONDS;
     if (now < nextWorkAt) return { ok: false, reason: 'cooldown', secondsRemaining: nextWorkAt - now, job };
     const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(current.level - 1, MAX_JOB_LEVEL - 1) * 3;
     const progress = addJobExperience(current.level, current.xp);
     db.prepare('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?')
-      .run(progress.level, progress.xp, now, guildId, userId, job.id);
+      .run(progress.level, progress.xp, selectedAt, guildId, userId, job.id);
     db.prepare('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?')
       .run(amount, now, now, guildId, userId);
     db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
