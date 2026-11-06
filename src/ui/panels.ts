@@ -563,7 +563,7 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
       : new ButtonBuilder().setCustomId(`shop:buy:${selected.kind}:${selected.id}:${encodeURIComponent(categoryState)}:${page}`).setLabel(selected.quantity > 0 && !selected.repeatable ? 'Ya comprado' : `${selected.kind==='profile'&&selected.quantity>0?'Comprar otra copia':'Comprar'} · ${money.format(selected.price)}`).setEmoji(selected.quantity > 0 && !selected.repeatable ? '✅' : '🪙').setStyle(ButtonStyle.Success).setDisabled(selected.quantity > 0 && !selected.repeatable),
     new ButtonBuilder().setCustomId('eco:back').setLabel('Volver a economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));
-  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+  if (pageCount > 1) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`shop:page:${Math.max(0, page - 1)}:${encodeURIComponent(categoryState)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
     new ButtonBuilder().setCustomId(`shop:page:${Math.min(pageCount - 1, page + 1)}:${encodeURIComponent(categoryState)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
   ));
