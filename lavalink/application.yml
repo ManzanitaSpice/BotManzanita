@@ -11,6 +11,8 @@ lavalink:
       snapshot: false
   server:
     password: "${LAVALINK_SERVER_PASSWORD}"
+    opusEncodingQuality: 10 # Máxima calidad de codificación Opus; requiere más CPU.
+    resamplingQuality: HIGH # Remuestreo de mayor calidad; requiere más CPU.
     youtubePlaylistLoadLimit: 10 # Hasta 1,000 canciones por playlist (10 páginas de 100)
     sources:
       youtube: false

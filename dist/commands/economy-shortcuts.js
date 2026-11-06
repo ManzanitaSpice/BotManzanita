@@ -74,13 +74,13 @@ function createProfileCommand(name) {
 }
 function createWalletCommand() {
     return {
-        data: new SlashCommandBuilder().setName('wallet').setDescription('Muestra tu tarjeta visual de billetera.'),
+        data: new SlashCommandBuilder().setName('wallet').setDescription('Abre tu billetera con el resumen visual de economía.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La cartera solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(await profileCardPanel(interaction.guildId, interaction.user, interaction.user.id, 'wallet'));
+            await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 })));
         },
     };
 }
@@ -101,13 +101,13 @@ function createEconomyPanelCommand() {
                 await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username));
+            await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 })));
         },
     };
 }
 function createFishCommand() {
     return {
-        data: new SlashCommandBuilder().setName('fish').setDescription('Pesca para ganar monedas cada hora.'),
+        data: new SlashCommandBuilder().setName('fish').setDescription('Pesca cada hora; necesitas una caña de pescar.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La pesca solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -115,7 +115,7 @@ function createFishCommand() {
             }
             const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
             if (!result.ok) {
-                await interaction.reply({ content: `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                await interaction.reply({ content: result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.' : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`, flags: MessageFlags.Ephemeral });
                 return;
             }
             await interaction.reply(economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
@@ -160,7 +160,7 @@ function createDailyCommand() {
 }
 function createWorkCommand() {
     return {
-        data: new SlashCommandBuilder().setName('work').setDescription('Gana entre 15 y 30 monedas cada hora.'),
+        data: new SlashCommandBuilder().setName('work').setDescription('Trabaja una vez por hora según tu oficio, herramienta y nivel.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -168,7 +168,10 @@ function createWorkCommand() {
             }
             const result = await work(interaction.guildId, interaction.user.id, interaction.id);
             if (!result.ok) {
-                await interaction.reply({ content: `🧰 Ya trabajaste. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+                const content = result.reason === 'no_job' ? 'Primero elige un oficio con `/economia empleo` o `a!jobs`.'
+                    : result.reason === 'missing_tool' ? `Para trabajar como **${result.job?.name ?? 'este oficio'}** necesitas **${result.job?.toolName ?? 'su herramienta'}**. Cómprala en /shop o a!shop.`
+                        : `🧰 Ya trabajaste. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
+                await interaction.reply({ content, flags: MessageFlags.Ephemeral });
                 return;
             }
             await interaction.reply(economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
@@ -254,7 +257,7 @@ function createBankCommand() {
 }
 function createStoreCommand() {
     return {
-        data: new SlashCommandBuilder().setName('shop').setDescription('Abre la tienda de artículos utilizables.'),
+        data: new SlashCommandBuilder().setName('shop').setDescription('Abre la tienda única con categorías de personalización, consumibles y RPG.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La tienda solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });

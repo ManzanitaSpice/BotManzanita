@@ -72,6 +72,20 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id, item_id)
   );
 
+  CREATE TABLE IF NOT EXISTS economy_jobs (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    level INTEGER NOT NULL DEFAULT 1,
+    xp INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id, job_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_economy_jobs_active
+    ON economy_jobs (guild_id, user_id, is_active);
+
   CREATE TABLE IF NOT EXISTS music_favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -87,6 +101,21 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_music_favorites_user
     ON music_favorites (guild_id, user_id, saved_at DESC);
+
+  CREATE TABLE IF NOT EXISTS music_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    track_uri TEXT NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    artwork_url TEXT,
+    played_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_music_history_user
+    ON music_history (guild_id, user_id, played_at DESC, id DESC);
 
   CREATE TABLE IF NOT EXISTS music_playlists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,8 +135,7 @@ db.exec(`
     author TEXT NOT NULL,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     artwork_url TEXT,
-    added_at INTEGER NOT NULL DEFAULT (unixepoch()),
-    UNIQUE (playlist_id, track_uri)
+    added_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
   CREATE INDEX IF NOT EXISTS idx_music_playlist_tracks_playlist
@@ -222,6 +250,32 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_rpg_pvp_active_participants
     ON rpg_pvp_matches (guild_id, status, challenger_id, defender_id, updated_at);
 `);
+const playlistTrackIndexes = db.prepare("PRAGMA index_list('music_playlist_tracks')").all();
+if (playlistTrackIndexes.some((index) => index.unique === 1 && index.origin === 'u')) {
+    const migratePlaylistTracks = db.transaction(() => {
+        db.exec(`
+      CREATE TABLE music_playlist_tracks_rebuild (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playlist_id INTEGER NOT NULL REFERENCES music_playlists(id) ON DELETE CASCADE,
+        track_uri TEXT NOT NULL,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        artwork_url TEXT,
+        added_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      INSERT INTO music_playlist_tracks_rebuild
+        (id, playlist_id, track_uri, title, author, duration_ms, artwork_url, added_at)
+        SELECT id, playlist_id, track_uri, title, author, duration_ms, artwork_url, added_at
+        FROM music_playlist_tracks;
+      DROP TABLE music_playlist_tracks;
+      ALTER TABLE music_playlist_tracks_rebuild RENAME TO music_playlist_tracks;
+      CREATE INDEX idx_music_playlist_tracks_playlist
+        ON music_playlist_tracks (playlist_id, added_at, id);
+    `);
+    });
+    migratePlaylistTracks.immediate();
+}
 for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'"], ['specialization', "TEXT NOT NULL DEFAULT 'Explorador'"], ['hunger', 'INTEGER NOT NULL DEFAULT 80'], ['affection', 'INTEGER NOT NULL DEFAULT 60'], ['needs_updated_at', 'INTEGER NOT NULL DEFAULT 0'], ['last_care_at', 'INTEGER'], ['last_battle_at', 'INTEGER'], ['last_train_at', 'INTEGER'], ['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'"], ['known_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['move_points', 'INTEGER NOT NULL DEFAULT 0'], ['free_name_used', 'INTEGER NOT NULL DEFAULT 0']]) {
     try {
         db.exec(`ALTER TABLE rpg_pets ADD COLUMN ${column} ${definition}`);

@@ -8,13 +8,19 @@ const messageCooldown = new Map();
 const LEVEL_XP = 100;
 const CHAT_XP_COOLDOWN_MS = 60_000;
 export const PROFILE_CHAT_XP_DAILY_CAP = 1_200;
-const DEFAULT_SETTINGS = { about: '', title: 'Aventurero/a', accent: '#8b75dc', profileBg: null, rankBg: null, walletBg: null, levelupBg: null, tag: null, frame: null, sticker: null, housing: null };
-const equipColumns = { profile_bg: 'profileBg', rank_bg: 'rankBg', wallet_bg: 'walletBg', levelup_bg: 'levelupBg', tag: 'tag', frame: 'frame', sticker: 'sticker', housing: 'housing' };
+const DEFAULT_SETTINGS = { about: '', title: 'Aventurero/a', accent: '#8b75dc', profileBg: null, rankBg: null, walletBg: null, levelupBg: null, tag: null, frame: null, sticker: null };
+const equipColumns = { profile_bg: 'profileBg', rank_bg: 'rankBg', wallet_bg: 'walletBg', levelup_bg: 'levelupBg', tag: 'tag', frame: 'frame', sticker: 'sticker', accent: 'accent' };
+function normalizeProfileSettings(row) {
+    if (!row)
+        return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...row };
+}
 export async function initializeProfileStorage() {
     db.exec(`
     CREATE TABLE IF NOT EXISTS user_profiles (
       user_id TEXT PRIMARY KEY, about TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT 'Aventurero/a', accent TEXT NOT NULL DEFAULT '#8b75dc',
-      profile_bg TEXT, rank_bg TEXT, wallet_bg TEXT, levelup_bg TEXT, tag TEXT, frame TEXT, sticker TEXT, housing TEXT, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      profile_bg TEXT, rank_bg TEXT, wallet_bg TEXT, levelup_bg TEXT, tag TEXT, frame TEXT, sticker TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS user_progress (
       user_id TEXT PRIMARY KEY, xp INTEGER NOT NULL DEFAULT 0, level INTEGER NOT NULL DEFAULT 1, messages INTEGER NOT NULL DEFAULT 0, reputation INTEGER NOT NULL DEFAULT 0,
@@ -28,7 +34,7 @@ export async function initializeProfileStorage() {
     CREATE TABLE IF NOT EXISTS user_reputation_log (giver_id TEXT NOT NULL, target_id TEXT NOT NULL, day TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(giver_id,target_id,day));
   `);
     if (economyPool) {
-        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_profiles (user_id VARCHAR(32) PRIMARY KEY, about VARCHAR(180) NOT NULL DEFAULT '', title VARCHAR(40) NOT NULL DEFAULT 'Aventurero/a', accent CHAR(7) NOT NULL DEFAULT '#8b75dc', profile_bg VARCHAR(48) NULL, rank_bg VARCHAR(48) NULL, wallet_bg VARCHAR(48) NULL, levelup_bg VARCHAR(48) NULL, tag VARCHAR(48) NULL, frame VARCHAR(48) NULL, sticker VARCHAR(48) NULL, housing VARCHAR(48) NULL, updated_at BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+        await economyPool.query(`CREATE TABLE IF NOT EXISTS user_profiles (user_id VARCHAR(32) PRIMARY KEY, about VARCHAR(180) NOT NULL DEFAULT '', title VARCHAR(40) NOT NULL DEFAULT 'Aventurero/a', accent CHAR(7) NOT NULL DEFAULT '#8b75dc', profile_bg VARCHAR(48) NULL, rank_bg VARCHAR(48) NULL, wallet_bg VARCHAR(48) NULL, levelup_bg VARCHAR(48) NULL, tag VARCHAR(48) NULL, frame VARCHAR(48) NULL, sticker VARCHAR(48) NULL, updated_at BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         await economyPool.query(`CREATE TABLE IF NOT EXISTS user_progress (user_id VARCHAR(32) PRIMARY KEY, xp BIGINT NOT NULL DEFAULT 0, level INT NOT NULL DEFAULT 1, messages BIGINT NOT NULL DEFAULT 0, reputation INT NOT NULL DEFAULT 0, hugs_received BIGINT NOT NULL DEFAULT 0, pats_received BIGINT NOT NULL DEFAULT 0, daily_xp INT NOT NULL DEFAULT 0, daily_xp_date VARCHAR(10) NOT NULL DEFAULT '', last_xp_at BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL, KEY idx_user_progress_xp (xp,user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         for (const [column, definition] of [['hugs_received', 'BIGINT NOT NULL DEFAULT 0'], ['pats_received', 'BIGINT NOT NULL DEFAULT 0'], ['daily_xp', 'INT NOT NULL DEFAULT 0'], ['daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''"], ['last_xp_at', 'BIGINT NOT NULL DEFAULT 0']]) {
             try {
@@ -126,11 +132,11 @@ export async function recordChatActivity(guildId, userId) {
 export async function getProfileSettings(userId) {
     if (economyPool) {
         await economyPool.execute('INSERT IGNORE INTO user_profiles(user_id,updated_at) VALUES(?,?)', [userId, Math.floor(Date.now() / 1000)]);
-        const [rows] = await economyPool.execute('SELECT about,title,accent,profile_bg AS profileBg,rank_bg AS rankBg,wallet_bg AS walletBg,levelup_bg AS levelupBg,tag,frame,sticker,housing FROM user_profiles WHERE user_id=?', [userId]);
-        return rows[0] ? rows[0] : DEFAULT_SETTINGS;
+        const [rows] = await economyPool.execute('SELECT about,title,accent,profile_bg AS profileBg,rank_bg AS rankBg,wallet_bg AS walletBg,levelup_bg AS levelupBg,tag,frame,sticker FROM user_profiles WHERE user_id=?', [userId]);
+        return normalizeProfileSettings(rows[0]);
     }
     db.prepare('INSERT OR IGNORE INTO user_profiles(user_id) VALUES(?)').run(userId);
-    return db.prepare('SELECT about,title,accent,profile_bg AS profileBg,rank_bg AS rankBg,wallet_bg AS walletBg,levelup_bg AS levelupBg,tag,frame,sticker,housing FROM user_profiles WHERE user_id=?').get(userId) ?? DEFAULT_SETTINGS;
+    return normalizeProfileSettings(db.prepare('SELECT about,title,accent,profile_bg AS profileBg,rank_bg AS rankBg,wallet_bg AS walletBg,levelup_bg AS levelupBg,tag,frame,sticker FROM user_profiles WHERE user_id=?').get(userId));
 }
 export async function getProfileProgress(_guildId, userId) {
     const today = new Date().toISOString().slice(0, 10);
@@ -166,10 +172,27 @@ export async function recordReceivedRpgReaction(userId, kind) {
 }
 export async function getProfileInventory(guildId, userId) {
     guildId = GLOBAL_SCOPE_ID;
+    const [settings, badges] = await Promise.all([getProfileSettings(userId), equippedProfileBadges(userId)]);
+    const equippedIds = [settings.profileBg, settings.rankBg, settings.walletBg, settings.levelupBg, settings.tag, settings.frame, settings.sticker, ...badges]
+        .filter((itemId) => Boolean(itemId));
+    const selectedAccent = profileShopItems.find((item) => item.type === 'accent' && item.color.toLocaleLowerCase() === settings.accent.toLocaleLowerCase());
+    if (selectedAccent)
+        equippedIds.push(selectedAccent.id);
+    const legacyOwnedIds = [...new Set(equippedIds.filter((itemId) => profileShopItems.some((item) => item.id === itemId)))];
+    const at = Math.floor(Date.now() / 1000);
     if (economyPool) {
+        for (const itemId of legacyOwnedIds) {
+            await economyPool.execute('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON DUPLICATE KEY UPDATE quantity=GREATEST(quantity,1)', [guildId, userId, itemId, at]);
+        }
         const [rows] = await economyPool.execute('SELECT item_id itemId,quantity,acquired_at acquiredAt FROM user_inventory WHERE guild_id=? AND user_id=? AND quantity>0 ORDER BY acquired_at DESC', [guildId, userId]);
         return rows.map((row) => ({ itemId: String(row.itemId), quantity: Number(row.quantity), acquiredAt: Number(row.acquiredAt) }));
     }
+    const transaction = db.transaction(() => {
+        const insert = db.prepare('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=MAX(user_inventory.quantity,1)');
+        for (const itemId of legacyOwnedIds)
+            insert.run(guildId, userId, itemId, at);
+    });
+    transaction.immediate();
     return db.prepare('SELECT item_id itemId,quantity,acquired_at acquiredAt FROM user_inventory WHERE guild_id=? AND user_id=? AND quantity>0 ORDER BY acquired_at DESC').all(guildId, userId);
 }
 export async function buyProfileItem(guildId, userId, itemId, reference) {
@@ -193,7 +216,7 @@ export async function buyProfileItem(guildId, userId, itemId, reference) {
                 return { ok: false, reason: 'insufficient', balance };
             await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [item.price, at, guildId, userId]);
             await connection.execute('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)', [guildId, userId, -item.price, `profile_shop:${itemId}`, ledgerReference, at]);
-            await connection.execute('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?)', [guildId, userId, itemId, at]);
+            await connection.execute('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId, at]);
             return { ok: true, balance: balance - item.price };
         });
     const transaction = db.transaction(() => {
@@ -205,7 +228,7 @@ export async function buyProfileItem(guildId, userId, itemId, reference) {
             return { ok: false, reason: 'insufficient', balance };
         db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(item.price, at, guildId, userId);
         db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -item.price, `profile_shop:${itemId}`, ledgerReference, at);
-        db.prepare('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?)').run(guildId, userId, itemId, at);
+        db.prepare('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId, at);
         return { ok: true, balance: balance - item.price };
     });
     return transaction.immediate();
@@ -243,7 +266,7 @@ export async function equipProfileItem(guildId, userId, itemId) {
     const column = equipColumns[item.type];
     if (!column)
         return { ok: false, message: 'Ese artículo no tiene ranura de equipamiento.' };
-    const sqlColumn = { profileBg: 'profile_bg', rankBg: 'rank_bg', walletBg: 'wallet_bg', levelupBg: 'levelup_bg', tag: 'tag', frame: 'frame', sticker: 'sticker', housing: 'housing' }[column];
+    const sqlColumn = { profileBg: 'profile_bg', rankBg: 'rank_bg', walletBg: 'wallet_bg', levelupBg: 'levelup_bg', tag: 'tag', frame: 'frame', sticker: 'sticker', accent: 'accent' }[column];
     if (economyPool) {
         await economyPool.execute('INSERT IGNORE INTO user_profiles(user_id,updated_at) VALUES(?,?)', [userId, Math.floor(Date.now() / 1000)]);
         await economyPool.execute(`UPDATE user_profiles SET ${sqlColumn}=?,updated_at=? WHERE user_id=?`, [itemId, Math.floor(Date.now() / 1000), userId]);
@@ -255,7 +278,14 @@ export async function equipProfileItem(guildId, userId, itemId) {
     return { ok: true, message: `${item.emoji} **${item.name}** equipado.` };
 }
 export async function unequipProfileType(userId, type) {
-    const sqlColumn = { profile_bg: 'profile_bg', rank_bg: 'rank_bg', wallet_bg: 'wallet_bg', levelup_bg: 'levelup_bg', frame: 'frame', badge: 'badge', tag: 'tag', sticker: 'sticker', housing: 'housing' }[type];
+    if (type === 'accent') {
+        if (economyPool)
+            await economyPool.execute('UPDATE user_profiles SET accent=?,updated_at=? WHERE user_id=?', [DEFAULT_SETTINGS.accent, Math.floor(Date.now() / 1000), userId]);
+        else
+            db.prepare('UPDATE user_profiles SET accent=?,updated_at=? WHERE user_id=?').run(DEFAULT_SETTINGS.accent, Math.floor(Date.now() / 1000), userId);
+        return { ok: true, message: 'Estilo predeterminado aplicado.' };
+    }
+    const sqlColumn = { profile_bg: 'profile_bg', rank_bg: 'rank_bg', wallet_bg: 'wallet_bg', levelup_bg: 'levelup_bg', frame: 'frame', badge: 'badge', tag: 'tag', sticker: 'sticker' }[type];
     if (type === 'badge') {
         if (economyPool)
             await economyPool.execute('DELETE FROM user_equipped_badges WHERE user_id=?', [userId]);
@@ -272,10 +302,8 @@ export async function unequipProfileType(userId, type) {
     return { ok: true, message: 'Decoración retirada.' };
 }
 export async function updateProfileField(userId, field, value) {
-    const limits = { about: 180, title: 40, accent: 7 };
+    const limits = { about: 180, title: 40 };
     const cleaned = value.trim().slice(0, limits[field]);
-    if (field === 'accent' && !/^#[0-9a-fA-F]{6}$/.test(cleaned))
-        throw new Error('El color debe ser hexadecimal, por ejemplo #8b75dc.');
     if (economyPool) {
         await economyPool.execute('INSERT IGNORE INTO user_profiles(user_id,updated_at) VALUES(?,?)', [userId, Math.floor(Date.now() / 1000)]);
         await economyPool.execute(`UPDATE user_profiles SET ${field}=?,updated_at=? WHERE user_id=?`, [cleaned, Math.floor(Date.now() / 1000), userId]);

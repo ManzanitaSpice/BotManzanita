@@ -26,15 +26,15 @@ La estructura del proyecto y el orden de configuración están resumidos en [`AR
 
 `a!catalog`, `a!help` o `/catalogo` abre el catálogo interactivo de todo el bot, organizado por música, economía, RPG, expresiones y administración. Hay 79 expresiones anime, incluidas `a!hello`, `a!hi`, `a!bye`, `a!goodbye`, `a!goodmorning`, `a!goodnight`, `a!welcome`, `a!congrats`, `a!celebrate`, `a!sorry`, `a!comfort`, `a!love`, `a!missyou`, `a!goodluck`, `a!cheer`, `a!yay`, `a!proud`, `a!relax`, `a!excited` y `a!thanks`. Cada expresión incluye un GIF SFW aleatorio y alias disponibles en español.
 
-Los comandos también aceptan prefijo `a!` como alternativa al slash. Atajos comunes: `a!p`/`a!play`, `a!s`/`a!search`, `a!q`/`a!queue`, `a!bal`/`a!b`, `a!d`/`a!daily`, `a!w`/`a!work`, `a!f`/`a!fish`, `a!c`/`a!crime`, `a!r`/`a!rob`, `a!rl`/`a!roulette`, `a!bj`/`a!21`. Los paneles conservan sus botones; música, economía y RPG usan las mismas reglas y datos que los slash. Por ser mensajes normales, las respuestas `a!` aparecen en el canal. Las acciones `a!admin` solo se aceptan en DM desde el ID propietario; ahí debes indicar el ID del servidor y del usuario.
+Los comandos también aceptan prefijo `a!` como alternativa al slash. Atajos comunes: `a!p`/`a!play`, `a!s`/`a!search`, `a!q`/`a!queue`, `a!bal`/`a!b`, `a!d`/`a!daily`, `a!jobs` para elegir oficio, `a!w`/`a!work`, `a!f`/`a!fish`, `a!c`/`a!crime`, `a!r`/`a!rob`, `a!rl`/`a!roulette`, `a!bj`/`a!21`, `a!gallo 100` y `a!slots 100`. Banco y transferencias tienen atajos `a!depositar`, `a!retirar` y `a!dar @persona cantidad`. Los paneles conservan sus botones; música, economía y RPG usan las mismas reglas y datos que los slash. Por ser mensajes normales, las respuestas `a!` aparecen en el canal. Toda administración solo se acepta desde el DM del bot y el ID propietario.
 
 Los GIFs de expresiones se solicitan a NEKOS.BEST, que publica endpoints SFW sin API key y requiere un encabezado User-Agent válido. Todas aceptan `@persona` para una escena compartida; `sip`, `slap`, `punch`, `kick` y `bite` tienen textos especiales aleatorios en esa modalidad. Hay un cooldown por persona y límite compartido local para respetar su cuota; si el servicio no responde, el bot avisa para reintentar. La imagen incluye la fuente y el anime cuando los metadatos lo proporcionan.
 
 ### Perfil, progreso y cosméticos
 
-`/perfil [usuario]` o `a!perfil [@persona]` muestra una Profile Card PNG global con nivel, rango, XP, actividad, reputación, about, badges, mascota RPG y tema equipado. Sus botones abren personalización, inventario, tienda, progreso, Wallet Card, Rank Card y Room Card. `/wallet` muestra la tarjeta de billetera; el XP de chat se acredita como máximo una vez por minuto por usuario y servidor, y el aviso de nivel incluye su propia Level-up Card.
+`/perfil [usuario]` o `a!perfil [@persona]` muestra una Profile Card PNG global con nivel, rango, XP, actividad, reputación, about, badges, mascota RPG y tema equipado. Sus botones abren personalización, inventario, tienda, progreso, Wallet Card y Rank Card. `/wallet` muestra la tarjeta de billetera; el XP de chat se acredita como máximo una vez por minuto por usuario y servidor, y el aviso de nivel incluye su propia Level-up Card.
 
-La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, mascotas RPG, housing, fondos de rank, level-up y wallet, badges, tags, marcos y stickers. Puedes previsualizar, comprar con monedas, equipar y retirar decoración desde los paneles. `/rep @persona` concede un punto de reputación al día. El esquema de perfil e inventario se crea automáticamente en SQLite o en la base MySQL configurada; no hay que subir secretos ni ejecutar una migración manual.
+La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, mascotas RPG, fondos de rank, level-up y wallet, estilos, badges, tags, marcos y stickers. Puedes previsualizar, comprar con monedas, equipar y retirar decoración desde los paneles. `/rep @persona` concede un punto de reputación al día. El esquema de perfil e inventario se crea automáticamente en SQLite o en la base MySQL configurada; no hay que subir secretos ni ejecutar una migración manual.
 
 - Atajos de economía: `/bal` y `/balance` muestran billetera, banco y patrimonio; `/top` y `/baltop` muestran el ranking; `/profile` abre tu perfil y `/eco` el panel rápido.
 - Acciones directas: `/fish`, `/21` o `/bj`, `/daily`, `/work`, `/crime`, `/rob`, `/roulette`, `/bank`, `/shop`, `/inventory` y `/pay` evitan escribir `/economia`.
@@ -47,21 +47,23 @@ La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, 
 - `/economia admin_moneda usuario cantidad`: un administrador otorga una cantidad positiva o retira una negativa de gemas premium; deja registro del movimiento.
 - `/economia saldo`: consulta el saldo.
 - `/economia diaria`: reclama 75 monedas cada 24 horas.
-- `/economia trabajar`: gana entre 15 y 30 monedas cada hora.
+- `/economia empleo [trabajo]`: consulta tu oficio o elige entre minero, leñador, agricultor, repartidor, cocinero y pescador. `a!jobs elegir oficio` ofrece la misma selección.
+- `/economia trabajar`: paga según el oficio y su nivel; requiere el empleo elegido y su herramienta de tienda. Cada turno da XP y sube el nivel hasta 20.
 - `/economia crimen` o `/crime`: intenta un golpe cada 4 horas; hay 40% de éxito, botín de 40 a 80 monedas o una multa de 10 a 30.
-- `/economia pescar`: consigue una captura común o rara; hay enfriamiento de una hora y resultados variados.
+- `/economia pescar`: consigue una captura común o rara; hay enfriamiento de una hora, requiere una Caña de pescar de la tienda y tiene resultados variados.
 - `/economia robar usuario`: tiene 40% de éxito, transfiere hasta 15% del saldo de la otra persona (máximo 200) y puede hacerte perder 5% del tuyo; enfriamiento de dos horas.
 - `/economia ruleta cantidad color`: apuesta al rojo, negro o verde en una ruleta de monedas virtuales.
 - `/economia blackjack apuesta`: juega veintiuno con panel interactivo para pedir carta o plantarse.
 - `/economia casino`: abre el panel del casino con saldo y acceso a pesca.
 - `/economia banco`: abre el panel para depositar y retirar monedas; el ahorro gana 0.01% de interés por día completo.
-- `/economia usar articulo`: consume un artículo del inventario. El cebo duplica la próxima pesca al usarlo; el escudo bloquea robos durante 24 horas.
+- `/economia usar articulo`: consume un artículo del inventario. El cebo requiere una Caña de pescar y duplica la próxima pesca al usarlo; el escudo bloquea robos durante 24 horas.
 - `/economia apostar_objeto articulo color`: arriesga una unidad de un consumible en la ruleta; si gana, recibe monedas según su precio en tienda; si pierde, el artículo se consume.
-- `/rpg panel`: ficha visual interactiva con rareza, nivel, atributos, equipo, mochila, encargos y bitácora persistente de la última expedición. Muestra las decisiones, encuentros, hallazgos y regreso; también aparece enlazada desde `/profile`.
+- `a!pet` / `/rpg panel`: ficha visual interactiva con rareza, nivel y atributos; desde ahí puedes seleccionar comida, acariciar a tu mascota, explorar o abrir la bitácora.
+- `a!bitacora`, `a!pet bitacora` o `/rpg bitacora`: muestra el historial de expediciones por separado, con recompensas, eventos y navegación entre registros. La categoría **Aventura** del menú RPG abre esta bitácora.
 - `/rpg nombrar nombre`: permite cambiar gratis el nombre de la mascota una sola vez. Una mascota adoptada con nombre personalizado ya usó esa opción.
 - `/rpg bestiario`: atlas navegable de 48 especies, con rareza, elemento, especialidad y atributos base, acompañado por los dos atlas pixel art.
 - `/rpg adoptar nombre`: adopta una de 48 especies. Las rarezas se distribuyen en 58% común, 25% poco común, 11% rara, 5% épica y 1% legendaria; cada especie pertenece a un tier y la rareza mejora atributos, combate y exploración.
-- `/rpg explorar zona`: cinco zonas con dificultad, riesgo, rango de monedas, probabilidad de botín y tabla de rarezas propia. Cada región tiene un jefe con probabilidad de aparición, poder, recompensa y posibilidad de botín especial. El panel muestra el fondo, las probabilidades y el jefe antes de partir.
+- `/rpg explorar [zona]` o `a!explore [zona]`: cinco zonas con dificultad, riesgo, rango de monedas, probabilidad de botín y tabla de rarezas propia. Si omites la zona, abre el selector; cada región tiene un jefe y el panel muestra sus riesgos y recompensas antes de partir.
 - `/rpg ataques`: escuela de combate para aprender técnicas gastando puntos que se obtienen al subir de nivel y equipar hasta cuatro ataques. Cada movimiento define elemento, precisión, coste de energía y efectos como daño, curación, drenaje, guardia o debilitamiento.
 - `/rpg combatir`: pelea PvE contra enemigos escalados por nivel; la mascota usa su ataque equipado más fuerte que pueda pagar. Ganar da monedas y XP; perder puede dejarla debilitada.
 - `/rpg retar oponente`: publica un desafío PvP en el chat; la persona retada acepta o rechaza y ambos juegan por turnos eligiendo sus movimientos equipados, además de defenderse, usar su técnica especial o rendirse. Los elementos tienen ventajas y resistencias; el duelo usa PV y energía simulados para no alterar la mascota normal.
@@ -70,6 +72,7 @@ La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, 
 - `/rpg misiones`: consulta y cobra encargos diarios de exploración, combate y entrenamiento.
 - `/rpg ranking`: clasificación de mascotas por nivel y experiencia dentro del servidor.
 - `/admin`: herramientas privadas del propietario para administrar billetera, banco, gemas, mascotas RPG, artículos, enfriamientos y protección; las acciones quedan auditadas y los ajustes de moneda se pueden revertir.
+- `a!gallo APUESTA`: duelo de gallos; empieza con 50% de probabilidad y suma 1 punto por victoria consecutiva hasta 70%; perder reinicia la racha. `a!slots APUESTA` (`a!tragamonedas`) paga entre ×3 y ×50 por tres símbolos iguales (premio total, incluye la apuesta) y devuelve la apuesta por un par.
 - La energía se regenera pasivamente; mascotas, movimientos aprendidos y equipados, puntos de aprendizaje, mochila, misiones y actividad persisten en la base de economía SQLite o MySQL.
 - `/economia transferir usuario cantidad`: envía monedas a otra persona.
 - `/economia inventario`: consulta los artículos comprados.
@@ -83,7 +86,9 @@ La tienda de perfil tiene búsqueda avanzada y categorías de fondos de perfil, 
 - `/musica repetir modo`, `/musica volumen porcentaje`, `/musica quitar posicion`.
 - `/musica efecto modo`: sonido normal, graves, rock, pop, nightcore o vaporwave.
 - `/musica favorito guardar|ver|quitar`: favoritos persistentes con controles para reproducir o eliminar.
-- `/musica lista mislistas|guardar|ver|reproducir|quitar|eliminar`: listas personales persistentes; hasta 20 listas de 100 canciones por usuario y servidor.
+- `/musica lista mislistas|guardar|ver|reproducir|quitar|eliminar`: playlists personales persistentes; máximo 3 playlists de 30 canciones por usuario. Las listas antiguas se conservan.
+- `a!hist [1-30]` conserva hasta 30 canciones reproducidas por usuario durante 2 horas; `a!bucle [1-30|off]` repite la última canción o las últimas N en orden.
+- `a!playlist now [N] nombre` crea una playlist desde el historial (20 por defecto); `a!playlist list` (`a!pl`), `a!play_playlist nombre` (`a!pp`), `a!playlist delete nombre` (`a!pd`) y `a!shuffle playlist nombre` administran las playlists. `a!shuffle` (`a!sh`) mezcla la cola.
 
 ## Estado de música
 
@@ -99,10 +104,10 @@ La reproducción usa un nodo Lavalink v4. `lavalink/application.yml` configura Y
 - `assets/rpg`: ilustraciones pixel art de mascotas, huevos de rareza y mapa de zonas; `assets/reactions` contiene GIFs usados por expresiones locales como `a!cacawe`. El paquete del host debe conservar ambas carpetas junto a `dist/`.
 - `src/events`: despacho de interacciones.
 
-La economía se separa por servidor y usuario. El banco guarda una billetera y ahorro separados, acredita interés compuesto de 0.01% por día completo y limita cada actualización a 30 días de cálculo. Por defecto usa SQLite; en producción puedes elegir MySQL/MariaDB mediante `ECONOMY_DB_DRIVER=mysql` y las variables `ECONOMY_DB_*`. Apuestas, premios, robos, transferencias, compras y consumos usan transacciones y un ledger. El ranking suma billetera y banco. La tienda vende consumibles acumulables con efectos que se aplican al usarlos; la ruleta de artículos consume una unidad incluso al perder. Consulta [HOSTING.md](HOSTING.md) para configurar el panel y migrar saldos existentes. Favoritos y listas de música permanecen en SQLite. Lavalink mantiene el estado de la cola por servidor mientras el bot está activo.
+La economía se separa por servidor y usuario. El banco guarda una billetera y ahorro separados, acredita interés compuesto de 0.01% por día completo y limita cada actualización a 30 días de cálculo. Por defecto usa SQLite; en producción puedes elegir MySQL/MariaDB mediante `ECONOMY_DB_DRIVER=mysql` y las variables `ECONOMY_DB_*`. Apuestas, premios, robos, transferencias, compras y consumos usan transacciones y un ledger. El ranking suma billetera y banco. La tienda vende consumibles acumulables y herramientas duraderas de trabajo; los oficios guardan su nivel y experiencia, y sus turnos pagan entre 38 y 56 monedas al nivel inicial, más 3 monedas por nivel hasta el máximo. La pesca requiere una Caña de pescar y conserva sus resultados variados. La ruleta de artículos consume una unidad incluso al perder. Consulta [HOSTING.md](HOSTING.md) para configurar el panel y migrar saldos existentes. Favoritos y listas de música permanecen en SQLite. Lavalink mantiene el estado de la cola por servidor mientras el bot está activo.
 
 ### Comandos privados de administración
 
-`/admin` está bloqueado por defecto y el código solo acepta el ID propietario `931978822323159111`; todas las respuestas son efímeras. Para que aparezca en el selector, permite ese usuario en cada servidor desde **Ajustes del servidor → Integraciones → Bot Manzanita → Comandos**. Discord puede seguir mostrando el comando a miembros con permiso Administrador, pero el bot les rechaza cualquier acción si su ID no coincide. Incluye saldo de billetera/banco/gemas, rollback de movimientos administrativos, entrega y retiro de mascotas/artículos, curación, XP, atributos, nombre, enfriamientos, escudo antirobo, inspección y auditoría.
+`/admin` solo se registra para el contexto de DM del bot y el código solo acepta el ID propietario `931978822323159111`; cualquier otro usuario recibe una respuesta privada de rechazo. Incluye saldo de billetera/banco/gemas, rollback de movimientos administrativos, entrega y retiro de mascotas/artículos, curación, XP, atributos, nombre, enfriamientos, escudo antirobo, inspección y auditoría.
 
-En DM, los comandos administrativos por texto aceptan alias cortos: `a!mq <guildID> <userID>` retira la mascota; también están `md` (dar), `mc` (curar), `mxp` (XP), `mn` (nombre), `ma` (atributo), `rt` (enfriamiento), `i` (inspeccionar), `pr` (protección) y `rb` (rollback). Se puede anteponer `a!admin` a cualquiera, por ejemplo `a!admin mq <guildID> <userID>`. Los comandos slash conservan sus nombres actuales.
+En DM, la administración de monedas acepta `a!agregar @persona cantidad` y `a!quitar @persona cantidad` (también `a!admin agregar/quitar`). Los demás comandos por texto aceptan alias como `a!mq <guildID> <userID>` para retirar una mascota, `md` (dar), `mc` (curar), `mxp` (XP), `mn` (nombre), `ma` (atributo), `rt` (enfriamiento), `i` (inspeccionar), `pr` (protección) y `rb` (rollback). El acceso se valida tanto por ID del propietario como por canal DM.

@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, createRpgPvpChallenge, exploreRpg, renameRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem, type PetElement } from '../services/rpg.js';
-import { rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel } from '../ui/panels.js';
+import { expeditionLogPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvpPanel, rpgRankingPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 
 export const rpgCommand: BotCommand = {
@@ -19,14 +19,14 @@ export const rpgCommand: BotCommand = {
       .addStringOption((option) => option.setName('elemento').setDescription('Huevo elemental: la especie aleatoria respetará esta afinidad').setRequired(true).addChoices(...rpgEggOptions.map((entry) => ({ name: `${entry.emoji} ${entry.title}`, value: entry.element }))))
       .addStringOption((option) => option.setName('nombre').setDescription('Nombre para tu mascota').setMaxLength(24)))
     .addSubcommand((sub) => sub.setName('explorar').setDescription('Explora: dificultad, botín regional y posibles jefes')
-      .addStringOption((option) => option.setName('zona').setDescription('Zona para explorar').setRequired(true).addChoices(...rpgZones.map((zone) => ({ name: `${zone.emoji} ${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id })))))
+      .addStringOption((option) => option.setName('zona').setDescription('Zona para explorar; si se omite, abre el panel de selección').setRequired(false).addChoices(...rpgZones.map((zone) => ({ name: `${zone.emoji} ${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id })))))
+    .addSubcommand((sub) => sub.setName('bitacora').setDescription('Consulta el historial de tus expediciones'))
     .addSubcommand((sub) => sub.setName('combatir').setDescription('Enfrenta enemigos PvE y gana experiencia'))
     .addSubcommand((sub) => sub.setName('retar').setDescription('Reta a otra persona a un duelo RPG por turnos')
       .addUserOption((option) => option.setName('oponente').setDescription('Persona a quien quieres retar').setRequired(true)))
     .addSubcommand((sub) => sub.setName('entrenar').setDescription('Mejora un atributo por 180 monedas y 15 de energía')
       .addStringOption((option) => option.setName('atributo').setDescription('Atributo que quieres mejorar').setRequired(true)
         .addChoices({ name: '⚔️ Fuerza', value: 'strength' }, { name: '🛡️ Defensa', value: 'defense' }, { name: '💨 Agilidad', value: 'agility' })))
-    .addSubcommand((sub) => sub.setName('tienda').setDescription('Abre el bazar de artículos RPG'))
     .addSubcommand((sub) => sub.setName('comprar').setDescription('Compra un artículo RPG con monedas de tu billetera')
       .addStringOption((option) => option.setName('articulo').setDescription('Artículo que quieres comprar').setRequired(true).setAutocomplete(true)))
     .addSubcommand((sub) => sub.setName('usar').setDescription('Usa un consumible o equipa un objeto RPG')
@@ -62,6 +62,10 @@ export const rpgCommand: BotCommand = {
       await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username));
       return;
     }
+    if (action === 'bitacora') {
+      await interaction.reply(await expeditionLogPanel(guildId, userId));
+      return;
+    }
     if (action === 'mochila') { await interaction.reply(await rpgInventoryPanel(guildId, userId)); return; }
     if (action === 'alimentar') {
       const itemId = interaction.options.getString('alimento');
@@ -75,7 +79,7 @@ export const rpgCommand: BotCommand = {
     if (action === 'cuidar') {
       const result = await careForRpgPet(guildId, userId);
       if (!result.ok) { await interaction.reply({ content: result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos.`, flags: MessageFlags.Ephemeral }); return; }
-      await interaction.reply(rpgCareResultPanel(result.pet, `Pasaste tiempo con ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`)); return;
+      await interaction.reply(rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`)); return;
     }
     if (action === 'ataques') { await interaction.reply(await rpgBuildPanel(guildId, userId)); return; }
     if (action === 'nombrar') {
@@ -83,7 +87,6 @@ export const rpgCommand: BotCommand = {
       const message = result.ok ? `🐾 Tu mascota ahora se llama **${result.pet.name}**. El nombre gratuito ya fue usado.` : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'already_used' ? 'Ya usaste el cambio de nombre gratuito de esta mascota.' : 'Usa un nombre de 2 a 24 caracteres; evita menciones y formato de Discord.';
       await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }); return;
     }
-    if (action === 'tienda') { await interaction.reply(await rpgShopPanel(guildId, userId)); return; }
     if (action === 'adoptar') {
       const element = interaction.options.getString('elemento', true) as PetElement;
       const result = await adoptRpgPet(guildId, userId, interaction.options.getString('nombre') ?? '', element);
@@ -92,7 +95,9 @@ export const rpgCommand: BotCommand = {
       return;
     }
     if (action === 'explorar') {
-      const result = await exploreRpg(guildId, userId, interaction.options.getString('zona', true), interaction.id);
+      const zoneId = interaction.options.getString('zona');
+      if (!zoneId) { await interaction.reply(await rpgExplorePanel(guildId, userId, interaction.user.username)); return; }
+      const result = await exploreRpg(guildId, userId, zoneId, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
           : result.reason === 'zone_locked' ? 'Tu mascota todavía no tiene nivel suficiente para esa zona.'
@@ -101,7 +106,7 @@ export const rpgCommand: BotCommand = {
               : `Tu mascota está descansando. Prueba en **${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos**.`;
         await interaction.reply({ content: `🧭 ${message}`, flags: MessageFlags.Ephemeral }); return;
       }
-      await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username)); return;
+      await interaction.reply(await expeditionLogPanel(guildId, userId)); return;
     }
     if (action === 'combatir') {
       const result = await battleRpg(guildId, userId, interaction.id);

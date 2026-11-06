@@ -15,6 +15,26 @@ const BANK_INTEREST_BASIS_POINTS = 1;
 const BANK_MAX_ACCRUAL_DAYS = 30;
 const ROB_SHIELD_SECONDS = 24 * 60 * 60;
 const MAX_BET = 100_000;
+export const JOB_XP_PER_SHIFT = 25;
+export const MAX_JOB_LEVEL = 20;
+
+export const economyJobs = [
+  { id: 'minero', name: 'Minero', emoji: '⛏️', toolId: 'pico', toolName: 'Pico', minPay: 42, maxPay: 56, messages: ['⛏️ Extrajiste mineral de una veta profunda.', '💎 Encontraste una bolsa de mineral valioso.', '🪨 Limpiaste el túnel y llevaste el mineral al taller.'] },
+  { id: 'lenador', name: 'Leñador', emoji: '🪓', toolId: 'hacha', toolName: 'Hacha', minPay: 40, maxPay: 54, messages: ['🪵 Cortaste y apilaste madera para el pueblo.', '🌲 Preparaste troncos para la carpintería.', '🪓 Despejaste una zona y cargaste la leña.'] },
+  { id: 'agricultor', name: 'Agricultor', emoji: '🌾', toolId: 'azada', toolName: 'Azada', minPay: 38, maxPay: 52, messages: ['🌱 Preparaste los surcos para la siguiente cosecha.', '🥕 Cuidaste el cultivo y llevaste verduras al mercado.', '🌾 Regaste y limpiaste el campo antes del anochecer.'] },
+  { id: 'repartidor', name: 'Repartidor', emoji: '📦', toolId: 'mochila_repartidor', toolName: 'Mochila de reparto', minPay: 40, maxPay: 54, messages: ['🚲 Entregaste paquetes por todo el barrio.', '📦 Completaste una ruta de entregas a tiempo.', '🧭 Encontraste cada dirección y entregaste los pedidos.'] },
+  { id: 'cocinero', name: 'Cocinero', emoji: '🍳', toolId: 'kit_cocinero', toolName: 'Kit de cocina', minPay: 42, maxPay: 56, messages: ['🍜 Preparaste un turno lleno en la cocina.', '🥘 Cocinaste el menú del día para el mercado.', '🧁 Vendiste una tanda completa de postres.'] },
+  { id: 'pescador', name: 'Pescador', emoji: '🎣', toolId: 'cana_pescar', toolName: 'Caña de pescar', minPay: 38, maxPay: 52, messages: ['🎣 Reparaste las redes del muelle y ordenaste la captura.', '🛶 Ayudaste a preparar las barcas para salir al lago.', '🐟 Clasificaste la pesca de la mañana para el mercado.'] },
+] as const;
+
+export type EconomyJob = typeof economyJobs[number];
+export type ActiveJobProgress = { job: EconomyJob; level: number; xp: number; xpToNext: number };
+
+function jobXpToNext(level: number): number { return level >= MAX_JOB_LEVEL ? 0 : 100 + (level - 1) * 25; }
+function makeJobProgress(jobId: string, level: number, xp: number): ActiveJobProgress | undefined {
+  const job = economyJobs.find((candidate) => candidate.id === jobId);
+  return job ? { job, level, xp, xpToNext: jobXpToNext(level) } : undefined;
+}
 
 type AccountRow = {
   balance: number;
@@ -384,7 +404,7 @@ export async function claimDaily(guildId: string, userId: string, reference: str
 
 export async function purchaseItem(guildId: string, userId: string, itemId: string, reference: string): Promise<
   | { ok: true; balance: number; quantity: number }
-  | { ok: false; balance: number; reason: 'insufficient_funds' | 'invalid_item' }
+  | { ok: false; balance: number; reason: 'insufficient_funds' | 'invalid_item' | 'already_owned' }
 > {
   guildId = GLOBAL_SCOPE_ID;
   const item = storeItems.find((candidate) => candidate.id === itemId);
@@ -392,6 +412,13 @@ export async function purchaseItem(guildId: string, userId: string, itemId: stri
   const cost = item.cost;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    if (item.repeatable === false) {
+      const [owned] = await connection.execute<RowDataPacket[]>(
+        'SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE',
+        [guildId, userId, itemId],
+      );
+      if (Number(owned[0]?.quantity ?? 0) > 0) return { ok: false as const, balance: account.balance, reason: 'already_owned' as const };
+    }
     if (account.balance < cost) return { ok: false as const, balance: account.balance, reason: 'insufficient_funds' as const };
     const now = nowSeconds();
     await connection.execute('UPDATE economy_accounts SET balance = balance - ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [cost, now, guildId, userId]);
@@ -404,6 +431,11 @@ export async function purchaseItem(guildId: string, userId: string, itemId: stri
 
   const purchase = db.transaction(() => {
     const account = sqliteEnsureAccount(guildId, userId);
+    if (item.repeatable === false) {
+      const owned = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=?')
+        .get(guildId, userId, itemId) as { quantity: number } | undefined;
+      if ((owned?.quantity ?? 0) > 0) return { ok: false as const, balance: account.balance, reason: 'already_owned' as const };
+    }
     if (account.balance < cost) return { ok: false as const, balance: account.balance, reason: 'insufficient_funds' as const };
     const now = nowSeconds();
     db.prepare('UPDATE economy_accounts SET balance = balance - ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(cost, now, guildId, userId);
@@ -423,43 +455,126 @@ async function getInventoryQuantityMysql(connection: PoolConnection, guildId: st
   return Number(rows[0]?.quantity ?? 0);
 }
 
-export async function work(guildId: string, userId: string, reference: string): Promise<
-  | { ok: true; amount: number; balance: number; message: string }
-  | { ok: false; secondsRemaining: number }
+export async function getActiveJob(guildId: string, userId: string): Promise<ActiveJobProgress | undefined> {
+  guildId = GLOBAL_SCOPE_ID;
+  if (economyPool) {
+    const [rows] = await economyPool.execute<RowDataPacket[]>(
+      'SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1',
+      [guildId, userId],
+    );
+    const row = rows[0];
+    return row ? makeJobProgress(String(row.jobId), Number(row.level), Number(row.xp)) : undefined;
+  }
+  const row = db.prepare('SELECT job_id AS jobId, level, xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1')
+    .get(guildId, userId) as { jobId: string; level: number; xp: number } | undefined;
+  return row ? makeJobProgress(row.jobId, row.level, row.xp) : undefined;
+}
+
+export async function selectJob(guildId: string, userId: string, jobId: string): Promise<
+  | { ok: true; progress: ActiveJobProgress }
+  | { ok: false; reason: 'invalid_job' }
 > {
   guildId = GLOBAL_SCOPE_ID;
-  const amount = 15 + randomInt(16);
-  const messages = [
-    '🧰 Reparaste una nave en el muelle.', '📦 Repartiste paquetes por toda la ciudad.',
-    '🍜 Cubriste un turno en el puesto de ramen.', '🪴 Ayudaste en el invernadero.',
-    '🧹 Dejaste impecable la plaza.', '🐕 Paseaste una jauría por el barrio.',
-    '🔧 Arreglaste una máquina rebelde.', '🎨 Pintaste un mural para el barrio.',
-    '☕ Cubriste el turno de la cafetería.', '🚲 Reparaste bicicletas en el taller.',
-    '📚 Ordenaste la biblioteca.', '🧁 Vendiste una tanda de postres.',
-    '🎟️ Ayudaste en un concierto.', '🪵 Construiste una banca nueva.',
-    '🛠️ Terminaste un encargo antes de la hora.', '🌱 Plantaste árboles en el parque.',
-    '📻 Reparaste una radio antigua.', '🏪 Cubriste la caja de una tienda.',
-    '🧵 Arreglaste un traje para el festival.', '🧭 Guiaste a un grupo que se había perdido.',
-  ];
+  const job = economyJobs.find((candidate) => candidate.id === jobId);
+  if (!job) return { ok: false, reason: 'invalid_job' };
+  const now = nowSeconds();
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    await mysqlEnsureAccount(connection, guildId, userId, true);
+    await connection.execute('UPDATE economy_jobs SET is_active=0,updated_at=? WHERE guild_id=? AND user_id=?', [now, guildId, userId]);
+    await connection.execute(`INSERT INTO economy_jobs (guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at)
+      VALUES (?,?,?,1,0,1,?,?) ON DUPLICATE KEY UPDATE is_active=1,updated_at=VALUES(updated_at)`, [guildId, userId, jobId, now, now]);
+    const [rows] = await connection.execute<RowDataPacket[]>('SELECT level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=?', [guildId, userId, jobId]);
+    const row = rows[0];
+    return { ok: true as const, progress: makeJobProgress(job.id, Number(row?.level ?? 1), Number(row?.xp ?? 0))! };
+  });
+
+  const select = db.transaction(() => {
+    sqliteEnsureAccount(guildId, userId);
+    db.prepare('UPDATE economy_jobs SET is_active=0,updated_at=? WHERE guild_id=? AND user_id=?').run(now, guildId, userId);
+    db.prepare(`INSERT INTO economy_jobs (guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at)
+      VALUES (?,?,?,1,0,1,?,?) ON CONFLICT(guild_id,user_id,job_id) DO UPDATE SET is_active=1,updated_at=excluded.updated_at`).run(guildId, userId, jobId, now, now);
+    const row = db.prepare('SELECT level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=?')
+      .get(guildId, userId, jobId) as { level: number; xp: number };
+    return { ok: true as const, progress: makeJobProgress(job.id, row.level, row.xp)! };
+  });
+  return select.immediate();
+}
+
+export type WorkResult =
+  | { ok: true; amount: number; balance: number; message: string; jobName: string; level: number; levelUp: boolean }
+  | { ok: false; reason: 'no_job' | 'missing_tool' | 'cooldown'; secondsRemaining?: number; job?: EconomyJob };
+
+function addJobExperience(level: number, xp: number): { level: number; xp: number; levelUp: boolean } {
+  if (level >= MAX_JOB_LEVEL) return { level: MAX_JOB_LEVEL, xp: 0, levelUp: false };
+  let nextLevel = level;
+  let nextXp = xp + JOB_XP_PER_SHIFT;
+  while (nextLevel < MAX_JOB_LEVEL && nextXp >= jobXpToNext(nextLevel)) {
+    nextXp -= jobXpToNext(nextLevel);
+    nextLevel++;
+  }
+  if (nextLevel >= MAX_JOB_LEVEL) nextXp = 0;
+  return { level: nextLevel, xp: nextXp, levelUp: nextLevel > level };
+}
+
+export async function work(guildId: string, userId: string, reference: string): Promise<WorkResult> {
+  guildId = GLOBAL_SCOPE_ID;
 
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    const [jobRows] = await connection.execute<RowDataPacket[]>(
+      'SELECT job_id AS jobId,level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1 FOR UPDATE',
+      [guildId, userId],
+    );
+    const current = jobRows[0];
+    if (!current) return { ok: false as const, reason: 'no_job' as const };
+    const job = economyJobs.find((candidate) => candidate.id === String(current.jobId));
+    if (!job) return { ok: false as const, reason: 'no_job' as const };
+    const [tools] = await connection.execute<RowDataPacket[]>(
+      'SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE',
+      [guildId, userId, job.toolId],
+    );
+    if (Number(tools[0]?.quantity ?? 0) < 1) return { ok: false as const, reason: 'missing_tool' as const, job };
     const now = nowSeconds();
     const nextWorkAt = (account.lastWorkAt ?? 0) + WORK_COOLDOWN_SECONDS;
-    if (now < nextWorkAt) return { ok: false as const, secondsRemaining: nextWorkAt - now };
-    await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_work_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [amount, now, now, guildId, userId]);
-    await mysqlAddLedger(connection, guildId, userId, amount, 'work_reward', reference, now);
-    return { ok: true as const, amount, balance: account.balance + amount, message: pick(messages) };
+    if (now < nextWorkAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextWorkAt - now, job };
+    const level = Number(current.level);
+    const xp = Number(current.xp);
+    const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(level - 1, MAX_JOB_LEVEL - 1) * 3;
+    const progress = addJobExperience(level, xp);
+    await connection.execute('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?', [progress.level, progress.xp, now, guildId, userId, job.id]);
+    await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
+    await mysqlAddLedger(connection, guildId, userId, amount, `work_reward:${job.id}:lv${level}`, reference, now);
+    const xpText = progress.level >= MAX_JOB_LEVEL ? ' · nivel máximo' : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`;
+    const levelText = progress.levelUp ? `\n🎉 **${job.name} subió al nivel ${progress.level}.**` : '';
+    return { ok: true as const, amount, balance: account.balance + amount, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
+      message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${xpText}${levelText}` };
   });
 
-  const earn = db.transaction(() => {
+  const earn = db.transaction((): WorkResult => {
     const account = sqliteEnsureAccount(guildId, userId);
+    const current = db.prepare('SELECT job_id AS jobId,level,xp FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 LIMIT 1')
+      .get(guildId, userId) as { jobId: string; level: number; xp: number } | undefined;
+    if (!current) return { ok: false, reason: 'no_job' };
+    const job = economyJobs.find((candidate) => candidate.id === current.jobId);
+    if (!job) return { ok: false, reason: 'no_job' };
+    const tools = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=?')
+      .get(guildId, userId, job.toolId) as { quantity: number } | undefined;
+    if (!tools || tools.quantity < 1) return { ok: false, reason: 'missing_tool', job };
     const now = nowSeconds();
     const nextWorkAt = (account.lastWorkAt ?? 0) + WORK_COOLDOWN_SECONDS;
-    if (now < nextWorkAt) return { ok: false as const, secondsRemaining: nextWorkAt - now };
-    db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_work_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(amount, now, now, guildId, userId);
-    db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, userId, amount, 'work_reward', reference, now);
-    return { ok: true as const, amount, balance: account.balance + amount, message: pick(messages) };
+    if (now < nextWorkAt) return { ok: false, reason: 'cooldown', secondsRemaining: nextWorkAt - now, job };
+    const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(current.level - 1, MAX_JOB_LEVEL - 1) * 3;
+    const progress = addJobExperience(current.level, current.xp);
+    db.prepare('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?')
+      .run(progress.level, progress.xp, now, guildId, userId, job.id);
+    db.prepare('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?')
+      .run(amount, now, now, guildId, userId);
+    db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
+      .run(guildId, userId, amount, `work_reward:${job.id}:lv${current.level}`, reference, now);
+    const xpText = progress.level >= MAX_JOB_LEVEL ? ' · nivel máximo' : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`;
+    const levelText = progress.levelUp ? `\n🎉 **${job.name} subió al nivel ${progress.level}.**` : '';
+    return { ok: true, amount, balance: account.balance + amount, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
+      message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${xpText}${levelText}` };
   });
   return earn.immediate();
 }
@@ -558,7 +673,7 @@ export async function transferCoins(guildId: string, fromUserId: string, toUserI
 
 export async function fish(guildId: string, userId: string, reference: string): Promise<
   | { ok: true; amount: number; balance: number; message: string }
-  | { ok: false; secondsRemaining: number }
+  | { ok: false; reason: 'missing_rod' | 'cooldown'; secondsRemaining?: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
   const caught = randomInt(100) < 70;
@@ -571,9 +686,14 @@ export async function fish(guildId: string, userId: string, reference: string): 
 
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    const [rods] = await connection.execute<RowDataPacket[]>(
+      'SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE',
+      [guildId, userId, 'cana_pescar'],
+    );
+    if (Number(rods[0]?.quantity ?? 0) < 1) return { ok: false as const, reason: 'missing_rod' as const };
     const now = nowSeconds();
     const nextFishAt = (account.lastFishAt ?? 0) + FISH_COOLDOWN_SECONDS;
-    if (now < nextFishAt) return { ok: false as const, secondsRemaining: nextFishAt - now };
+    if (now < nextFishAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextFishAt - now };
     await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_fish_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?', [amount, now, now, guildId, userId]);
     if (amount) await mysqlAddLedger(connection, guildId, userId, amount, rare ? 'fish_rare' : 'fish', reference, now);
     return { ok: true as const, amount, balance: account.balance + amount, message };
@@ -581,9 +701,12 @@ export async function fish(guildId: string, userId: string, reference: string): 
 
   const catchFish = db.transaction(() => {
     const account = sqliteEnsureAccount(guildId, userId);
+    const rod = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=?')
+      .get(guildId, userId, 'cana_pescar') as { quantity: number } | undefined;
+    if (!rod || rod.quantity < 1) return { ok: false as const, reason: 'missing_rod' as const };
     const now = nowSeconds();
     const nextFishAt = (account.lastFishAt ?? 0) + FISH_COOLDOWN_SECONDS;
-    if (now < nextFishAt) return { ok: false as const, secondsRemaining: nextFishAt - now };
+    if (now < nextFishAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextFishAt - now };
     db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_fish_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?').run(amount, now, now, guildId, userId);
     if (amount) db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(guildId, userId, amount, rare ? 'fish_rare' : 'fish', reference, now);
     return { ok: true as const, amount, balance: account.balance + amount, message };
@@ -704,12 +827,147 @@ export async function playRoulette(guildId: string, userId: string, bet: number,
   return spin.immediate();
 }
 
+type RoosterProgress = { streak: number; bestStreak: number; wins: number; losses: number };
+type RoosterRound = { balance: number; bet: number; won: boolean; chance: number; payout: number; streak: number; nextChance: number; bestStreak: number; message: string };
+const emptyRoosterProgress: RoosterProgress = { streak: 0, bestStreak: 0, wins: 0, losses: 0 };
+function roosterProgress(value: unknown): RoosterProgress {
+  try {
+    const parsed = JSON.parse(String(value ?? '{}')) as Partial<RoosterProgress>;
+    return {
+      streak: Math.max(0, Math.min(20, Math.floor(Number(parsed.streak) || 0))),
+      bestStreak: Math.max(0, Math.floor(Number(parsed.bestStreak) || 0)),
+      wins: Math.max(0, Math.floor(Number(parsed.wins) || 0)),
+      losses: Math.max(0, Math.floor(Number(parsed.losses) || 0)),
+    };
+  } catch { return { ...emptyRoosterProgress }; }
+}
+
+function settleRoosterRound(balance: number, bet: number, progress: RoosterProgress): { round: RoosterRound; progress: RoosterProgress } {
+  const chance = Math.min(70, 50 + progress.streak);
+  const won = randomInt(100) < chance;
+  // The gross prize scales down with the rising win chance (about 90% RTP throughout the streak).
+  const payout = won ? Math.floor((bet * 90) / chance) : 0;
+  const streak = won ? Math.min(20, progress.streak + 1) : 0;
+  const nextProgress: RoosterProgress = {
+    streak,
+    bestStreak: Math.max(progress.bestStreak, streak),
+    wins: progress.wins + (won ? 1 : 0),
+    losses: progress.losses + (won ? 0 : 1),
+  };
+  const nextChance = Math.min(70, 50 + streak);
+  const message = won
+    ? `🐓 ¡Victoria! Tu gallo ganó con **${chance}%** de probabilidad y recibió **${payout.toLocaleString('es-MX')} monedas**. Racha: **${streak}** · próxima probabilidad: **${nextChance}%**.`
+    : `🐓 Esta vez ganó el rival. Tu racha vuelve a cero y la próxima pelea empieza en **50%** de probabilidad.`;
+  return {
+    round: { balance: balance - bet + payout, bet, won, chance, payout, streak, nextChance, bestStreak: nextProgress.bestStreak, message },
+    progress: nextProgress,
+  };
+}
+
+export async function playRoosterFight(guildId: string, userId: string, bet: number, reference: string): Promise<
+  | ({ ok: true } & RoosterRound)
+  | { ok: false; reason: 'invalid_bet' | 'insufficient_funds' }
+> {
+  guildId = GLOBAL_SCOPE_ID;
+  if (!Number.isSafeInteger(bet) || bet < 1 || bet > MAX_BET) return { ok: false, reason: 'invalid_bet' };
+  const gameId = `rooster_${userId}`;
+  const at = nowSeconds();
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    if (account.balance < bet) return { ok: false as const, reason: 'insufficient_funds' as const };
+    const [statsRows] = await connection.execute<RowDataPacket[]>(
+      "SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats' FOR UPDATE",
+      [gameId, guildId, userId],
+    );
+    const progress = roosterProgress(statsRows[0]?.stateJson);
+    const settled = settleRoosterRound(account.balance, bet, progress);
+    await connection.execute('UPDATE economy_accounts SET balance=balance-?+?,updated_at=? WHERE guild_id=? AND user_id=?', [bet, settled.round.payout, at, guildId, userId]);
+    await mysqlAddLedger(connection, guildId, userId, -bet, 'rooster:bet', `${reference}:bet`, at);
+    if (settled.round.payout) await mysqlAddLedger(connection, guildId, userId, settled.round.payout, 'rooster:payout', `${reference}:payout`, at);
+    await connection.execute(
+      "INSERT INTO economy_games (id,guild_id,user_id,game_type,bet,status,state_json,created_at,updated_at) VALUES (?,?,?,'rooster_stats',0,'saved',?,?,?) ON DUPLICATE KEY UPDATE state_json=VALUES(state_json),updated_at=VALUES(updated_at)",
+      [gameId, guildId, userId, JSON.stringify(settled.progress), at, at],
+    );
+    return { ok: true as const, ...settled.round };
+  });
+  const play = db.transaction(() => {
+    const account = sqliteEnsureAccount(guildId, userId);
+    if (account.balance < bet) return { ok: false as const, reason: 'insufficient_funds' as const };
+    const stats = db.prepare("SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats'")
+      .get(gameId, guildId, userId) as { stateJson: string } | undefined;
+    const settled = settleRoosterRound(account.balance, bet, roosterProgress(stats?.stateJson));
+    db.prepare('UPDATE economy_accounts SET balance=balance-?+?,updated_at=? WHERE guild_id=? AND user_id=?').run(bet, settled.round.payout, at, guildId, userId);
+    const ledger = db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)');
+    ledger.run(guildId, userId, -bet, 'rooster:bet', `${reference}:bet`, at);
+    if (settled.round.payout) ledger.run(guildId, userId, settled.round.payout, 'rooster:payout', `${reference}:payout`, at);
+    db.prepare("INSERT INTO economy_games (id,guild_id,user_id,game_type,bet,status,state_json,created_at,updated_at) VALUES (?,?,?,'rooster_stats',0,'saved',?,?,?) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at")
+      .run(gameId, guildId, userId, JSON.stringify(settled.progress), at, at);
+    return { ok: true as const, ...settled.round };
+  });
+  return play.immediate();
+}
+
+const slotSymbols = [
+  { emoji: '🍒', weight: 36, multiplier: 3 },
+  { emoji: '🍋', weight: 28, multiplier: 4 },
+  { emoji: '🔔', weight: 20, multiplier: 7 },
+  { emoji: '💎', weight: 11, multiplier: 15 },
+  { emoji: '7️⃣', weight: 5, multiplier: 50 },
+] as const;
+type SlotSymbol = typeof slotSymbols[number];
+function rollSlotSymbol(): SlotSymbol {
+  let roll = randomInt(100);
+  for (const symbol of slotSymbols) {
+    if (roll < symbol.weight) return symbol;
+    roll -= symbol.weight;
+  }
+  return slotSymbols[0]!;
+}
+
+export async function playSlots(guildId: string, userId: string, bet: number, reference: string): Promise<
+  | { ok: true; balance: number; bet: number; reels: [string, string, string]; outcome: 'triple' | 'pair' | 'miss'; multiplier: number; payout: number; message: string }
+  | { ok: false; reason: 'invalid_bet' | 'insufficient_funds' }
+> {
+  guildId = GLOBAL_SCOPE_ID;
+  if (!Number.isSafeInteger(bet) || bet < 1 || bet > MAX_BET) return { ok: false, reason: 'invalid_bet' };
+  const symbols = [rollSlotSymbol(), rollSlotSymbol(), rollSlotSymbol()] as const;
+  const isTriple = symbols[0]!.emoji === symbols[1]!.emoji && symbols[1]!.emoji === symbols[2]!.emoji;
+  const isPair = !isTriple && (symbols[0]!.emoji === symbols[1]!.emoji || symbols[0]!.emoji === symbols[2]!.emoji || symbols[1]!.emoji === symbols[2]!.emoji);
+  const winningSymbol = isTriple ? symbols[0]! : undefined;
+  const multiplier = winningSymbol?.multiplier ?? (isPair ? 1 : 0);
+  const payout = multiplier * bet;
+  const outcome: 'triple' | 'pair' | 'miss' = isTriple ? 'triple' : isPair ? 'pair' : 'miss';
+  const reels: [string, string, string] = [symbols[0]!.emoji, symbols[1]!.emoji, symbols[2]!.emoji];
+  const message = outcome === 'triple'
+    ? `🎉 ¡Tres ${winningSymbol!.emoji}! Premio total **×${multiplier}** (incluye la apuesta): **${payout.toLocaleString('es-MX')} monedas**.`
+    : outcome === 'pair' ? '✨ Dos símbolos iguales: recuperas tu apuesta.' : 'Esta vez no hubo combinación. La apuesta se perdió.';
+  const at = nowSeconds();
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    if (account.balance < bet) return { ok: false as const, reason: 'insufficient_funds' as const };
+    await connection.execute('UPDATE economy_accounts SET balance=balance-?+?,updated_at=? WHERE guild_id=? AND user_id=?', [bet, payout, at, guildId, userId]);
+    await mysqlAddLedger(connection, guildId, userId, -bet, 'slots:bet', `${reference}:bet`, at);
+    if (payout) await mysqlAddLedger(connection, guildId, userId, payout, `slots:${outcome}:payout`, `${reference}:payout`, at);
+    return { ok: true as const, balance: account.balance - bet + payout, bet, reels, outcome, multiplier, payout, message };
+  });
+  const spin = db.transaction(() => {
+    const account = sqliteEnsureAccount(guildId, userId);
+    if (account.balance < bet) return { ok: false as const, reason: 'insufficient_funds' as const };
+    db.prepare('UPDATE economy_accounts SET balance=balance-?+?,updated_at=? WHERE guild_id=? AND user_id=?').run(bet, payout, at, guildId, userId);
+    const ledger = db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)');
+    ledger.run(guildId, userId, -bet, 'slots:bet', `${reference}:bet`, at);
+    if (payout) ledger.run(guildId, userId, payout, `slots:${outcome}:payout`, `${reference}:payout`, at);
+    return { ok: true as const, balance: account.balance - bet + payout, bet, reels, outcome, multiplier, payout, message };
+  });
+  return spin.immediate();
+}
+
 export async function playItemRoulette(guildId: string, userId: string, itemId: string, choice: RouletteColor, reference: string): Promise<
   | { ok: true; itemName: string; number: number; result: RouletteColor; payout: number; balance: number; message: string }
   | { ok: false; reason: 'invalid_item' | 'missing_item' }
 > {
   guildId = GLOBAL_SCOPE_ID;
-  const item = storeItems.find((candidate) => candidate.id === itemId);
+  const item = storeItems.find((candidate) => candidate.id === itemId && candidate.usable);
   if (!item) return { ok: false, reason: 'invalid_item' };
   const number = randomInt(37);
   const result: RouletteColor = number === 0 ? 'verde' : redNumbers.has(number) ? 'rojo' : 'negro';
@@ -759,7 +1017,7 @@ export async function playItemRoulette(guildId: string, userId: string, itemId: 
 export type UseItemResult =
   | { ok: true; kind: 'fish'; balance: number; amount: number; message: string }
   | { ok: true; kind: 'shield'; protectedUntil: number; message: string }
-  | { ok: false; reason: 'invalid_item' | 'missing_item' | 'cooldown'; secondsRemaining?: number };
+  | { ok: false; reason: 'invalid_item' | 'missing_item' | 'missing_rod' | 'cooldown'; secondsRemaining?: number };
 
 function consumeItemSqlite(guildId: string, userId: string, itemId: string, reference: string, reason: string, now: number): boolean {
   const row = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ?')
@@ -793,6 +1051,11 @@ export async function useShopItem(guildId: string, userId: string, itemId: strin
     if (Number(items[0]?.quantity ?? 0) < 1) return { ok: false as const, reason: 'missing_item' as const };
     const now = nowSeconds();
     if (itemId === 'cebo_premium') {
+      const [rods] = await connection.execute<RowDataPacket[]>(
+        'SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ? FOR UPDATE',
+        [guildId, userId, 'cana_pescar'],
+      );
+      if (Number(rods[0]?.quantity ?? 0) < 1) return { ok: false as const, reason: 'missing_rod' as const };
       const nextFishAt = (account.lastFishAt ?? 0) + FISH_COOLDOWN_SECONDS;
       if (now < nextFishAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextFishAt - now };
       await connection.execute('UPDATE economy_inventory SET quantity = quantity - 1 WHERE guild_id = ? AND user_id = ? AND item_id = ?', [guildId, userId, itemId]);
@@ -815,6 +1078,9 @@ export async function useShopItem(guildId: string, userId: string, itemId: strin
     const account = sqliteEnsureAccount(guildId, userId);
     const now = nowSeconds();
     if (itemId === 'cebo_premium') {
+      const rod = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ?')
+        .get(guildId, userId, 'cana_pescar') as { quantity: number } | undefined;
+      if (!rod || rod.quantity < 1) return { ok: false, reason: 'missing_rod' };
       const nextFishAt = (account.lastFishAt ?? 0) + FISH_COOLDOWN_SECONDS;
       if (now < nextFishAt) return { ok: false, reason: 'cooldown', secondsRemaining: nextFishAt - now };
       if (!consumeItemSqlite(guildId, userId, itemId, `${reference}:item`, 'use_premium_bait', now)) return { ok: false, reason: 'missing_item' };
@@ -1048,6 +1314,12 @@ export function formatCooldown(seconds: number): string {
 }
 
 export const storeItems = [
-  { id: 'cebo_premium', name: 'Cebo premium', description: 'Duplica el premio de una pesca. Respeta el enfriamiento normal.', cost: 40, emoji: '🎣', usable: true },
-  { id: 'escudo_antirrobo', name: 'Escudo antirrobo', description: 'Úsalo para bloquear robos contra ti durante 24 horas. Puedes extender la protección con otro escudo.', cost: 320, emoji: '🛡️', usable: true },
+  { id: 'cebo_premium', name: 'Cebo premium', description: 'Duplica el premio de una pesca. Requiere una caña y respeta el enfriamiento normal.', cost: 15, emoji: '🪱', category: 'consumables', repeatable: true, usable: true },
+  { id: 'escudo_antirrobo', name: 'Escudo antirrobo', description: 'Úsalo para bloquear robos contra ti durante 24 horas. Puedes extender la protección con otro escudo.', cost: 320, emoji: '🛡️', category: 'consumables', repeatable: true, usable: true },
+  { id: 'cana_pescar', name: 'Caña de pescar', description: 'Herramienta duradera para pescar y trabajar como pescador. Necesaria para usar a!fish.', cost: 75, emoji: '🎣', category: 'jobs', repeatable: false, usable: false },
+  { id: 'pico', name: 'Pico de minero', description: 'Herramienta duradera que necesitas para trabajar como minero.', cost: 75, emoji: '⛏️', category: 'jobs', repeatable: false, usable: false },
+  { id: 'hacha', name: 'Hacha de leñador', description: 'Herramienta duradera que necesitas para trabajar como leñador.', cost: 70, emoji: '🪓', category: 'jobs', repeatable: false, usable: false },
+  { id: 'azada', name: 'Azada de agricultor', description: 'Herramienta duradera que necesitas para trabajar como agricultor.', cost: 60, emoji: '🌱', category: 'jobs', repeatable: false, usable: false },
+  { id: 'mochila_repartidor', name: 'Mochila de reparto', description: 'Herramienta duradera que necesitas para trabajar como repartidor.', cost: 60, emoji: '🎒', category: 'jobs', repeatable: false, usable: false },
+  { id: 'kit_cocinero', name: 'Kit de cocina', description: 'Herramienta duradera que necesitas para trabajar como cocinero.', cost: 70, emoji: '🍳', category: 'jobs', repeatable: false, usable: false },
 ] as const;

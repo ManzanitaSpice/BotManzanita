@@ -89,6 +89,20 @@ export async function initializeEconomyDatabase() {
   `);
     await ensureColumn('economy_inventory', 'quantity', 'BIGINT NOT NULL DEFAULT 1');
     await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_jobs (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      job_id VARCHAR(32) NOT NULL,
+      level INT NOT NULL DEFAULT 1,
+      xp INT NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id, user_id, job_id),
+      KEY idx_economy_jobs_active (guild_id, user_id, is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_item_ledger (
       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       guild_id VARCHAR(32) NOT NULL,

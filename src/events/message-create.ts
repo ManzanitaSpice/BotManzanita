@@ -3,11 +3,11 @@ import type { Message } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
-import { bankAction, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
+import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getActiveJob, getInventory, getLeaderboard, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks, type MusicEffect } from '../services/music.js';
-import { addFavorite, getFavorites, getPlaylist, getPlaylists, removeFavorite, saveTrackToPlaylist } from '../services/music-library.js';
+import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, premiumStorePanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
@@ -18,6 +18,8 @@ import { giveReputation, recordChatActivity, recordReceivedRpgReaction } from '.
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
 const adminActionAliases: Record<string, string> = {
+  agregar: 'wallet_add', sumar: 'wallet_add', 'add-money': 'wallet_add', addmoney: 'wallet_add',
+  quitar: 'wallet_remove', 'remove-money': 'wallet_remove', removemoney: 'wallet_remove',
   mq: 'remove', mascota_quitar: 'remove', resetpet: 'remove',
   md: 'pet', mascota_dar: 'pet',
   mc: 'heal', mascota_curar: 'heal',
@@ -59,7 +61,8 @@ async function routeMessage(message: Message): Promise<void> {
   }
   if (!message.guild || !message.guildId) { await say(message, 'Este comando funciona dentro de un servidor.'); return; }
   const guildId = message.guildId;
-  if (['adopt', 'adoptar', 'name', 'nombrar', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'rpgshop', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) { args.unshift(command); command = 'rpg'; }
+  if (['bitacora', 'bitácora', 'log', 'logs'].includes(command)) { await sendPanel(message, await expeditionLogPanel(guildId, userId)); return; }
+  if (['adopt', 'adoptar', 'name', 'nombrar', 'explore', 'explorar', 'fight', 'battle', 'combatir', 'train', 'entrenar', 'buy', 'comprar', 'item', 'quests', 'misiones', 'rank', 'ranking', 'challenge', 'retar', 'attacks'].includes(command)) { args.unshift(command); command = 'rpg'; }
 
   const reactionId = findAnimeReaction(command);
   if (reactionId) {
@@ -91,11 +94,55 @@ async function routeMessage(message: Message): Promise<void> {
     await message.reply({ components: searchResultsPanel(searchId, tracks).components, flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } }); return;
   }
   if (['queue', 'q', 'cola'].includes(command)) { await sendPanel(message, queuePanel(client.lavalink.getPlayer(guildId), 0, guildId)); return; }
+  if (['historial', 'hist', 'histm'].includes(command)) {
+    const limit = args[0] === undefined ? 10 : Number(args[0]);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 30) return say(message, 'Uso: `a!hist [1-30]`. El historial guarda hasta 30 canciones durante 2 horas.');
+    const history = getMusicHistory(guildId, userId).slice(0, limit);
+    const entries = history.map((track, index) => {
+      const title = track.title.length > 65 ? `${track.title.slice(0, 62)}…` : track.title;
+      const artist = track.author.length > 35 ? `${track.author.slice(0, 32)}…` : track.author;
+      const expiresAt = Math.floor((track.playedAt + 2 * 60 * 60 * 1000) / 1000);
+      return `**${String(index + 1).padStart(2, '0')}.** ${title} · ${artist} · vence <t:${expiresAt}:R>`;
+    });
+    await sendPanel(message, listPanel('🎧 HISTORIAL MUSICAL', `Tus últimas ${history.length} reproducciones · se conservan 2 horas`, entries, 0x8b5cf6, 'Aún no hay canciones reproducidas recientemente.'));
+    return;
+  }
+  if (['bucle', 'loop', 'bl'].includes(command)) {
+    const player = client.lavalink.getPlayer(guildId);
+    const voiceChannelId = message.guild.voiceStates.cache.get(userId)?.channelId;
+    if (!voiceChannelId || (player && voiceChannelId !== player.voiceChannelId)) return say(message, 'Entra al mismo canal de voz que el bot para controlar la música.');
+    const mode = args[0]?.toLocaleLowerCase();
+    if (['off', 'no', 'desactivar'].includes(mode ?? '')) {
+      if (!player) return say(message, 'No hay una sesión musical activa.');
+      await player.setRepeatMode('off');
+      await refreshMusicPanel(client, guildId);
+      return say(message, '🔁 Bucle desactivado.');
+    }
+    const requestedCount = args.length ? Number(args[0]) : 1;
+    if (!Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > 30) return say(message, 'Uso: `a!bucle [1-30|off]`. Sin número repite la última canción.');
+    const history = getMusicHistory(guildId, userId).slice(0, requestedCount).reverse();
+    if (!history.length) return say(message, 'Aún no tienes canciones recientes en el historial.');
+    const result = await addSavedTracks(client, {
+      guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message),
+      uris: history.map((track) => track.trackUri), replaceQueue: true,
+      repeatMode: history.length === 1 ? 'track' : 'queue',
+    });
+    await refreshMusicPanel(client, guildId);
+    const partial = result.unavailable ? ` · ${result.unavailable} no disponibles` : '';
+    const shortened = history.length < requestedCount ? ` · solo había ${history.length} en el historial` : '';
+    return say(message, `🔁 Bucle activado con **${result.added} canción(es)**${partial}${shortened}. Usa \`a!bucle off\` para detenerlo.`);
+  }
   if (['np', 'nowplaying', 'panel'].includes(command)) {
     const panelMessage = await message.reply({ ...musicPanel(guildId, client.lavalink.getPlayer(guildId)), allowedMentions: { repliedUser: false } });
     rememberMusicPanel(guildId, panelMessage); return;
   }
-  if (['pause', 'resume', 'skip', 'prev', 'stop', 'leave', 'shuffle', 'repeat', 'vol', 'volume', 'fx', 'effect'].includes(command)) {
+  if (['shuffle', 'sh'].includes(command) && ['playlist', 'lista', 'pl'].includes(args[0]?.toLocaleLowerCase() ?? '')) {
+    const name = args.slice(1).join(' ');
+    if (!name) return say(message, 'Uso: `a!shuffle playlist nombre`. Esto guarda el nuevo orden de tu lista.');
+    const result = shufflePlaylist(guildId, userId, name);
+    return say(message, result ? `🔀 Mezclé **${result.name}** (${result.count} canciones).` : 'No encontré esa playlist.');
+  }
+  if (['pause', 'resume', 'skip', 'prev', 'stop', 'leave', 'shuffle', 'sh', 'repeat', 'vol', 'volume', 'fx', 'effect'].includes(command)) {
     const player = client.lavalink.getPlayer(guildId);
     if (!player && command === 'resume') {
       const voiceChannelId = message.guild!.voiceStates.cache.get(userId)?.channelId;
@@ -119,7 +166,7 @@ async function routeMessage(message: Message): Promise<void> {
     else if (command === 'prev') { const track = await player.queue.shiftPrevious(); if (!track) return say(message, 'No hay canciones anteriores.'); await player.play({ clientTrack: track }); response = `⏮️ Volviendo a **${track.info.title}**.`; }
     else if (command === 'stop') { await player.stopPlaying(true); response = '⏹️ Reproducción detenida y cola vaciada.'; }
     else if (command === 'leave') { await disconnectPlayer(player); response = '👋 Desconectada del canal de voz.'; }
-    else if (command === 'shuffle') { if (player.queue.tracks.length < 2) return say(message, 'Añade al menos dos canciones pendientes.'); await player.queue.shuffle(); response = '🔀 Cola mezclada.'; }
+    else if (command === 'shuffle' || command === 'sh') { if (player.queue.tracks.length < 2) return say(message, 'Añade al menos dos canciones pendientes.'); await player.queue.shuffle(); response = '🔀 Cola mezclada.'; }
     else if (command === 'repeat') { const mode = args[0]?.toLowerCase(); const next = mode === 'track' || mode === 'cancion' ? 'track' : mode === 'queue' || mode === 'cola' ? 'queue' : mode === 'off' || mode === 'no' ? 'off' : player.repeatMode === 'off' ? 'track' : player.repeatMode === 'track' ? 'queue' : 'off'; await player.setRepeatMode(next); response = `🔁 Repetición: **${next}**.`; }
     else if (command === 'vol' || command === 'volume') { const value = Number(args[0]); if (!Number.isInteger(value) || value < 0 || value > 100) return say(message, `Volumen actual: **${player.volume}%**. Uso: a!vol 0-100.`); await player.setVolume(value); response = `🔊 Volumen en **${value}%**.`; }
     else { const names: Record<string, MusicEffect> = { normal: 'normal', bass: 'bass', graves: 'bass', rock: 'rock', pop: 'pop', nightcore: 'nightcore', vaporwave: 'vaporwave' }; const effect = names[(args[0] ?? '').toLowerCase()]; if (!effect) return say(message, 'Efectos: `normal`, `bass`, `rock`, `pop`, `nightcore`, `vaporwave`.'); await applyMusicEffect(player, effect); response = `🎚️ Efecto **${effect}** aplicado.`; }
@@ -134,35 +181,116 @@ async function routeMessage(message: Message): Promise<void> {
     const result = addFavorite(guildId, userId, current);
     return say(message, result === 'saved' ? `⭐ Guardé **${current.info.title}**.` : result === 'exists' ? 'Esa canción ya está en tus favoritos.' : 'Llegaste al límite de 25 favoritos.');
   }
-  if (['lists', 'listas', 'playlist'].includes(command)) {
-    const action = args[0]?.toLowerCase();
+  if (['lists', 'listas', 'playlist', 'pl', 'play_playlist', 'pp', 'pd'].includes(command)) {
+    const directPlay = command === 'play_playlist' || command === 'pp';
+    const directDelete = command === 'pd';
+    const action = directPlay ? 'play' : directDelete ? 'delete' : args[0]?.toLocaleLowerCase();
     if (!action || action === 'list') { const lists = getPlaylists(guildId, userId); await sendPanel(message, playlistsPanel(lists)); return; }
-    if (action === 'save' || action === 'guardar') { const name = args.slice(1).join(' '); const current = client.lavalink.getPlayer(guildId)?.queue.current; if (!name || !current) return say(message, 'Uso: `a!lists save nombre` mientras hay una canción activa.'); const result = saveTrackToPlaylist(guildId, userId, name, current); return say(message, result.state === 'added' ? `💾 Guardada en **${result.name}** (${result.count}).` : result.state === 'exists' ? 'Esa canción ya está en la lista.' : 'La lista llegó a su límite.'); }
-    if (action === 'play' || action === 'reproducir') { const name = args.slice(1).join(' '); const saved = getPlaylist(guildId, userId, name); const voiceChannelId = message.guild!.voiceStates.cache.get(userId)?.channelId; if (!saved) return say(message, 'No encontré esa lista.'); if (!voiceChannelId) return say(message, 'Entra a un canal de voz primero.'); const result = await addSavedTracks(client, { guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message), uris: saved.tracks.map((track) => track.trackUri) }); return say(message, `🎶 Añadí ${result.added} canción(es) de **${saved.playlist.name}**${result.unavailable ? ` · ${result.unavailable} no disponibles` : ''}.`); }
-    return say(message, 'Usa `a!lists`, `a!lists save nombre` o `a!lists play nombre`.');
+    if (['now', 'recientes', 'recent'].includes(action)) {
+      const hasCount = /^\d+$/.test(args[1] ?? '');
+      const count = hasCount ? Number(args[1]) : 20;
+      const name = args.slice(hasCount ? 2 : 1).join(' ');
+      if (!name || !Number.isInteger(count) || count < 1 || count > MAX_PLAYLIST_TRACKS) return say(message, `Uso: \`a!playlist now [1-${MAX_PLAYLIST_TRACKS}] nombre\` (por defecto usa 20).`);
+      const history = getMusicHistory(guildId, userId).slice(0, count).reverse();
+      const result = saveTracksToPlaylist(guildId, userId, name, history);
+      if (result.state === 'empty') return say(message, 'No tienes canciones recientes para crear una playlist.');
+      if (result.state === 'exists') return say(message, `Ya existe una playlist llamada **${result.name}**.`);
+      if (result.state === 'playlist_limit') return say(message, `Llegaste al límite de ${MAX_PLAYLISTS} playlists por usuario.`);
+      if (result.state === 'track_limit') return say(message, `Cada playlist admite hasta ${MAX_PLAYLIST_TRACKS} canciones.`);
+      const shortHistory = history.length < count ? ` · solo había ${history.length} en el historial` : '';
+      return say(message, `💾 Creé **${result.name}** con ${result.count} reproducción(es)${shortHistory}.`);
+    }
+    if (action === 'save' || action === 'guardar') {
+      const name = args.slice(1).join(' ');
+      const current = client.lavalink.getPlayer(guildId)?.queue.current;
+      if (!name || !current) return say(message, 'Uso: `a!playlist save nombre` mientras hay una canción activa.');
+      const result = saveTrackToPlaylist(guildId, userId, name, current);
+      return say(message, result.state === 'added' ? `💾 Guardada en **${result.name}** (${result.count}/${MAX_PLAYLIST_TRACKS}).`
+        : result.state === 'exists' ? 'Esa canción ya está en la lista.'
+          : result.state === 'playlist_limit' ? `Llegaste al límite de ${MAX_PLAYLISTS} playlists por usuario.`
+            : `**${result.name}** ya llegó al límite de ${MAX_PLAYLIST_TRACKS} canciones.`);
+    }
+    if (['delete', 'eliminar', 'remove', 'borrar'].includes(action)) {
+      const name = directDelete ? args.join(' ') : args.slice(1).join(' ');
+      if (!name) return say(message, 'Uso: `a!playlist delete nombre`.');
+      return say(message, deletePlaylist(guildId, userId, name) ? `🗑️ Eliminé **${name}**.` : 'No encontré esa playlist.');
+    }
+    if (action === 'play' || action === 'reproducir') {
+      const name = directPlay ? args.join(' ') : args.slice(1).join(' ');
+      const saved = getPlaylist(guildId, userId, name);
+      const voiceChannelId = message.guild.voiceStates.cache.get(userId)?.channelId;
+      if (!saved) return say(message, 'No encontré esa playlist. Usa `a!playlist list` para ver las tuyas.');
+      if (!voiceChannelId) return say(message, 'Entra a un canal de voz primero.');
+      const result = await addSavedTracks(client, { guildId, voiceChannelId, textChannelId: message.channelId, user: requester(message), uris: saved.tracks.map((track) => track.trackUri) });
+      return say(message, `🎶 Añadí ${result.added} canción(es) de **${saved.playlist.name}**${result.unavailable ? ` · ${result.unavailable} no disponibles` : ''}.`);
+    }
+    return say(message, 'Usa `a!playlist list`, `a!playlist now [N] nombre`, `a!playlist save nombre`, `a!playlist delete nombre`, `a!play_playlist nombre` o `a!shuffle playlist nombre`.');
   }
 
   // ECONOMY
-  if (['bal', 'b', 'balance', 'saldo'].includes(command)) { const target = message.mentions.users.first() ?? message.author; const account = await getAccountBalances(guildId, target.id); await sendPanel(message, balancePanel(target.username, account, false)); return; }
-  if (['top', 'baltop', 'rich'].includes(command)) { const rows = await getLeaderboard(guildId); const listing = rows.map((row) => `<@${row.userId}>  ·  **${money.format(row.balance)}** monedas`); await sendPanel(message, leaderboardPanel('🏆 TOP DE ECONOMÍA', 'Las mayores fortunas globales', listing, 0x22c55e, 'Aún no hay cuentas.', false)); return; }
+  if (['bal', 'b', 'balance', 'saldo', 'dinero', 'money'].includes(command)) { const target = message.mentions.users.first() ?? message.author; const account = await getAccountBalances(guildId, target.id); await sendPanel(message, balancePanel(target.username, account, false)); return; }
+  if (['top', 'baltop', 'rich', 'ranking', 'leaderboard'].includes(command)) { const rows = await getLeaderboard(guildId); const listing = rows.map((row) => `<@${row.userId}>  ·  **${money.format(row.balance)}** monedas`); await sendPanel(message, leaderboardPanel('🏆 TOP DE ECONOMÍA', 'Las mayores fortunas globales', listing, 0x22c55e, 'Aún no hay cuentas.', false)); return; }
   if (['profile','perfil'].includes(command)) { const target=message.mentions.users.first()??message.author; await sendPanel(message, await profileCardPanel(guildId,target,userId)); return; }
-  if (command === 'wallet') { await sendPanel(message, await profileCardPanel(guildId,message.author,userId,'wallet')); return; }
+  if (command === 'wallet') { await sendPanel(message, await economyPanel(guildId,userId,message.author.username,message.author.displayAvatarURL({extension:'png',size:256}))); return; }
   if (command === 'rankcard') { await sendPanel(message, await profileCardPanel(guildId,message.author,userId,'rank')); return; }
   if (command === 'rep') { const target=message.mentions.users.first(); if(!target)return say(message,'Uso: `a!rep @persona`.'); const result=await giveReputation(userId,target.id); return say(message,result.ok?`✨ Le diste reputación a **${target.username}**. Ahora tiene **${result.reputation}**.`:target.id===userId?'No puedes darte reputación a ti.':'Ya reconociste a esa persona hoy.'); }
-  if (['eco', 'economy'].includes(command)) { await sendPanel(message, await economyPanel(guildId, userId, message.author.username)); return; }
+  if (['eco', 'economy'].includes(command)) { await sendPanel(message, await economyPanel(guildId, userId, message.author.username,message.author.displayAvatarURL({extension:'png',size:256}))); return; }
   if (['daily', 'd', 'diaria'].includes(command)) {
     const result = await claimDaily(guildId, userId, message.id);
     if (!result.ok) return say(message, `⏳ Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
     return sendPanel(message, economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
   }
+  if (['job', 'jobs', 'empleo', 'empleos', 'trabajo'].includes(command)) {
+    const action = (args[0] ?? '').toLocaleLowerCase();
+    const selectionWords = ['elegir', 'seleccionar', 'select', 'choose'];
+    const listing = !args.length || ['lista', 'list', 'ver', 'help', 'ayuda'].includes(action);
+    const query = selectionWords.includes(action) ? args.slice(1).join(' ') : args.join(' ');
+    const normalizedQuery = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+    const selectedJob = economyJobs.find((job) => job.id === normalizedQuery || job.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalizedQuery);
+    if (selectedJob && (selectionWords.includes(action) || !['lista', 'list', 'ver', 'help', 'ayuda'].includes(action))) {
+      const result = await selectJob(guildId, userId, selectedJob.id);
+      if (!result.ok) return say(message, 'Ese trabajo no está disponible. Usa `a!jobs` para ver las opciones.');
+      return say(message, `✅ Elegiste **${result.progress.job.name}** · nivel ${result.progress.level}. Necesitas **${result.progress.job.toolName}** para trabajar; cómpralo en a!shop. El trabajo gana experiencia cada vez que usas a!work.`);
+    }
+    if (query && !selectedJob && !listing) return say(message, 'No reconocí ese trabajo. Usa `a!jobs` para ver la lista y `a!jobs elegir minero` para escoger uno.');
+    const activeJob = await getActiveJob(guildId, userId);
+    const inventory = await getInventory(guildId, userId);
+    const owned = new Set(inventory.filter((item) => item.quantity > 0).map((item) => item.itemId));
+    const current = activeJob
+      ? `**Trabajo actual:** ${activeJob.job.emoji} ${activeJob.job.name} · nivel ${activeJob.level} · ${activeJob.level >= MAX_JOB_LEVEL ? 'nivel máximo' : `${activeJob.xp}/${activeJob.xpToNext} XP`}\n\n`
+      : '**Todavía no tienes un trabajo elegido.**\n\n';
+    const options = economyJobs.map((job) => {
+      const item = storeItems.find((entry) => entry.id === job.toolId)!;
+      return `${job.emoji} **${job.name}** · herramienta: ${job.toolName} (${money.format(item.cost)} monedas) · nivel 1: ${job.minPay}–${job.maxPay} monedas · ${owned.has(job.toolId) ? '✅ tienes la herramienta' : '🛒 se compra en a!shop'}\n   Elegir: a!jobs elegir ${job.id}`;
+    }).join('\n');
+    return say(message, `## 🧰 TRABAJOS\n${current}${options}\n\nCada turno de trabajo da **${JOB_XP_PER_SHIFT} XP** y aumenta el pago al subir de nivel. Cambiar de trabajo conserva el progreso de cada oficio. Usa a!work para trabajar.`);
+  }
   if (['work', 'w', 'trabajar'].includes(command)) {
     const result = await work(guildId, userId, message.id);
-    if (!result.ok) return say(message, `🧰 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    if (!result.ok) return say(message, result.reason === 'no_job'
+      ? 'Primero elige un trabajo con `a!jobs elegir minero`.'
+      : result.reason === 'missing_tool'
+        ? `Para trabajar como **${result.job?.name ?? 'este oficio'}** necesitas **${result.job?.toolName ?? 'su herramienta'}**. Cómprala en a!shop.`
+        : `🧰 Ya trabajaste. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
     return sendPanel(message, economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
+  }
+  if (['gallo', 'gallera', 'peleagallos'].includes(command)) {
+    const bet = Number(args[0]);
+    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!gallo apuesta` · apuesta entre 1 y 100000 monedas.');
+    const result = await playRoosterFight(guildId, userId, bet, message.id);
+    if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
+    return sendPanel(message, economyActionPanel('🐓 Duelo de gallos', result.message, result.won ? result.payout - result.bet : -result.bet, result.balance));
+  }
+  if (['slots', 'slot', 'tragamonedas'].includes(command)) {
+    const bet = Number(args[0]);
+    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!slots apuesta` · apuesta entre 1 y 100000 monedas.');
+    const result = await playSlots(guildId, userId, bet, message.id);
+    if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
+    return sendPanel(message, economyActionPanel('🎰 Tragamonedas', `${result.reels.join('　│　')}\n${result.message}`, result.payout - result.bet, result.balance));
   }
   if (['fish', 'f', 'pescar'].includes(command)) {
     const result = await fish(guildId, userId, message.id);
-    if (!result.ok) return say(message, `🎣 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    if (!result.ok) return say(message, result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `a!shop` antes de usar `a!fish`.' : `🎣 Ya saliste a pescar. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
     return sendPanel(message, economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
   }
   if (['crime', 'c', 'crimen'].includes(command)) {
@@ -180,26 +308,29 @@ async function routeMessage(message: Message): Promise<void> {
   if (['roulette', 'rl', 'ruleta'].includes(command)) { const amount = Number(args[0]); const color = normalizeColor(args[1]); if (!Number.isInteger(amount) || !color) return say(message, 'Uso: `a!roulette cantidad rojo|negro|verde`.'); const result = await playRoulette(guildId, userId, amount, color, message.id); const ball = result.ok ? (result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde') : ''; return result.ok ? sendPanel(message, economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance)) : say(message, 'Apuesta inválida o saldo insuficiente.'); }
   if (['itemroulette', 'itembet', 'apostar_objeto'].includes(command)) { const itemQuery = args.slice(0, -1).join('_').toLowerCase(); const color = normalizeColor(args.at(-1)); const item = storeItems.find((entry) => entry.id === itemQuery || entry.name.toLowerCase() === args.slice(0, -1).join(' ').toLowerCase()); if (!item || !color) return say(message, 'Uso: a!itembet cebo_premium rojo|negro|verde.'); const result = await playItemRoulette(guildId, userId, item.id, color, message.id); return result.ok ? sendPanel(message, economyActionPanel('🎒 Apuesta de objeto', result.message, result.payout ? result.payout : -item.cost, result.balance)) : say(message, result.reason === 'missing_item' ? 'No tienes ese artículo.' : 'Ese artículo no se puede apostar.'); }
   if (['21', 'bj', 'blackjack'].includes(command)) { const bet = Number(args[0]); if (!Number.isInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!21 apuesta` (1–100000).'); const result = await startBlackjack(guildId, userId, bet, message.id); return result.ok ? sendPanel(message, blackjackPanel(result.view)) : say(message, result.reason === 'invalid_bet' ? 'Apuesta inválida.' : 'Saldo insuficiente.'); }
-  if (['bank', 'banco'].includes(command)) {
-    const action = args[0]?.toLowerCase(); const amount = Number(args[1]);
+  if (['bank', 'banco', 'deposit', 'depositar', 'ingresar', 'withdraw', 'retirar', 'sacar'].includes(command)) {
+    const directAction = ['deposit', 'depositar', 'ingresar'].includes(command) ? 'deposit' : ['withdraw', 'retirar', 'sacar'].includes(command) ? 'withdraw' : undefined;
+    const action = directAction ?? args[0]?.toLowerCase(); const amount = Number(directAction ? args[0] : args[1]);
     if ((action === 'deposit' || action === 'withdraw') && Number.isSafeInteger(amount) && amount > 0) {
       const result = await bankAction(guildId, userId, action, amount, message.id);
       if (!result.ok) return say(message, result.reason === 'insufficient_wallet' ? 'No tienes suficiente en la billetera.' : result.reason === 'insufficient_bank' ? 'No tienes suficiente en el banco.' : 'Cantidad inválida.');
       return say(message, `🏦 Billetera ${money.format(result.balance)} · banco ${money.format(result.bankBalance)}${result.interestEarned ? ` · interés +${money.format(result.interestEarned)}` : ''}.`);
     }
+    if (directAction) return say(message, `Uso: \`a!${command} cantidad\`.`);
     await sendPanel(message, await bankPanel(guildId, userId)); return;
   }
   if (['shop', 'tienda'].includes(command)) { await sendPanel(message, await storePanel(guildId, userId)); return; }
-  if (['premium', 'premiumshop'].includes(command)) { await sendPanel(message, await premiumStorePanel(guildId, userId)); return; }
+  if (command === 'premium') { const account = await getAccountBalances(guildId,userId); return say(message, `💎 Tienes **${money.format(account.premium)} gemas premium**.`); }
   if (['casino'].includes(command)) { await sendPanel(message, await casinoPanel(guildId, userId)); return; }
   if (['inv', 'inventory', 'inventario'].includes(command)) { await sendPanel(message, await inventoryPanel(guildId, userId)); return; }
-  if (['pay', 'pagar'].includes(command)) { const target = message.mentions.users.first(); const amount = Number(args.find((arg) => /^\d+$/.test(arg))); if (!target || target.bot || !Number.isSafeInteger(amount) || amount < 1) return say(message, 'Uso: `a!pay @persona cantidad`.'); const result = await transferCoins(guildId, userId, target.id, amount, message.id); return say(message, result.ok ? `💸 Enviaste ${money.format(amount)} monedas a ${target}.` : result.reason === 'self' ? 'No puedes enviarte monedas.' : result.reason === 'insufficient_funds' ? 'No tienes saldo suficiente.' : 'Cantidad inválida.'); }
-  if (command === 'use') { const key = args.join('_').toLocaleLowerCase(); const item = storeItems.find((candidate) => candidate.id === key || candidate.name.toLocaleLowerCase() === args.join(' ').toLocaleLowerCase()); if (!item) return say(message, 'Uso: `a!use cebo_premium` o `a!use escudo_antirrobo`.'); const result = await useShopItem(guildId, userId, item.id, message.id); return say(message, result.ok ? result.message : 'No tienes ese artículo o no puedes usarlo ahora.'); }
+  if (['pay', 'pagar', 'dar', 'enviar', 'transferir', 'give-money', 'givemoney'].includes(command)) { const target = message.mentions.users.first(); const amount = Number(args.find((arg) => /^\d+$/.test(arg))); if (!target || target.bot || !Number.isSafeInteger(amount) || amount < 1) return say(message, 'Uso: `a!dar @persona cantidad` o `a!give-money @persona cantidad`.'); const result = await transferCoins(guildId, userId, target.id, amount, message.id); return say(message, result.ok ? `💸 Enviaste ${money.format(amount)} monedas a ${target}.` : result.reason === 'self' ? 'No puedes enviarte monedas.' : result.reason === 'insufficient_funds' ? 'No tienes saldo suficiente.' : 'Cantidad inválida.'); }
+  if (command === 'use') { const key = args.join('_').toLocaleLowerCase(); const item = storeItems.find((candidate) => candidate.id === key || candidate.name.toLocaleLowerCase() === args.join(' ').toLocaleLowerCase()); if (!item) return say(message, 'Uso: `a!use cebo_premium` o `a!use escudo_antirrobo`.'); const result = await useShopItem(guildId, userId, item.id, message.id); return say(message, result.ok ? result.message : result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar** comprada en `a!shop` para usar el cebo.' : result.reason === 'cooldown' ? `Espera ${formatCooldown(result.secondsRemaining ?? 0)} para volver a pescar.` : 'No tienes ese artículo o no puedes usarlo ahora.'); }
 
   // RPG
   if (['rpg', 'pet', 'mascota'].includes(command)) { const action = (args.shift() ?? (command === 'rpg' ? 'menu' : 'panel')).toLowerCase();
     if (['menu', 'menú', 'help', 'ayuda'].includes(action)) { await sendPanel(message, await rpgMenuPanel(guildId, userId)); return; }
     if (['panel', 'profile', 'perfil'].includes(action)) { await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
+    if (['bitacora', 'bitácora', 'log', 'logs', 'historial'].includes(action)) { await sendPanel(message, await expeditionLogPanel(guildId, userId)); return; }
     if (['bag', 'mochila', 'inventory', 'inventario'].includes(action)) { await sendPanel(message, await rpgInventoryPanel(guildId, userId)); return; }
     if (['feed', 'alimentar', 'comida'].includes(action)) {
       const query = args.join(' ').trim();
@@ -213,13 +344,21 @@ async function routeMessage(message: Message): Promise<void> {
     if (['care', 'cuidar', 'mimar'].includes(action)) {
       const result = await careForRpgPet(guildId, userId);
       if (!result.ok) return say(message, result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
-      await sendPanel(message, rpgCareResultPanel(result.pet, `Pasaste tiempo con ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`)); return;
+      await sendPanel(message, rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`)); return;
     }
     if (['adopt', 'adoptar'].includes(action)) { const element = rpgEggOptions.find((entry) => entry.element.toLocaleLowerCase() === (args[0] ?? '').toLocaleLowerCase()); if (!element) { await sendPanel(message, await rpgAdoptionPanel(message.author.username)); return; } const { adoptRpgPet } = await import('../services/rpg.js'); const result = await adoptRpgPet(guildId, userId, args.slice(1).join(' '), element.element); if (!result.ok) return say(message, result.reason === 'invalid_name' ? 'Nombre inválido.' : 'Ya tienes mascota.'); await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
     if (['name', 'nombrar'].includes(action)) { const { renameRpgPet } = await import('../services/rpg.js'); const result = await renameRpgPet(guildId, userId, args.join(' ')); return say(message, result.ok ? `🏷️ Ahora se llama **${result.pet.name}**.` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'already_used' ? 'Ya usaste el cambio gratuito.' : 'Nombre inválido.'); }
     if (['attacks', 'ataques', 'build'].includes(action)) { await sendPanel(message, await rpgBuildPanel(guildId, userId)); return; }
-    if (['shop', 'tienda', 'rpgshop'].includes(action)) { await sendPanel(message, await rpgShopPanel(guildId, userId)); return; }
-    if (['explore', 'explorar'].includes(action)) { const zoneInput = args.join(' ').toLowerCase(); const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.toLowerCase() === zoneInput); if (!zone) return say(message, `Zonas: ${rpgZones.map((z) => z.id).join(', ')}.`); const result = await exploreRpg(guildId, userId, zone.id, message.id); if (!result.ok) return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'Dale de comer y recupera energía antes de explorar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de explorar.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.'); await sendPanel(message, await rpgPanel(guildId, userId, message.author.username)); return; }
+    if (['explore', 'explorar'].includes(action)) {
+      const zoneInput = args.join(' ').trim().toLocaleLowerCase();
+      if (!zoneInput) { await sendPanel(message, await rpgExplorePanel(guildId, userId, message.author.username)); return; }
+      const normalizedZone = zoneInput.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const zone = rpgZones.find((candidate) => candidate.id === zoneInput || candidate.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalizedZone);
+      if (!zone) return say(message, `No reconocí esa zona. Usa \`a!explore\` para elegirla en el panel o elige: ${rpgZones.map((entry) => `\`${entry.id}\``).join(', ')}.`);
+      const result = await exploreRpg(guildId, userId, zone.id, message.id);
+      if (!result.ok) return say(message, result.reason === 'zone_locked' ? 'Tu mascota aún no tiene el nivel necesario.' : result.reason === 'low_energy' ? 'Dale de comer y recupera energía antes de explorar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de explorar.' : result.reason === 'cooldown' ? `Descansa ${formatCooldown(result.secondsRemaining ?? 0)}.` : 'Primero adopta una mascota.');
+      await sendPanel(message, await expeditionLogPanel(guildId, userId)); return;
+    }
     if (['fight', 'battle', 'combatir'].includes(action)) { const result = await battleRpg(guildId, userId, message.id); return say(message, result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'A tu mascota le falta energía.' : 'Tu mascota está debilitada.'); }
     if (['train', 'entrenar'].includes(action)) { const stat = ({ fuerza: 'strength', strength: 'strength', defensa: 'defense', defense: 'defense', agilidad: 'agility', agility: 'agility' } as const)[(args[0] ?? '').toLowerCase()]; if (!stat) return say(message, 'Uso: `a!rpg train fuerza|defensa|agilidad`.'); const result = await trainRpgPet(guildId, userId, stat, message.id); return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'Necesitas 180 monedas.'); }
     if (['buy', 'comprar'].includes(action)) { const item = findRpgItem(args.join(' ')); if (!item) return say(message, 'Indica el nombre del objeto: `a!rpg buy nombre`.'); const result = await buyRpgItem(guildId, userId, item.id, message.id); return say(message, result.ok ? `🛒 Compraste **${item.name}** · mochila x${result.quantity}.` : 'No tienes monedas suficientes.'); }
@@ -231,7 +370,7 @@ async function routeMessage(message: Message): Promise<void> {
     }
     if (['rank', 'ranking'].includes(action)) { await sendPanel(message, await rpgRankingPanel(guildId)); return; }
     if (['challenge', 'retar', 'pvp'].includes(action)) { const opponent = message.mentions.users.first(); if (!opponent) { await sendPanel(message, await rpgPvPHelpPanel(guildId)); return; } if (opponent.bot) return say(message, 'Solo puedes retar a una persona, no a un bot.'); const result = await createRpgPvpChallenge(guildId, userId, message.author.username, opponent.id, opponent.username, message.id); if (!result.ok) return say(message, 'No se pudo iniciar el reto; revisa que ambos tengan mascota y no estén en otro duelo.'); await message.reply({ ...await rpgPvpPanel(result.match), allowedMentions: { repliedUser: false } }); return; }
-    return say(message, 'Subcomandos: `panel`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore zona`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
+    return say(message, 'Subcomandos: `panel`, `bitacora`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore [zona]`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
   }
 
   return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
@@ -390,7 +529,17 @@ async function adminDmCommands(message: Message, args: string[]): Promise<void> 
   const [requestedAction = 'help', guildId = '', targetId = '', ...rest] = args;
   const action = adminActionAliases[requestedAction.toLocaleLowerCase()] ?? requestedAction.toLocaleLowerCase();
   const actorId = message.author.id;
-  if (action === 'help') return say(message, 'Admin por DM: wallet|bank|premium <guildID> <userID> ±cantidad · pet|md <guildID> <userID> <especie> · remove|mq|resetpet <guildID> <userID> · heal|mc · xp|mxp · rename|mn · stat|ma · item · cooldown|rt · shield|pr · inspect|i · rollback|rb · history|h. También puedes usar los alias directamente: `a!mq <guildID> <userID>`.');
+  if (action === 'help') return say(message, 'Admin exclusivo del propietario por DM. Dinero: `a!agregar @persona cantidad` / `a!quitar @persona cantidad` (alias `a!add-money` / `a!remove-money`; también `a!admin agregar/quitar`). Consulta: `a!admin inspeccionar <guildID> <userID>` · `a!admin historial <guildID>` · `a!admin rollback <guildID> <ledgerID>`. Herramientas RPG: `pet|remove|heal|xp|rename|stat|item|cooldown|shield` con los argumentos indicados por `a!admin help`.');
+  if (action === 'wallet_add' || action === 'wallet_remove') {
+    const amount = Number(targetId);
+    const targetUserId = message.mentions.users.first()?.id ?? guildId.match(/^<@!?(\d{17,20})>$/)?.[1] ?? guildId;
+    if (!/^\d{17,20}$/.test(targetUserId) || !Number.isSafeInteger(amount) || amount < 1 || amount > 1_000_000_000) return say(message, 'Uso: `a!agregar @persona cantidad` o `a!quitar @persona cantidad` (solo por DM).');
+    const signedAmount = action === 'wallet_add' ? amount : -amount;
+    const result = await adjustAdminCurrency(guildId, targetUserId, 'wallet', signedAmount, actorId, message.id);
+    if (!result.ok) return say(message, result.reason === 'insufficient' ? 'No hay saldo suficiente para retirar esa cantidad.' : 'Cantidad inválida.');
+    await addAdminAudit(guildId, actorId, targetUserId, `currency_${action}`, { amount: signedAmount, balance: result.balance, ledgerId: result.ledgerId });
+    return say(message, `${action === 'wallet_add' ? 'Agregadas a' : 'Retiradas de'} <@${targetUserId}> **${money.format(amount)} monedas** · saldo actual **${money.format(result.balance)}** · movimiento #${result.ledgerId}.`);
+  }
   if (!/^\d{17,20}$/.test(guildId)) return say(message, 'Falta un ID de servidor válido. Usa a!admin help.');
   if (action === 'history') {
     const entries = await getAdminAudit(guildId, 12);

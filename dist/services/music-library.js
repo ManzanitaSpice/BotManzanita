@@ -1,9 +1,12 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
+import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
 const MAX_FAVORITES = 25;
-const MAX_PLAYLISTS = 20;
-const MAX_PLAYLIST_TRACKS = 100;
+export const MAX_PLAYLISTS = 3;
+export const MAX_PLAYLIST_TRACKS = 30;
 const FAVORITE_RETENTION_SECONDS = 3 * 24 * 60 * 60;
+const MUSIC_HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000;
+const MUSIC_HISTORY_LIMIT = 30;
 export function pruneExpiredFavorites(now = Math.floor(Date.now() / 1000)) {
     return db.prepare('DELETE FROM music_favorites WHERE saved_at <= ?')
         .run(now - FAVORITE_RETENTION_SECONDS).changes;
@@ -23,6 +26,37 @@ function trackValues(track) {
         durationMs: Math.max(0, track.info.duration || 0),
         artworkUrl: track.info.artworkUrl || null,
     };
+}
+export function pruneExpiredMusicHistory(now = Date.now()) {
+    return db.prepare('DELETE FROM music_history WHERE played_at <= ?')
+        .run(now - MUSIC_HISTORY_RETENTION_MS).changes;
+}
+export function recordMusicHistory(guildId, userId, track, playedAt = Date.now()) {
+    guildId = GLOBAL_SCOPE_ID;
+    const values = trackValues(track);
+    const save = db.transaction(() => {
+        db.prepare('DELETE FROM music_history WHERE played_at <= ?').run(playedAt - MUSIC_HISTORY_RETENTION_MS);
+        db.prepare(`INSERT INTO music_history
+      (guild_id, user_id, track_uri, title, author, duration_ms, artwork_url, played_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(guildId, userId, values.uri, values.title, values.author, values.durationMs, values.artworkUrl, playedAt);
+        db.prepare(`DELETE FROM music_history
+      WHERE guild_id = ? AND user_id = ? AND id NOT IN (
+        SELECT id FROM music_history
+        WHERE guild_id = ? AND user_id = ?
+        ORDER BY played_at DESC, id DESC LIMIT ?
+      )`).run(guildId, userId, guildId, userId, MUSIC_HISTORY_LIMIT);
+    });
+    save.immediate();
+}
+export function getMusicHistory(guildId, userId) {
+    pruneExpiredMusicHistory();
+    guildId = GLOBAL_SCOPE_ID;
+    return db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
+      artwork_url AS artworkUrl, played_at AS playedAt
+    FROM music_history WHERE guild_id = ? AND user_id = ?
+    ORDER BY played_at DESC, id DESC LIMIT ?`)
+        .all(guildId, userId, MUSIC_HISTORY_LIMIT);
 }
 export function addFavorite(guildId, userId, track) {
     pruneExpiredFavorites();
@@ -103,12 +137,52 @@ export function saveTrackToPlaylist(guildId, userId, name, track) {
     });
     return save.immediate();
 }
+export function saveTracksToPlaylist(guildId, userId, name, tracks) {
+    guildId = GLOBAL_SCOPE_ID;
+    const playlistName = normalizePlaylistName(name);
+    if (!tracks.length)
+        return { state: 'empty', name: playlistName.name, count: 0 };
+    if (tracks.length > MAX_PLAYLIST_TRACKS)
+        return { state: 'track_limit', name: playlistName.name, count: 0 };
+    const values = tracks.map((track) => ({
+        uri: track.trackUri.trim(),
+        title: track.title.slice(0, 200),
+        author: (track.author || 'Artista desconocido').slice(0, 200),
+        durationMs: Math.max(0, track.durationMs || 0),
+        artworkUrl: track.artworkUrl || null,
+    }));
+    if (values.some((track) => !track.uri))
+        throw new Error('Una canción del historial no tiene un enlace reproducible.');
+    const save = db.transaction(() => {
+        const existing = db.prepare(`SELECT id FROM music_playlists
+      WHERE guild_id = ? AND user_id = ? AND normalized_name = ?`)
+            .get(guildId, userId, playlistName.normalizedName);
+        if (existing)
+            return { state: 'exists', name: playlistName.name, count: 0 };
+        const { count: playlistCount } = db.prepare('SELECT COUNT(*) AS count FROM music_playlists WHERE guild_id = ? AND user_id = ?')
+            .get(guildId, userId);
+        if (playlistCount >= MAX_PLAYLISTS)
+            return { state: 'playlist_limit', name: playlistName.name, count: 0 };
+        const created = db.prepare('INSERT INTO music_playlists (guild_id, user_id, name, normalized_name) VALUES (?, ?, ?, ?)')
+            .run(guildId, userId, playlistName.name, playlistName.normalizedName);
+        const playlistId = Number(created.lastInsertRowid);
+        const insertTrack = db.prepare(`INSERT INTO music_playlist_tracks
+      (playlist_id, track_uri, title, author, duration_ms, artwork_url)
+      VALUES (?, ?, ?, ?, ?, ?)`);
+        for (const track of values) {
+            insertTrack.run(playlistId, track.uri, track.title, track.author, track.durationMs, track.artworkUrl);
+        }
+        return { state: 'created', name: playlistName.name, count: values.length };
+    });
+    return save.immediate();
+}
 export function getPlaylists(guildId, userId) {
     guildId = GLOBAL_SCOPE_ID;
-    return db.prepare(`SELECT p.id, p.name, p.created_at AS createdAt, COUNT(t.id) AS trackCount
+    const playlists = db.prepare(`SELECT p.id, p.name, p.created_at AS createdAt, COUNT(t.id) AS trackCount
     FROM music_playlists p LEFT JOIN music_playlist_tracks t ON t.playlist_id = p.id
     WHERE p.guild_id = ? AND p.user_id = ? GROUP BY p.id ORDER BY p.name COLLATE NOCASE`)
         .all(guildId, userId);
+    return playlists.map((playlist) => ({ ...playlist, trackCount: Math.min(playlist.trackCount, MAX_PLAYLIST_TRACKS) }));
 }
 export function getPlaylist(guildId, userId, name) {
     guildId = GLOBAL_SCOPE_ID;
@@ -119,11 +193,36 @@ export function getPlaylist(guildId, userId, name) {
         .get(guildId, userId, normalizedName);
     if (!row)
         return undefined;
+    row.trackCount = Math.min(row.trackCount, MAX_PLAYLIST_TRACKS);
     const tracks = db.prepare(`SELECT id, track_uri AS trackUri, title, author, duration_ms AS durationMs,
       artwork_url AS artworkUrl, added_at AS addedAt
     FROM music_playlist_tracks WHERE playlist_id = ? ORDER BY added_at, id LIMIT ?`)
         .all(row.id, MAX_PLAYLIST_TRACKS);
     return { playlist: row, tracks };
+}
+export function shufflePlaylist(guildId, userId, name) {
+    guildId = GLOBAL_SCOPE_ID;
+    const playlist = getPlaylist(guildId, userId, name);
+    if (!playlist)
+        return undefined;
+    const tracks = [...playlist.tracks];
+    for (let index = tracks.length - 1; index > 0; index--) {
+        const swapIndex = randomInt(index + 1);
+        [tracks[index], tracks[swapIndex]] = [tracks[swapIndex], tracks[index]];
+    }
+    if (tracks.length > 1) {
+        const reorder = db.transaction(() => {
+            db.prepare('DELETE FROM music_playlist_tracks WHERE playlist_id = ?').run(playlist.playlist.id);
+            const insert = db.prepare(`INSERT INTO music_playlist_tracks
+        (playlist_id, track_uri, title, author, duration_ms, artwork_url, added_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0)`);
+            for (const track of tracks) {
+                insert.run(playlist.playlist.id, track.trackUri, track.title, track.author, track.durationMs, track.artworkUrl);
+            }
+        });
+        reorder.immediate();
+    }
+    return { name: playlist.playlist.name, count: tracks.length };
 }
 export function removePlaylistTrack(guildId, userId, name, position) {
     guildId = GLOBAL_SCOPE_ID;

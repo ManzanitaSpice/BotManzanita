@@ -1,14 +1,13 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
-import { adjustPremiumCurrency, claimDaily, crime, fish, formatCooldown, getAccountBalances, getLeaderboard, playItemRoulette, playRoulette, robPlayer, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel, premiumStorePanel } from '../ui/panels.js';
+import { adjustPremiumCurrency, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getActiveJob, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoulette, robPlayer, selectJob, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel } from '../ui/panels.js';
 
 export const economyCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName('economia')
     .setDescription('Tu economía y recompensas globales')
     .addSubcommand((subcommand) => subcommand.setName('panel').setDescription('Abre tu panel privado de economía'))
-    .addSubcommand((subcommand) => subcommand.setName('tienda_premium').setDescription('Abre la tienda de gemas administradas'))
     .addSubcommand((subcommand) => subcommand.setName('casino').setDescription('Abre el casino de monedas virtuales'))
     .addSubcommand((subcommand) => subcommand.setName('banco').setDescription('Abre tu banco y gestiona tus ahorros'))
     .addSubcommand((subcommand) => subcommand.setName('saldo').setDescription('Consulta tu saldo'))
@@ -16,9 +15,12 @@ export const economyCommand: BotCommand = {
       .addUserOption((option) => option.setName('usuario').setDescription('Persona que recibirá o perderá gemas').setRequired(true))
       .addIntegerOption((option) => option.setName('cantidad').setDescription('Positivo para otorgar; negativo para retirar').setRequired(true).setMinValue(-1_000_000).setMaxValue(1_000_000)))
     .addSubcommand((subcommand) => subcommand.setName('diaria').setDescription('Reclama 75 monedas cada 24 horas'))
-    .addSubcommand((subcommand) => subcommand.setName('trabajar').setDescription('Gana entre 15 y 30 monedas cada hora'))
+    .addSubcommand((subcommand) => subcommand.setName('trabajar').setDescription('Trabaja una vez por hora según tu oficio, herramienta y nivel'))
+    .addSubcommand((subcommand) => subcommand.setName('empleo').setDescription('Consulta o elige tu oficio')
+      .addStringOption((option) => option.setName('trabajo').setDescription('Oficio que quieres elegir')
+        .addChoices(...economyJobs.map((job) => ({ name: `${job.emoji} ${job.name}`, value: job.id })))))
     .addSubcommand((subcommand) => subcommand.setName('crimen').setDescription('Intenta un golpe cada 4 horas: puedes ganar o pagar una multa'))
-    .addSubcommand((subcommand) => subcommand.setName('pescar').setDescription('Pesca para ganar monedas cada hora'))
+    .addSubcommand((subcommand) => subcommand.setName('pescar').setDescription('Pesca cada hora; necesitas una caña de pescar'))
     .addSubcommand((subcommand) => subcommand.setName('robar').setDescription('Intenta robar monedas; puede salir mal')
       .addUserOption((option) => option.setName('usuario').setDescription('A quién intentar robar').setRequired(true)))
     .addSubcommand((subcommand) => subcommand.setName('ruleta').setDescription('Apuesta monedas en la ruleta')
@@ -27,7 +29,7 @@ export const economyCommand: BotCommand = {
         .addChoices({ name: 'Rojo (2×)', value: 'rojo' }, { name: 'Negro (2×)', value: 'negro' }, { name: 'Verde / cero (36×)', value: 'verde' })))
     .addSubcommand((subcommand) => subcommand.setName('apostar_objeto').setDescription('Apuesta un artículo de tu inventario en la ruleta')
       .addStringOption((option) => option.setName('articulo').setDescription('Artículo consumible que arriesgarás').setRequired(true)
-        .addChoices(...storeItems.map((item) => ({ name: `${item.emoji} ${item.name}`, value: item.id }))))
+        .addChoices(...storeItems.filter((item) => item.usable).map((item) => ({ name: `${item.emoji} ${item.name}`, value: item.id }))))
       .addStringOption((option) => option.setName('color').setDescription('El color al que apuestas').setRequired(true)
         .addChoices({ name: 'Rojo (premio 2× valor)', value: 'rojo' }, { name: 'Negro (premio 2× valor)', value: 'negro' }, { name: 'Verde / cero (premio 36× valor)', value: 'verde' })))
     .addSubcommand((subcommand) => subcommand.setName('usar').setDescription('Usa un artículo consumible de tu inventario')
@@ -60,11 +62,7 @@ export const economyCommand: BotCommand = {
       return;
     }
     if (action === 'panel') {
-      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username));
-      return;
-    }
-    if (action === 'tienda_premium') {
-      await interaction.reply(await premiumStorePanel(interaction.guildId, interaction.user.id));
+      await interaction.reply(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({extension:'png',size:256})));
       return;
     }
     if (action === 'casino') {
@@ -80,10 +78,28 @@ export const economyCommand: BotCommand = {
       await interaction.reply(balancePanel(interaction.user.username, balance));
       return;
     }
+    if (action === 'empleo') {
+      const jobId = interaction.options.getString('trabajo');
+      if (jobId) {
+        const result = await selectJob(interaction.guildId, interaction.user.id, jobId);
+        if (!result.ok) { await interaction.reply({ content: 'Ese trabajo no está disponible.', flags: MessageFlags.Ephemeral }); return; }
+        await interaction.reply({ content: `✅ Elegiste **${result.progress.job.name}** · nivel ${result.progress.level}. Necesitas **${result.progress.job.toolName}** para trabajar; cómpralo en /shop o a!shop. Cada turno de trabajo da experiencia y puede subir el nivel.`, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const active = await getActiveJob(interaction.guildId, interaction.user.id);
+      const status = active
+        ? `Tu oficio actual es **${active.job.name} · nivel ${active.level}**${active.level >= MAX_JOB_LEVEL ? ' (nivel máximo)' : ` · ${active.xp}/${active.xpToNext} XP`}.`
+        : 'Todavía no elegiste un oficio.';
+      await interaction.reply({ content: `${status} Elige uno en la opción **trabajo** de este comando. Cada oficio requiere comprar su herramienta en la tienda.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
     if (action === 'trabajar') {
       const result = await work(interaction.guildId, interaction.user.id, interaction.id);
       if (!result.ok) {
-        await interaction.reply({ content: `🧰 Ya trabajaste recientemente. Puedes volver en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+        const content = result.reason === 'no_job' ? 'Primero elige un oficio con `/economia empleo` o `a!jobs`.'
+          : result.reason === 'missing_tool' ? `Para trabajar como **${result.job?.name ?? 'este oficio'}** necesitas **${result.job?.toolName ?? 'su herramienta'}**. Cómprala en /shop o a!shop.`
+            : `🧰 Ya trabajaste recientemente. Puedes volver en **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
         return;
       }
       await interaction.reply(economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
@@ -101,7 +117,9 @@ export const economyCommand: BotCommand = {
     if (action === 'pescar') {
       const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
       if (!result.ok) {
-        await interaction.reply({ content: `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+        const content = result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.'
+          : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
         return;
       }
       await interaction.reply(economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
@@ -163,6 +181,7 @@ export const economyCommand: BotCommand = {
       const result = await useShopItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'missing_item' ? 'No tienes ese artículo en tu inventario.'
+          : result.reason === 'missing_rod' ? 'Necesitas una Caña de pescar para usar cebo.'
           : result.reason === 'cooldown' ? `Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.`
             : 'Ese artículo no se puede usar.';
         await interaction.reply({ content: `🎒 ${message}`, flags: MessageFlags.Ephemeral });

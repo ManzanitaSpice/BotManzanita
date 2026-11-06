@@ -111,7 +111,7 @@ export const musicCommand = {
                 const result = saveTrackToPlaylist(guildId, interaction.user.id, name ?? '', player.queue.current);
                 const message = result.state === 'added' ? `🎼 Guardé **${player.queue.current.info.title}** en **${result.name}** (${result.count} canciones).`
                     : result.state === 'exists' ? `Esa canción ya está en **${result.name}**.`
-                        : result.state === 'playlist_limit' ? 'Llegaste al límite de 20 listas.' : `**${result.name}** ya tiene 100 canciones.`;
+                        : result.state === 'playlist_limit' ? 'Llegaste al límite de 3 playlists por usuario.' : `**${result.name}** ya tiene 30 canciones.`;
                 await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
                 return;
             }

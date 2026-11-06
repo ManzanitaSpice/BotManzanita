@@ -93,13 +93,16 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
       const author = sourceTrack.info.author?.trim();
       const musicQuery = [title, author && author.toLowerCase() !== 'unknown artist' ? author : undefined].filter(Boolean).join(' ');
       if (musicQuery) {
-        try {
-          const musicResult = await search(`ytmsearch:${musicQuery}`);
-          if (musicResult.tracks.length) return musicResult;
-        } catch (error) {
-          if (!isNothingFoundError(error)) lastError ??= error;
+        for (const identifier of [`ytmsearch:${musicQuery}`, `ytsearch:${musicQuery}`]) {
+          try {
+            const musicResult = await search(identifier);
+            if (musicResult.tracks.length) return musicResult;
+          } catch (error) {
+            if (!isNothingFoundError(error)) lastError ??= error;
+          }
         }
       }
+      if (lastError) throw searchProviderError(lastError);
       return { ...metadataResult!, tracks: [] } as T;
     }
     if (lastError) throw lastError;
@@ -110,7 +113,7 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
   const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch|spsearch):/i.test(trimmed);
   const identifiers = isUrl || hasSourcePrefix
     ? [trimmed]
-    : [`ytmsearch:${trimmed}`, `scsearch:${trimmed}`];
+    : [`ytmsearch:${trimmed}`, `ytsearch:${trimmed}`, `scsearch:${trimmed}`];
   let emptyResult: T | undefined;
   let lastError: unknown;
 
@@ -124,9 +127,13 @@ async function searchWithFallback<T extends { tracks: (Track | UnresolvedTrack)[
     }
   }
 
+  if (lastError) throw searchProviderError(lastError);
   if (emptyResult) return emptyResult;
-  if (lastError) throw lastError;
   return undefined;
+}
+
+function searchProviderError(cause: unknown): Error {
+  return new Error('Un proveedor de música no respondió. Intenta otra vez o pega un enlace directo.', { cause });
 }
 
 function youtubeVideoIdFromUrl(value: string): string | undefined {
@@ -260,12 +267,20 @@ export async function applyMusicEffect(player: Player, effect: MusicEffect): Pro
 
 export async function addSavedTracks(
   client: Client,
-  input: { guildId: string; voiceChannelId: string; textChannelId: string; user: TrackRequester; uris: string[] },
+  input: {
+    guildId: string;
+    voiceChannelId: string;
+    textChannelId: string;
+    user: TrackRequester;
+    uris: string[];
+    replaceQueue?: boolean;
+    repeatMode?: 'off' | 'track' | 'queue';
+  },
 ): Promise<{ added: number; unavailable: number }> {
   if (!client.lavalink.useable) throw new Error('El nodo de audio aún no está disponible.');
   if (!input.uris.length) throw new Error('Esta lista no tiene canciones guardadas.');
   const player = await getOrCreatePlayer(client, input);
-  if (player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
+  if (!input.replaceQueue && player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
     throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
   }
   if (!player.connected) await player.connect();
@@ -289,7 +304,9 @@ export async function addSavedTracks(
   await Promise.all(Array.from({ length: Math.min(4, input.uris.length) }, () => resolveNext()));
   const tracks = resolved.filter((track): track is Track => track !== undefined);
   if (!tracks.length) throw new Error('No pude resolver ninguna canción guardada.');
+  if (input.replaceQueue) await player.stopPlaying(true);
   await player.queue.add(tracks);
+  if (input.repeatMode) await player.setRepeatMode(input.repeatMode);
   rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
   if (!player.playing && !player.paused) await player.play();
   return { added: tracks.length, unavailable: input.uris.length - tracks.length };

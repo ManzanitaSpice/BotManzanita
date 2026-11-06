@@ -8,7 +8,7 @@ import './storage/database.js';
 import { initializeEconomyDatabase } from './storage/economy-database.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
 import { initializeProfileStorage } from './services/profile.js';
-import { pruneExpiredFavorites } from './services/music-library.js';
+import { pruneExpiredFavorites, pruneExpiredMusicHistory, recordMusicHistory } from './services/music-library.js';
 import { musicQueueStoreManager } from './storage/music-queue-store.js';
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] });
 client.commands = new Collection(commands.map((command) => [command.data.name, command]));
@@ -46,7 +46,19 @@ client.once('clientReady', async (readyClient) => {
         console.log('Música desactivada: configura LAVALINK_PASSWORD y la conexión del nodo para habilitarla.');
         return;
     }
-    client.lavalink.on('trackStart', (player) => void refreshMusicPanel(client, player.guildId));
+    client.lavalink.on('trackStart', (player, eventTrack) => {
+        const track = eventTrack ?? player.queue.current;
+        const requesterId = track?.requester?.id;
+        if (track && typeof requesterId === 'string' && requesterId.length > 0) {
+            try {
+                recordMusicHistory(player.guildId, requesterId, track);
+            }
+            catch (error) {
+                console.error(`No se pudo guardar el historial musical de ${requesterId}:`, error);
+            }
+        }
+        void refreshMusicPanel(client, player.guildId);
+    });
     client.lavalink.on('trackEnd', (player) => void refreshMusicPanel(client, player.guildId));
     client.lavalink.on('trackError', (player) => void refreshMusicPanel(client, player.guildId));
     client.lavalink.on('queueEnd', (player) => void refreshMusicPanel(client, player.guildId));
@@ -77,6 +89,7 @@ process.on('uncaughtException', (error) => {
 await initializeEconomyDatabase();
 await initializeProfileStorage();
 pruneExpiredFavorites();
+pruneExpiredMusicHistory();
 const favoriteCleanupTimer = setInterval(() => {
     try {
         pruneExpiredFavorites();
@@ -86,6 +99,15 @@ const favoriteCleanupTimer = setInterval(() => {
     }
 }, 12 * 60 * 60 * 1000);
 favoriteCleanupTimer.unref();
+const musicHistoryCleanupTimer = setInterval(() => {
+    try {
+        pruneExpiredMusicHistory();
+    }
+    catch (error) {
+        console.error('No se pudo limpiar el historial musical vencido:', error);
+    }
+}, 60_000);
+musicHistoryCleanupTimer.unref();
 if (config.economyDatabase.driver === 'mysql') {
     console.log(`Base de economía MySQL conectada: ${config.economyDatabase.host}:${config.economyDatabase.port}/${config.economyDatabase.name}.`);
 }

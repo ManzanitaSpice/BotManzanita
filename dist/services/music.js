@@ -89,16 +89,20 @@ async function searchWithFallback(search, query) {
             const author = sourceTrack.info.author?.trim();
             const musicQuery = [title, author && author.toLowerCase() !== 'unknown artist' ? author : undefined].filter(Boolean).join(' ');
             if (musicQuery) {
-                try {
-                    const musicResult = await search(`ytmsearch:${musicQuery}`);
-                    if (musicResult.tracks.length)
-                        return musicResult;
-                }
-                catch (error) {
-                    if (!isNothingFoundError(error))
-                        lastError ??= error;
+                for (const identifier of [`ytmsearch:${musicQuery}`, `ytsearch:${musicQuery}`]) {
+                    try {
+                        const musicResult = await search(identifier);
+                        if (musicResult.tracks.length)
+                            return musicResult;
+                    }
+                    catch (error) {
+                        if (!isNothingFoundError(error))
+                            lastError ??= error;
+                    }
                 }
             }
+            if (lastError)
+                throw searchProviderError(lastError);
             return { ...metadataResult, tracks: [] };
         }
         if (lastError)
@@ -109,7 +113,7 @@ async function searchWithFallback(search, query) {
     const hasSourcePrefix = /^(?:ytmsearch|ytsearch|scsearch|spsearch):/i.test(trimmed);
     const identifiers = isUrl || hasSourcePrefix
         ? [trimmed]
-        : [`ytmsearch:${trimmed}`, `scsearch:${trimmed}`];
+        : [`ytmsearch:${trimmed}`, `ytsearch:${trimmed}`, `scsearch:${trimmed}`];
     let emptyResult;
     let lastError;
     for (const identifier of identifiers) {
@@ -124,11 +128,14 @@ async function searchWithFallback(search, query) {
                 lastError ??= error;
         }
     }
+    if (lastError)
+        throw searchProviderError(lastError);
     if (emptyResult)
         return emptyResult;
-    if (lastError)
-        throw lastError;
     return undefined;
+}
+function searchProviderError(cause) {
+    return new Error('Un proveedor de música no respondió. Intenta otra vez o pega un enlace directo.', { cause });
 }
 function youtubeVideoIdFromUrl(value) {
     let url;
@@ -267,7 +274,7 @@ export async function addSavedTracks(client, input) {
     if (!input.uris.length)
         throw new Error('Esta lista no tiene canciones guardadas.');
     const player = await getOrCreatePlayer(client, input);
-    if (player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
+    if (!input.replaceQueue && player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
         throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
     }
     if (!player.connected)
@@ -295,7 +302,11 @@ export async function addSavedTracks(client, input) {
     const tracks = resolved.filter((track) => track !== undefined);
     if (!tracks.length)
         throw new Error('No pude resolver ninguna canción guardada.');
+    if (input.replaceQueue)
+        await player.stopPlaying(true);
     await player.queue.add(tracks);
+    if (input.repeatMode)
+        await player.setRepeatMode(input.repeatMode);
     rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
     if (!player.playing && !player.paused)
         await player.play();

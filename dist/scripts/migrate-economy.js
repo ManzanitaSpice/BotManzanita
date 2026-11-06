@@ -10,6 +10,7 @@ const ledger = db.prepare('SELECT guild_id, user_id, amount, reason, reference, 
 const inventory = db.prepare('SELECT guild_id, user_id, item_id, quantity, acquired_at FROM economy_inventory').all();
 const itemMovements = db.prepare(`SELECT guild_id, user_id, item_id, quantity_delta, reason, reference, created_at
   FROM economy_item_ledger ORDER BY id`).all();
+const jobs = db.prepare('SELECT guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at FROM economy_jobs').all();
 await withEconomyTransaction(async (connection) => {
     for (const account of accounts) {
         await connection.execute(`INSERT IGNORE INTO economy_accounts
@@ -32,7 +33,11 @@ await withEconomyTransaction(async (connection) => {
       (guild_id, user_id, item_id, quantity_delta, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [movement.guild_id, movement.user_id, movement.item_id, movement.quantity_delta, movement.reason,
             movement.reference, movement.created_at]);
     }
+    for (const job of jobs) {
+        await connection.execute(`INSERT IGNORE INTO economy_jobs
+      (guild_id,user_id,job_id,level,xp,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`, [job.guild_id, job.user_id, job.job_id, job.level, job.xp, job.is_active, job.created_at, job.updated_at]);
+    }
 });
-console.log(`Migración idempotente terminada: ${accounts.length} cuentas, ${ledger.length} movimientos de monedas, ${inventory.length} artículos y ${itemMovements.length} movimientos de artículos revisados.`);
+console.log(`Migración idempotente terminada: ${accounts.length} cuentas, ${ledger.length} movimientos de monedas, ${inventory.length} artículos, ${itemMovements.length} movimientos de artículos y ${jobs.length} oficios revisados.`);
 db.close();
 await economyPool.end();

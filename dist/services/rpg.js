@@ -3,23 +3,23 @@ import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
 const coreRpgItems = [
-    { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 90, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
-    { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 75, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
-    { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 55, description: 'Recupera 15 PV y energía, +35 saciedad y cariño.', effect: 'snack', power: 15 },
-    { id: 'rpg_super_potion', name: 'Poción solar', emoji: '☀️', rarity: 'Poco común', category: 'Curación', cost: 210, description: 'Recupera 75 PV.', effect: 'heal', power: 75 },
-    { id: 'rpg_energy_crystal', name: 'Cristal de energía', emoji: '💠', rarity: 'Poco común', category: 'Energía', cost: 190, description: 'Restaura toda la energía.', effect: 'full_energy', power: 100 },
-    { id: 'rpg_revive', name: 'Polvo de renacer', emoji: '✨', rarity: 'Raro', category: 'Reanimación', cost: 420, description: 'Levanta a una mascota debilitada con 35 PV.', effect: 'revive', power: 35 },
-    { id: 'rpg_training_manual', name: 'Manual de campo', emoji: '📘', rarity: 'Raro', category: 'Experiencia', cost: 380, description: 'Otorga 60 XP.', effect: 'xp', power: 60 },
-    { id: 'rpg_iron_charm', name: 'Amuleto de hierro', emoji: '🧿', rarity: 'Épico', category: 'Equipo', cost: 900, description: 'Equipo: +4 defensa.', effect: 'equip_defense', power: 4 },
-    { id: 'rpg_swift_boots', name: 'Botas del viento', emoji: '🥾', rarity: 'Épico', category: 'Equipo', cost: 900, description: 'Equipo: +4 agilidad.', effect: 'equip_agility', power: 4 },
-    { id: 'rpg_star_collar', name: 'Collar estelar', emoji: '🌟', rarity: 'Legendario', category: 'Equipo', cost: 1800, description: 'Equipo: +3 fuerza, defensa y agilidad.', effect: 'equip_all', power: 3 },
+    { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 100, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
+    { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 85, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
+    { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 60, description: 'Recupera 15 PV y energía, +35 saciedad y cariño.', effect: 'snack', power: 15 },
+    { id: 'rpg_super_potion', name: 'Poción solar', emoji: '☀️', rarity: 'Poco común', category: 'Curación', cost: 240, description: 'Recupera 75 PV.', effect: 'heal', power: 75 },
+    { id: 'rpg_energy_crystal', name: 'Cristal de energía', emoji: '💠', rarity: 'Poco común', category: 'Energía', cost: 220, description: 'Restaura toda la energía.', effect: 'full_energy', power: 100 },
+    { id: 'rpg_revive', name: 'Polvo de renacer', emoji: '✨', rarity: 'Raro', category: 'Reanimación', cost: 480, description: 'Levanta a una mascota debilitada con 35 PV.', effect: 'revive', power: 35 },
+    { id: 'rpg_training_manual', name: 'Manual de campo', emoji: '📘', rarity: 'Raro', category: 'Experiencia', cost: 430, description: 'Otorga 60 XP.', effect: 'xp', power: 60 },
+    { id: 'rpg_iron_charm', name: 'Amuleto de hierro', emoji: '🧿', rarity: 'Épico', category: 'Equipo', cost: 1000, description: 'Equipo: +4 defensa.', effect: 'equip_defense', power: 4 },
+    { id: 'rpg_swift_boots', name: 'Botas del viento', emoji: '🥾', rarity: 'Épico', category: 'Equipo', cost: 1000, description: 'Equipo: +4 agilidad.', effect: 'equip_agility', power: 4 },
+    { id: 'rpg_star_collar', name: 'Collar estelar', emoji: '🌟', rarity: 'Legendario', category: 'Equipo', cost: 2200, description: 'Equipo: +3 fuerza, defensa y agilidad.', effect: 'equip_all', power: 3 },
 ];
 const raritySets = [
-    { rarity: 'Común', key: 'comun', emoji: '🟤', price: 95, labels: ['silvestre', 'del aprendiz'] },
-    { rarity: 'Poco común', key: 'inusual', emoji: '🟢', price: 230, labels: ['del rocío', 'de hoja viva'] },
-    { rarity: 'Raro', key: 'raro', emoji: '🔵', price: 520, labels: ['rúnico', 'de cristal'] },
-    { rarity: 'Épico', key: 'epico', emoji: '🟣', price: 1150, labels: ['ancestral', 'del eclipse'] },
-    { rarity: 'Legendario', key: 'legendario', emoji: '🟠', price: 2500, labels: ['celestial', 'primordial'] },
+    { rarity: 'Común', key: 'comun', emoji: '🟤', price: 110, labels: ['silvestre', 'del aprendiz'] },
+    { rarity: 'Poco común', key: 'inusual', emoji: '🟢', price: 250, labels: ['del rocío', 'de hoja viva'] },
+    { rarity: 'Raro', key: 'raro', emoji: '🔵', price: 575, labels: ['rúnico', 'de cristal'] },
+    { rarity: 'Épico', key: 'epico', emoji: '🟣', price: 1250, labels: ['ancestral', 'del eclipse'] },
+    { rarity: 'Legendario', key: 'legendario', emoji: '🟠', price: 2800, labels: ['celestial', 'primordial'] },
 ];
 const itemNames = [
     { category: 'Curación', emoji: '🧪', names: [['Ungüento de musgo', 'Sopa de hierbas'], ['Bálsamo de rocío', 'Tónico de brote'], ['Suero del corazón', 'Poción de zafiro'], ['Elixir del guardián', 'Poción de aurora'], ['Lágrima del fénix', 'Elixir de vida eterna']] },
@@ -288,7 +288,7 @@ export const RPG_DAILY_XP_CAP = 650;
 export const RPG_EXPLORE_COOLDOWN = 4 * 60 * 60;
 export const RPG_BATTLE_COOLDOWN = 3 * 60 * 60;
 export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
-const RPG_COIN_REWARD_SCALE = 0.5;
+export const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
 const CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
@@ -782,20 +782,28 @@ function rollExpeditionDrop(zone) {
     const pool = regionalPool.length ? regionalPool : rpgItems.filter((item) => item.rarity === rarity);
     return pool.length ? pick(pool) : undefined;
 }
-export async function getLatestExpeditionLog(guildId, userId) {
+export async function getExpeditionLogPage(guildId, userId, limit = 5, offset = 0) {
     guildId = GLOBAL_SCOPE_ID;
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 5;
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
     if (economyPool) {
         const connection = await economyPool.getConnection();
         try {
-            const [rows] = await connection.execute('SELECT id,zone_id AS zoneId,events_json AS events,coins,xp,item_id AS itemId,created_at AS createdAt FROM rpg_expedition_logs WHERE guild_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1', [guildId, userId]);
-            return expeditionLogFromRow(rows[0]);
+            const [countRows] = await connection.execute('SELECT COUNT(*) AS total FROM rpg_expedition_logs WHERE guild_id=? AND user_id=?', [guildId, userId]);
+            const [rows] = await connection.execute('SELECT id,zone_id AS zoneId,events_json AS events,coins,xp,item_id AS itemId,created_at AS createdAt FROM rpg_expedition_logs WHERE guild_id=? AND user_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?', [guildId, userId, safeLimit, safeOffset]);
+            return { logs: rows.map((row) => expeditionLogFromRow(row)).filter((log) => Boolean(log)), total: Number(countRows[0]?.total ?? 0) };
         }
         finally {
             connection.release();
         }
     }
-    const row = db.prepare('SELECT id,zone_id AS zoneId,events_json AS events,coins,xp,item_id AS itemId,created_at AS createdAt FROM rpg_expedition_logs WHERE guild_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1').get(guildId, userId);
-    return expeditionLogFromRow(row);
+    const totalRow = db.prepare('SELECT COUNT(*) AS total FROM rpg_expedition_logs WHERE guild_id=? AND user_id=?').get(guildId, userId);
+    const rows = db.prepare('SELECT id,zone_id AS zoneId,events_json AS events,coins,xp,item_id AS itemId,created_at AS createdAt FROM rpg_expedition_logs WHERE guild_id=? AND user_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?')
+        .all(guildId, userId, safeLimit, safeOffset);
+    return { logs: rows.map((row) => expeditionLogFromRow(row)).filter((log) => Boolean(log)), total: Number(totalRow.total) };
+}
+export async function getLatestExpeditionLog(guildId, userId) {
+    return (await getExpeditionLogPage(guildId, userId, 1, 0)).logs[0];
 }
 function expeditionLogFromRow(row) {
     if (!row)

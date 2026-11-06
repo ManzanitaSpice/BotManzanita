@@ -1,5 +1,6 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { InteractionContextType, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
+import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { getSpeciesCatalog, adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, rpgItems } from '../services/rpg.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { listPanel } from '../ui/panels.js';
@@ -8,8 +9,8 @@ export const ADMIN_OWNER_ID = '931978822323159111';
 const currencyNames: Record<AdminCurrency, string> = { wallet: 'monedas', bank: 'monedas del banco', premium: 'gemas premium' };
 
 export const adminCommand: BotCommand = {
-  data: new SlashCommandBuilder().setName('admin').setDescription('Herramientas privadas de administración')
-    .setDefaultMemberPermissions('0')
+  data: new SlashCommandBuilder().setName('admin').setDescription('Herramientas privadas del propietario · solo DM del bot')
+    .setContexts(InteractionContextType.BotDM)
     .addSubcommand((sub) => sub.setName('moneda').setDescription('Agregar o retirar monedas de billetera')
       .addUserOption((option) => option.setName('usuario').setDescription('Cuenta destino').setRequired(true))
       .addIntegerOption((option) => option.setName('cantidad').setDescription('Positivo agrega; negativo retira').setRequired(true).setMinValue(-1_000_000_000).setMaxValue(1_000_000_000)))
@@ -59,11 +60,11 @@ export const adminCommand: BotCommand = {
       await interaction.reply({ content: 'Este comando es privado.', flags: MessageFlags.Ephemeral });
       return;
     }
-    if (!interaction.guildId) {
-      await interaction.reply({ content: 'La administración solo funciona dentro de un servidor.', flags: MessageFlags.Ephemeral });
+    if (interaction.guildId) {
+      await interaction.reply({ content: 'La administración solo funciona por DM con el bot.', flags: MessageFlags.Ephemeral });
       return;
     }
-    const guildId = interaction.guildId; const actorId = interaction.user.id; const action = interaction.options.getSubcommand();
+    const guildId = GLOBAL_SCOPE_ID; const actorId = interaction.user.id; const action = interaction.options.getSubcommand();
     const target = interaction.options.getUser('usuario');
     if (action === 'historial') {
       const entries = await getAdminAudit(guildId, 12);

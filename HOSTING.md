@@ -1,6 +1,6 @@
 # Despliegue en host Node.js
 
-Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `assets/rpg/` y `assets/reactions/` con los recursos locales del bot, `package.json`, `package-lock.json`, la plantilla [`ECONOMY-MYSQL.env.example`](ECONOMY-MYSQL.env.example) y este instructivo. No incluye `.env`, `ECONOMY-MYSQL.env`, `data/` ni `node_modules/`.
+Paquete preparado para Node.js 20 o superior. El ZIP incluye el JavaScript ya compilado en `dist/`, fuente TypeScript, `assets/rpg/` y `assets/reactions/` con los recursos locales, `package.json`, `package-lock.json`, las plantillas de entorno y este instructivo. No incluye `.env`, `ECONOMY-MYSQL.env`, `data/` ni `node_modules/`.
 
 ## Instalación
 
@@ -47,13 +47,13 @@ ECONOMY_DB_NAME=nombre-de-tu-base
 
 `ECONOMY_DB_ENDPOINT` recibe el campo **Endpoint completo**, incluido el puerto. `ECONOMY_DB_USER` recibe **Username** y `ECONOMY_DB_NAME` el nombre del esquema/base que te asignó el host. `ECONOMY_DB_PASSWORD` debe ser la contraseña nueva. No cambies ni borres las variables de Discord/Lavalink que ya están en **Startup**: el `.env` de economía se suma a ellas sin reemplazarlas. También puedes configurar estas cinco variables directamente en **Startup** si tu egg permite agregarlas. La contraseña que se compartió en una captura debe rotarse antes de usar la conexión; no la copies al repositorio ni a mensajes.
 
-Guarda el archivo, vuelve a **Startup** y comprueba que `BOT_JS_FILE=dist/index.js`; inicia el servidor. En la consola debe aparecer `Base de economía MySQL conectada: servidor:3306/base.`. Al iniciar, el bot crea y actualiza sus tablas de economía, incluyendo banco, inventario apilable y registro de artículos. Si la consola muestra un error de conexión, revisa endpoint, puerto, usuario, contraseña nueva y permisos del usuario de la base. Las listas y favoritos de música siguen usando SQLite en `DATABASE_PATH`, por lo que conserva `data/` al reemplazar el ZIP.
+Guarda el archivo, vuelve a **Startup** y comprueba que `BOT_JS_FILE=dist/index.js`; inicia el servidor. En la consola debe aparecer `Base de economía MySQL conectada: servidor:3306/base.`. Al iniciar, el bot crea y actualiza sus tablas de economía, incluyendo banco, inventario apilable, registro de artículos y progreso de los oficios. Si la consola muestra un error de conexión, revisa endpoint, puerto, usuario, contraseña nueva y permisos del usuario de la base. Las listas y favoritos de música siguen usando SQLite en `DATABASE_PATH`, por lo que conserva `data/` al reemplazar el ZIP.
 
 Si ya tienes saldos o inventario en el SQLite del servidor, migra una sola vez antes de volver a encender el bot:
 
 1. Detén el servidor del bot y conserva una copia del archivo configurado en `DATABASE_PATH` (por defecto `data/bot.sqlite`).
 2. En **Startup**, establece las variables MySQL anteriores y cambia temporalmente `BOT_JS_FILE` a `dist/scripts/migrate-economy.js`.
-3. Inicia el servidor una vez. En la consola debe aparecer `Migración idempotente terminada` y un conteo de cuentas, movimientos y artículos.
+3. Inicia el servidor una vez. En la consola debe aparecer `Migración idempotente terminada` y un conteo de cuentas, movimientos, artículos y oficios.
 4. Detén el proceso, restaura `BOT_JS_FILE=dist/index.js` y arranca el bot.
 5. Cambia temporalmente `BOT_JS_FILE` a `dist/deploy-commands.js`, inicia una vez y confirma en la consola `Comandos globales registrados`. Detén el proceso y vuelve a poner `BOT_JS_FILE=dist/index.js`.
 
