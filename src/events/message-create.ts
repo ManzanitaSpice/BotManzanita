@@ -3,7 +3,7 @@ import type { Message } from 'discord.js';
 import { randomInt } from 'node:crypto';
 import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
-import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, resignJob, robPlayer, selectJob, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
+import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, resignJob, robPlayer, selectJob, setRoosterName, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, releaseRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
@@ -268,11 +268,17 @@ async function routeMessage(message: Message): Promise<void> {
     return sendPanel(message, economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
   }
   if (['gallo', 'gallera', 'peleagallos'].includes(command)) {
+    if (['nombre', 'nombrar', 'renombrar', 'name'].includes((args[0] ?? '').toLocaleLowerCase())) {
+      const name = args.slice(1).join(' ').trim();
+      if (!name) return say(message, 'Uso: `a!gallo nombre Nombre del gallo` · nombre de 2 a 24 caracteres.');
+      const result = await setRoosterName(guildId, userId, name);
+      return say(message, result.ok ? `🐓 Tu gallo ahora se llama **${result.name}**. Usa \`a!gallo APUESTA\` para el duelo.` : 'El nombre debe tener 2–24 caracteres y no incluir menciones ni formato de Discord.');
+    }
     const bet = Number(args[0]);
-    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!gallo apuesta` · apuesta entre 1 y 100000 monedas.');
+    if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!gallo apuesta` · también puedes nombrar tu gallo con `a!gallo nombre Nombre`. Apuesta entre 1 y 100000 monedas.');
     const result = await playRoosterFight(guildId, userId, bet, message.id);
     if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
-    return sendPanel(message, economyActionPanel('🐓 Duelo de gallos', result.message, result.won ? result.payout - result.bet : -result.bet, result.balance));
+    return sendPanel(message, economyActionPanel(`🐓 Duelo de ${result.roosterName}`, result.message, result.won ? result.payout - result.bet : -result.bet, result.balance));
   }
   if (['slots', 'slot', 'tragamonedas', 'machine', 'maquina', 'máquina'].includes(command)) {
     const bet = Number(args[0]);

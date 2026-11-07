@@ -937,19 +937,56 @@ export async function playRoulette(guildId: string, userId: string, bet: number,
   return spin.immediate();
 }
 
-type RoosterProgress = { streak: number; bestStreak: number; wins: number; losses: number };
-type RoosterRound = { balance: number; bet: number; won: boolean; chance: number; payout: number; streak: number; nextChance: number; bestStreak: number; message: string };
-const emptyRoosterProgress: RoosterProgress = { streak: 0, bestStreak: 0, wins: 0, losses: 0 };
+type RoosterProgress = { name: string; streak: number; bestStreak: number; wins: number; losses: number };
+type RoosterRound = { balance: number; bet: number; won: boolean; chance: number; payout: number; streak: number; nextChance: number; bestStreak: number; roosterName: string; message: string };
+const emptyRoosterProgress: RoosterProgress = { name: 'Tu gallo', streak: 0, bestStreak: 0, wins: 0, losses: 0 };
+function normalizeRoosterName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.trim().replace(/\s+/g, ' ');
+  return name.length >= 2 && name.length <= 24 && !/[\r\n@<>`*_~|]/.test(name) ? name : undefined;
+}
 function roosterProgress(value: unknown): RoosterProgress {
   try {
     const parsed = JSON.parse(String(value ?? '{}')) as Partial<RoosterProgress>;
     return {
+      name: normalizeRoosterName(parsed.name) ?? emptyRoosterProgress.name,
       streak: Math.max(0, Math.min(20, Math.floor(Number(parsed.streak) || 0))),
       bestStreak: Math.max(0, Math.floor(Number(parsed.bestStreak) || 0)),
       wins: Math.max(0, Math.floor(Number(parsed.wins) || 0)),
       losses: Math.max(0, Math.floor(Number(parsed.losses) || 0)),
     };
   } catch { return { ...emptyRoosterProgress }; }
+}
+
+export async function setRoosterName(guildId: string, userId: string, requestedName: string): Promise<{ ok: true; name: string } | { ok: false; reason: 'invalid_name' }> {
+  guildId = GLOBAL_SCOPE_ID;
+  const name = normalizeRoosterName(requestedName);
+  if (!name) return { ok: false, reason: 'invalid_name' };
+  const gameId = `rooster_${userId}`;
+  const at = nowSeconds();
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    await mysqlEnsureAccount(connection, guildId, userId, true);
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      "SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats' FOR UPDATE",
+      [gameId, guildId, userId],
+    );
+    const state = { ...roosterProgress(rows[0]?.stateJson), name };
+    await connection.execute(
+      "INSERT INTO economy_games (id,guild_id,user_id,game_type,bet,status,state_json,created_at,updated_at) VALUES (?,?,?,'rooster_stats',0,'saved',?,?,?) ON DUPLICATE KEY UPDATE state_json=VALUES(state_json),updated_at=VALUES(updated_at)",
+      [gameId, guildId, userId, JSON.stringify(state), at, at],
+    );
+    return { ok: true as const, name };
+  });
+  const run = db.transaction(() => {
+    sqliteEnsureAccount(guildId, userId);
+    const row = db.prepare("SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats'")
+      .get(gameId, guildId, userId) as { stateJson: string } | undefined;
+    const state = { ...roosterProgress(row?.stateJson), name };
+    db.prepare("INSERT INTO economy_games (id,guild_id,user_id,game_type,bet,status,state_json,created_at,updated_at) VALUES (?,?,?,'rooster_stats',0,'saved',?,?,?) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at")
+      .run(gameId, guildId, userId, JSON.stringify(state), at, at);
+    return { ok: true as const, name };
+  });
+  return run.immediate();
 }
 
 function settleRoosterRound(balance: number, bet: number, progress: RoosterProgress): { round: RoosterRound; progress: RoosterProgress } {
@@ -959,6 +996,7 @@ function settleRoosterRound(balance: number, bet: number, progress: RoosterProgr
   const payout = won ? Math.floor((bet * 90) / chance) : 0;
   const streak = won ? Math.min(20, progress.streak + 1) : 0;
   const nextProgress: RoosterProgress = {
+    name: progress.name,
     streak,
     bestStreak: Math.max(progress.bestStreak, streak),
     wins: progress.wins + (won ? 1 : 0),
@@ -966,10 +1004,10 @@ function settleRoosterRound(balance: number, bet: number, progress: RoosterProgr
   };
   const nextChance = Math.min(70, 50 + streak);
   const message = won
-    ? `🐓 ¡Victoria! Tu gallo ganó con **${chance}%** de probabilidad y recibió **${payout.toLocaleString('es-MX')} monedas**. Racha: **${streak}** · próxima probabilidad: **${nextChance}%**.`
-    : `🐓 Esta vez ganó el rival. Tu racha vuelve a cero y la próxima pelea empieza en **50%** de probabilidad.`;
+    ? `🐓 ¡Victoria! **${progress.name}** ganó con **${chance}%** de probabilidad y recibió **${payout.toLocaleString('es-MX')} monedas**. Racha: **${streak}** · próxima probabilidad: **${nextChance}%**.`
+    : `🐓 Esta vez **${progress.name}** perdió. Tu racha vuelve a cero y la próxima pelea empieza en **50%** de probabilidad.`;
   return {
-    round: { balance: balance - bet + payout, bet, won, chance, payout, streak, nextChance, bestStreak: nextProgress.bestStreak, message },
+    round: { balance: balance - bet + payout, bet, won, chance, payout, streak, nextChance, bestStreak: nextProgress.bestStreak, roosterName: progress.name, message },
     progress: nextProgress,
   };
 }

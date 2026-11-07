@@ -33,7 +33,7 @@ export function catalogPanel(selected = 'inicio') {
     const key = selected in categories ? selected : 'inicio';
     const category = categories[key];
     const helpAddition = key === 'economia'
-        ? '\n\n`a!renunciar [oficio]` deja un trabajo activo y conserva su nivel/XP; con dos trabajos, indica cuál.'
+        ? '\n\n`a!renunciar [oficio]` deja un trabajo activo y conserva su nivel/XP; con dos trabajos, indica cuál.\n`a!gallo nombre NOMBRE` le pone nombre a tu gallo para los duelos.'
         : key === 'rpg'
             ? '\n\n`a!liberar` explica el reinicio · `a!liberar confirmar` borra tu mascota y abre la incubadora. La mochila y la bitácora se conservan.'
             : '';

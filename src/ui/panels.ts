@@ -584,7 +584,7 @@ export async function casinoPanel(guildId: string, userId: string) {
       `## 🃏 Cartas\n**Blackjack / 21** · **a!21 100** / **a!bj 100** / **a!blackjack 100**\nJuega contra el crupier; pide cartas o plántate con los botones de la partida.`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 🐓 Retos y actividades\n**Pelea de gallos** · **a!gallo 100**\nEmpiezas con 50% de probabilidad; cada victoria suma 1% hasta 70%. Si pierdes, la racha vuelve a cero.\n\n**Crimen** · **a!crime** · puedes ganar monedas o recibir una multa.\n**Robo** · **a!rob @persona** · intenta quitarle monedas a otra persona.\n**Pesca** · **a!fish** · necesitas una Caña de pescar de **a!shop**.`))
+      `## 🐓 Retos y actividades\n**Pelea de gallos** · **a!gallo 100**\nEmpiezas con 50% de probabilidad; cada victoria suma 1% hasta 70%. Si pierdes, la racha vuelve a cero. Ponle nombre con **a!gallo nombre NOMBRE**.\n\n**Crimen** · **a!crime** · puedes ganar monedas o recibir una multa.\n**Robo** · **a!rob @persona** · intenta quitarle monedas a otra persona.\n**Pesca** · **a!fish** · necesitas una Caña de pescar de **a!shop**.`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:casino:fish').setLabel('Ir a pescar').setEmoji('🎣').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
