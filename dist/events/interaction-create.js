@@ -715,6 +715,52 @@ export function registerInteractionHandler(client) {
                     await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id)));
                     return;
                 }
+                if (interaction.customId === 'eco:inventory:category' && interaction.isStringSelectMenu()) {
+                    const selected = interaction.values[0] ?? 'all';
+                    const category = ['all', 'food', 'rpg', 'economy', 'profile'].includes(selected) ? selected : 'all';
+                    await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id, 0, category)));
+                    return;
+                }
+                if (interaction.customId.startsWith('eco:inventory:page:') && interaction.isButton()) {
+                    const [, , , pageValue = '0', categoryValue = 'all'] = interaction.customId.split(':');
+                    const page = Number(pageValue);
+                    const category = ['all', 'food', 'rpg', 'economy', 'profile'].includes(categoryValue) ? categoryValue : 'all';
+                    await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id, Number.isSafeInteger(page) ? page : 0, category)));
+                    return;
+                }
+                if (interaction.customId.startsWith('eco:inventory:use:') && interaction.isStringSelectMenu()) {
+                    const [, , , pageValue = '0', categoryValue = 'all'] = interaction.customId.split(':');
+                    const parsedPage = Number(pageValue);
+                    const page = Number.isSafeInteger(parsedPage) && parsedPage >= 0 ? parsedPage : 0;
+                    const category = ['all', 'food', 'rpg', 'economy', 'profile'].includes(categoryValue) ? categoryValue : 'all';
+                    const [kind, ...itemParts] = (interaction.values[0] ?? '').split(':');
+                    const itemId = itemParts.join(':');
+                    if (!itemId || (kind !== 'rpg' && kind !== 'economy')) {
+                        await interaction.reply({ content: 'Selecciona un artículo válido.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+                    let response;
+                    if (kind === 'rpg') {
+                        const result = await useRpgItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
+                        const message = result.ok ? result.message
+                            : result.reason === 'no_pet' ? 'Primero adopta una mascota.'
+                                : result.reason === 'missing_item' ? 'Ese artículo ya no está en tu mochila.'
+                                    : rpgItems.find((item) => item.id === itemId)?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.'
+                                        : 'No hay PV, energía ni tiempo de espera que este artículo pueda recuperar ahora.';
+                        response = { content: message, flags: ['Ephemeral'] };
+                    }
+                    else {
+                        const result = await useShopItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
+                        const message = result.ok ? result.message
+                            : result.reason === 'missing_rod' ? 'Necesitas una Caña de pescar para usar cebo.'
+                                : result.reason === 'cooldown' ? `⏳ Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.`
+                                    : 'No tienes ese consumible o ya no está disponible.';
+                        response = result.ok && result.kind === 'fish' ? economyActionPanel('🎣 Cebo utilizado', result.message, result.amount, result.balance) : { content: message, flags: ['Ephemeral'] };
+                    }
+                    await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id, page, category)));
+                    await interaction.followUp(response);
+                    return;
+                }
                 if (interaction.customId === 'eco:inventory') {
                     await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id)));
                     return;

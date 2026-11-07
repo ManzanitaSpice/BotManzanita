@@ -15,17 +15,22 @@ import {
 import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
-import { profileShopCategories } from '../data/profile-shop.js';
+import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BlackjackView } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_COIN_REWARD_SCALE, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
-import { equippedProfileBadges, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
+import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
 
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
 type RpgMenuItem = { entry: { itemId: string; quantity: number }; item: (typeof rpgItems)[number] };
+type InventoryFilter = 'all' | 'food' | 'rpg' | 'economy' | 'profile';
+type InventoryRow = {
+  kind: 'rpg' | 'economy' | 'profile' | 'legacy'; itemId: string; name: string; emoji: string; description: string;
+  quantity: number; rarity?: string; section: string; filter: InventoryFilter; usable: boolean;
+};
 
 function rpgItemMenu(entries: RpgMenuItem[], requestedPage = 0, noun = 'artículos') {
   const pageSize = entries.length > 25 ? 23 : 25;
@@ -538,29 +543,70 @@ export async function rpgShopPanel(guildId: string, userId: string, requestedPag
   return storePanel(guildId, userId, requestedCategory === 'all' ? 'rpg:all' : `rpg:${requestedCategory}`, requestedPage);
 }
 
-export async function inventoryPanel(guildId: string, userId: string) {
-  const ownedItems = await getInventory(guildId, userId);
-  const descriptions = new Map<string, string>(storeItems.map((item) => [item.id, `${item.emoji} **${item.name}** — ${item.description}`]));
+export async function inventoryPanel(guildId: string, userId: string, requestedPage = 0, requestedFilter: InventoryFilter = 'all') {
+  const [economyInventory, rpgInventory, profileInventory] = await Promise.all([
+    getInventory(guildId, userId), getRpgInventory(guildId, userId), getProfileInventory(guildId, userId),
+  ]);
   const legacyNames = new Map([['marco_neon', 'Marco Neón'], ['tema_nocturno', 'Tema Nocturno'], ['insignia_dj', 'Insignia DJ']]);
-  const listing = ownedItems.length
-    ? ownedItems.map((item, index) => `${String(index + 1).padStart(2, '0')}  ${descriptions.get(item.itemId) ?? `📦 **${legacyNames.get(item.itemId) ?? item.itemId}** · coleccionable anterior`}${item.quantity > 1 ? `  **×${item.quantity}**` : ''}`).join('\n')
-    : '_Tu mochila está vacía. Abre la tienda para encontrar tu primer artículo._';
-  const usableItems = ownedItems.filter((item) => item.quantity > 0 && storeItems.some((entry) => entry.id === item.itemId && entry.usable));
-  const container = new ContainerBuilder()
-    .setAccentColor(colors.economy)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🎒 MOCHILA\n**${ownedItems.reduce((sum, item) => sum + item.quantity, 0)} unidades** · ${ownedItems.length} tipos de artículo\n\n${listing}`))
+  const economyRows: InventoryRow[] = economyInventory.map((entry) => {
+    const item = storeItems.find((candidate) => candidate.id === entry.itemId);
+    return item
+      ? { kind: 'economy', itemId: entry.itemId, name: item.name, emoji: item.emoji, description: item.description, quantity: entry.quantity, section: item.category === 'jobs' ? 'Herramientas de oficio' : 'Economía', filter: 'economy', usable: item.usable }
+      : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Artículo anterior', quantity: entry.quantity, section: 'Otros objetos', filter: 'economy', usable: false };
+  });
+  const rpgRows: InventoryRow[] = rpgInventory.flatMap((entry): InventoryRow[] => {
+    const item = rpgItems.find((candidate) => candidate.id === entry.itemId);
+    if (!item) return [{ kind: 'legacy', itemId: entry.itemId, name: entry.itemId, emoji: '📦', description: 'Artículo RPG anterior', quantity: entry.quantity, section: 'Aventura RPG · Otros', filter: 'rpg', usable: false }];
+    const isFood = item.category === 'Alimento';
+    return [{ kind: 'rpg', itemId: entry.itemId, name: item.name, emoji: item.emoji, description: item.description, quantity: entry.quantity, rarity: item.rarity, section: isFood ? 'Comida de compañera' : `Aventura RPG · ${item.category}`, filter: isFood ? 'food' : 'rpg', usable: true }];
+  });
+  const profileRows: InventoryRow[] = profileInventory.map((entry) => {
+    const item = profileShopItems.find((candidate) => candidate.id === entry.itemId);
+    return item
+      ? { kind: 'profile', itemId: entry.itemId, name: item.name, emoji: item.emoji, description: item.description, quantity: entry.quantity, rarity: item.rarity, section: 'Personalización', filter: 'profile', usable: false }
+      : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Coleccionable anterior', quantity: entry.quantity, section: 'Personalización', filter: 'profile', usable: false };
+  });
+  const allRows = [...rpgRows, ...economyRows, ...profileRows];
+  const filterNames: Record<InventoryFilter, string> = { all: 'Todo', food: 'Comida', rpg: 'Aventura RPG', economy: 'Economía', profile: 'Personalización' };
+  const categoryOptions: Array<{ label: string; value: InventoryFilter; emoji: string; description: string }> = [
+    { label: 'Todo', value: 'all', emoji: '🎒', description: `${allRows.length} artículos distintos` },
+    { label: 'Comida', value: 'food', emoji: '🍓', description: `${allRows.filter((item) => item.filter === 'food').length} alimentos RPG` },
+    { label: 'Aventura RPG', value: 'rpg', emoji: '🐾', description: `${allRows.filter((item) => item.filter === 'rpg').length} artículos RPG` },
+    { label: 'Economía', value: 'economy', emoji: '🪙', description: `${allRows.filter((item) => item.filter === 'economy').length} objetos y herramientas` },
+    { label: 'Personalización', value: 'profile', emoji: '🎨', description: `${allRows.filter((item) => item.filter === 'profile').length} coleccionables` },
+  ];
+  const filter = categoryOptions.some((option) => option.value === requestedFilter) ? requestedFilter : 'all';
+  const entries = allRows.filter((item) => filter === 'all' || item.filter === filter);
+  const sectionOrder = (item: InventoryRow) => item.filter === 'food' ? 0 : item.filter === 'rpg' ? 1 : item.filter === 'economy' ? 2 : item.filter === 'profile' ? 3 : 4;
+  entries.sort((a, b) => sectionOrder(a) - sectionOrder(b) || a.section.localeCompare(b.section, 'es') || a.name.localeCompare(b.name, 'es'));
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
+  const page = Math.min(Math.max(0, Number.isSafeInteger(requestedPage) ? requestedPage : 0), pageCount - 1);
+  const pageItems = entries.slice(page * pageSize, (page + 1) * pageSize);
+  const sections = new Map<string, InventoryRow[]>();
+  for (const item of pageItems) sections.set(item.section, [...(sections.get(item.section) ?? []), item]);
+  const sectionEmoji = (section: string) => section === 'Comida de compañera' ? '🍓' : section.startsWith('Aventura RPG') ? '🐾' : section === 'Economía' ? '🪙' : section === 'Herramientas de oficio' ? '🧰' : section === 'Personalización' ? '🎨' : '📦';
+  const listing = [...sections].map(([section, items]) => `### ${sectionEmoji(section)} ${section}\n${items.map((item) => `› ${item.emoji} **${item.name}**　×${item.quantity}${item.rarity ? `　· ${item.rarity}` : ''}`).join('\n')}`).join('\n\n');
+  const units = entries.reduce((sum, item) => sum + item.quantity, 0);
+  const start = entries.length ? page * pageSize + 1 : 0;
+  const end = Math.min((page + 1) * pageSize, entries.length);
+  const usableItems = pageItems.filter((item) => item.usable);
+  const container = new ContainerBuilder().setAccentColor(0x8b75dc)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎒 Mi mochila\n**${entries.length} artículos · ${units} unidades**　·　${filterNames[filter]}\n${start}–${end} de ${entries.length}　·　página ${page + 1}/${pageCount}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(listing || '_No tienes objetos en esta sección. Cambia el filtro o visita la tienda._'));
+  container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId('eco:inventory:category').setPlaceholder(`Ver categoría · ${filterNames[filter]}`).addOptions(categoryOptions.map((option) => ({ ...option, default: option.value === filter }))),
+  ));
   if (usableItems.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId('eco:use').setPlaceholder('Usar un artículo')
-        .addOptions(usableItems.map((item) => {
-          const definition = storeItems.find((entry) => entry.id === item.itemId)!;
-          return { label: `${definition.name} · x${item.quantity}`, value: item.itemId, description: definition.description.slice(0, 100), emoji: definition.emoji };
-        })),
-    ));
+    new StringSelectMenuBuilder().setCustomId(`eco:inventory:use:${page}:${filter}`).setPlaceholder('Consumir o equipar un artículo').addOptions(usableItems.map((item) => ({ label: `${item.name} · x${item.quantity}`, value: `${item.kind}:${item.itemId}`, description: item.description.slice(0, 100), emoji: item.emoji }))),
+  ));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId('eco:back').setLabel('Volver a mi bóveda').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('eco:store').setLabel('Abrir tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
-    ));
+    new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.max(0, page - 1)}:${filter}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.min(pageCount - 1, page + 1)}:${filter}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
+    new ButtonBuilder().setCustomId('eco:back').setLabel('Bóveda').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
+  ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
