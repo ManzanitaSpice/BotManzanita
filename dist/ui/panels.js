@@ -185,7 +185,7 @@ export async function expeditionLogPanel(guildId, userId, requestedPage = 0) {
         if (index < log.events.length - 1)
             container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
     }
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:logs:${Math.max(0, page - 1)}`).setLabel('Más recientes').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`rpg:logs:${Math.min(pageCount - 1, page + 1)}`).setLabel('Anteriores').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount), new ButtonBuilder().setCustomId('rpg:exploration:open').setLabel('Nueva expedición').setEmoji('🧭').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('rpg:profile').setLabel('Ficha').setEmoji('🐾').setStyle(ButtonStyle.Primary)));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:logs:previous:${Math.max(0, page - 1)}`).setLabel('Más recientes').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`rpg:logs:next:${Math.min(pageCount - 1, page + 1)}`).setLabel('Anteriores').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount), new ButtonBuilder().setCustomId('rpg:exploration:open').setLabel('Nueva expedición').setEmoji('🧭').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('rpg:profile').setLabel('Ficha').setEmoji('🐾').setStyle(ButtonStyle.Primary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function rpgMenuPanel(guildId, userId) {

@@ -159,6 +159,12 @@ const decisionsBySpecialization: Record<PetSpecialization, string[]> = {
 };
 
 export type PetSpecies = { name: string; emoji: string; base: [number, number, number]; rarity: PetRarity; element: PetElement; specialization: PetSpecialization };
+const petRarityOverrides: Record<string, PetRarity> = {
+  'Camaleón del viento': 'Común',
+  'Basilisco pequeño': 'Común',
+  'Medusa lunar': 'Común',
+  'Ardilla cometa': 'Común',
+};
 const species: PetSpecies[] = [
   { name: 'Zorrito de brasa', emoji: '🦊', base: [9, 5, 9], element: 'Fuego', specialization: 'Atacante' },
   { name: 'Lunagato', emoji: '🐈', base: [7, 7, 10], element: 'Sombra', specialization: 'Explorador' },
@@ -208,7 +214,116 @@ const species: PetSpecies[] = [
   { name: 'Cisne de loto', emoji: '🦢', base: [7, 9, 9], element: 'Agua', specialization: 'Místico' },
   { name: 'Ardilla cometa', emoji: '🐿️', base: [8, 6, 12], element: 'Astral', specialization: 'Explorador' },
   { name: 'Manta de ópalo', emoji: '🪽', base: [8, 11, 7], element: 'Astral', specialization: 'Guardián' },
-].map((entry, index) => ({ ...entry, rarity: index < 28 ? 'Común' : index < 40 ? 'Poco común' : index < 45 ? 'Raro' : index < 47 ? 'Épico' : 'Legendario' } as PetSpecies));
+].map((entry, index) => ({ ...entry, rarity: petRarityOverrides[entry.name] ?? (index < 28 ? 'Común' : index < 40 ? 'Poco común' : index < 45 ? 'Raro' : index < 47 ? 'Épico' : 'Legendario') } as PetSpecies));
+const additionalSpecies: PetSpecies[] = [
+  { name: 'Topillo campanero', emoji: '🐹', base: [8, 8, 8], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+  { name: 'Salamandra de piloncillo', emoji: '🦎', base: [10, 7, 8], rarity: 'Común', element: 'Fuego', specialization: 'Atacante' },
+  { name: 'Zorruela del rocío', emoji: '🦊', base: [7, 7, 11], rarity: 'Común', element: 'Agua', specialization: 'Explorador' },
+  { name: 'Tortuga tintera', emoji: '🐢', base: [6, 12, 5], rarity: 'Común', element: 'Sombra', specialization: 'Guardián' },
+  { name: 'Cabrita de neblina', emoji: '🐐', base: [7, 11, 6], rarity: 'Común', element: 'Viento', specialization: 'Apoyo' },
+  { name: 'Murciélago de menta', emoji: '🦇', base: [8, 6, 10], rarity: 'Común', element: 'Naturaleza', specialization: 'Explorador' },
+  { name: 'Ajolote cempasúchil', emoji: '🦎', base: [7, 8, 10], rarity: 'Común', element: 'Fuego', specialization: 'Apoyo' },
+  { name: 'Tlacuache de papel picado', emoji: '🐀', base: [8, 8, 8], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Tejón brisita', emoji: '🦡', base: [8, 11, 6], rarity: 'Común', element: 'Viento', specialization: 'Guardián' },
+  { name: 'Liebre de panal', emoji: '🐇', base: [7, 8, 10], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Apoyo' },
+  { name: 'Medusita de lluvia', emoji: '🪼', base: [6, 8, 10], rarity: 'Común', element: 'Agua', specialization: 'Místico' },
+  { name: 'Cenzontle de nube', emoji: '🐦', base: [7, 7, 10], rarity: 'Común', element: 'Viento', specialization: 'Apoyo' },
+  { name: 'Caracol vitral', emoji: '🐌', base: [5, 11, 7], rarity: 'Poco común', element: 'Luz', specialization: 'Guardián' },
+  { name: 'Perrito de nopal', emoji: '🐕', base: [8, 9, 8], rarity: 'Común', element: 'Naturaleza', specialization: 'Apoyo' },
+  { name: 'Rana campanilla', emoji: '🐸', base: [8, 8, 9], rarity: 'Común', element: 'Naturaleza', specialization: 'Místico' },
+  { name: 'Conejo solsticio', emoji: '🐰', base: [7, 8, 10], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+  { name: 'Serpiente de pluma', emoji: '🐍', base: [9, 6, 11], rarity: 'Común', element: 'Viento', specialization: 'Atacante' },
+  { name: 'Erizo naranjo', emoji: '🦔', base: [8, 10, 7], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Guardián' },
+  { name: 'Gato de tinta lunar', emoji: '🐈‍⬛', base: [8, 7, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+  { name: 'Abejorro de ámbar', emoji: '🐝', base: [9, 7, 9], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Capibara de lirio', emoji: '🦫', base: [7, 11, 6], rarity: 'Común', element: 'Agua', specialization: 'Guardián' },
+  { name: 'Lagarto piñón', emoji: '🦎', base: [8, 10, 7], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+  { name: 'Búho trébol', emoji: '🦉', base: [7, 9, 10], rarity: 'Común', element: 'Naturaleza', specialization: 'Místico' },
+  { name: 'Pez globo cobrizo', emoji: '🐡', base: [8, 11, 6], rarity: 'Común', element: 'Agua', specialization: 'Guardián' },
+  { name: 'Venadito de papel picado', emoji: '🦌', base: [7, 8, 10], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Ovejita de algodón de azúcar', emoji: '🐑', base: [6, 10, 8], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Cangrejín de limonita', emoji: '🦀', base: [7, 12, 5], rarity: 'Común', element: 'Tierra', specialization: 'Guardián' },
+  { name: 'Mapache de luciérnagas', emoji: '🦝', base: [8, 6, 11], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+  { name: 'Axolote de obsidiana', emoji: '🦎', base: [8, 10, 7], rarity: 'Poco común', element: 'Sombra', specialization: 'Apoyo' },
+  { name: 'Lince de campanillas', emoji: '🐈', base: [9, 7, 10], rarity: 'Poco común', element: 'Luz', specialization: 'Explorador' },
+  { name: 'Mariposa de amapolas', emoji: '🦋', base: [7, 6, 12], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Místico' },
+  { name: 'Dragón de jade rojo', emoji: '🐉', base: [11, 8, 7], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Atacante' },
+  { name: 'Mantarraya del monzón', emoji: '🪽', base: [8, 11, 7], rarity: 'Poco común', element: 'Agua', specialization: 'Guardián' },
+  { name: 'Zorro de lluvia invertida', emoji: '🦊', base: [8, 7, 11], rarity: 'Poco común', element: 'Viento', specialization: 'Explorador' },
+  { name: 'Escarabajo de ópalo', emoji: '🪲', base: [8, 11, 7], rarity: 'Poco común', element: 'Luz', specialization: 'Guardián' },
+  { name: 'Colibrí de relámpago', emoji: '🐦', base: [8, 6, 12], rarity: 'Poco común', element: 'Rayo', specialization: 'Apoyo' },
+  { name: 'Coyote de espejos', emoji: '🐺', base: [10, 7, 9], rarity: 'Poco común', element: 'Astral', specialization: 'Atacante' },
+  { name: 'Caballito de mar tornasol', emoji: '🐠', base: [7, 8, 11], rarity: 'Poco común', element: 'Agua', specialization: 'Místico' },
+  { name: 'Ciervo de cometa', emoji: '🦌', base: [8, 8, 10], rarity: 'Poco común', element: 'Astral', specialization: 'Atacante' },
+  { name: 'Lechuza de la hora azul', emoji: '🦉', base: [7, 9, 10], rarity: 'Poco común', element: 'Sombra', specialization: 'Místico' },
+  { name: 'Quetzal de viento lunar', emoji: '🦜', base: [10, 7, 11], rarity: 'Raro', element: 'Viento', specialization: 'Místico' },
+  { name: 'Basilisco de vidrio ahumado', emoji: '🐍', base: [11, 8, 8], rarity: 'Raro', element: 'Sombra', specialization: 'Atacante' },
+  { name: 'Kraken de medianoche', emoji: '🐙', base: [8, 11, 9], rarity: 'Raro', element: 'Agua', specialization: 'Místico' },
+  { name: 'Fénix flor de cobre', emoji: '🔥', base: [12, 7, 10], rarity: 'Raro', element: 'Fuego', specialization: 'Atacante' },
+  { name: 'Tapir de constelación', emoji: '🐗', base: [8, 12, 8], rarity: 'Raro', element: 'Astral', specialization: 'Guardián' },
+  { name: 'Serafín de prisma', emoji: '🦋', base: [8, 9, 12], rarity: 'Épico', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Dragón del eclipse doble', emoji: '🐉', base: [12, 10, 8], rarity: 'Épico', element: 'Astral', specialization: 'Atacante' },
+  { name: 'Auraluz, dragón de la primera aurora', emoji: '🐲', base: [12, 9, 11], rarity: 'Legendario', element: 'Fuego', specialization: 'Místico' },
+];
+const rarityCoverageSpecies: PetSpecies[] = [
+  { name: 'Gallo de la hoguera azul', emoji: '🐓', base: [12, 8, 10], rarity: 'Épico', element: 'Fuego', specialization: 'Atacante' },
+  { name: 'Ballena de los siete espejos', emoji: '🐋', base: [12, 11, 10], rarity: 'Legendario', element: 'Agua', specialization: 'Místico' },
+  { name: 'Yaguarí de raíces cantoras', emoji: '🐆', base: [11, 10, 9], rarity: 'Épico', element: 'Naturaleza', specialization: 'Atacante' },
+  { name: 'Ceiba de los mil colibríes', emoji: '🌳', base: [10, 12, 11], rarity: 'Legendario', element: 'Naturaleza', specialization: 'Apoyo' },
+  { name: 'Albatros de los cuatro vientos', emoji: '🕊️', base: [10, 9, 12], rarity: 'Épico', element: 'Viento', specialization: 'Explorador' },
+  { name: 'León de la corriente celeste', emoji: '🦁', base: [12, 12, 10], rarity: 'Legendario', element: 'Viento', specialization: 'Guardián' },
+  { name: 'Armiño de escarcha azul', emoji: '🐁', base: [9, 7, 11], rarity: 'Raro', element: 'Hielo', specialization: 'Explorador' },
+  { name: 'Oso de la aurora rota', emoji: '🐻', base: [11, 12, 8], rarity: 'Épico', element: 'Hielo', specialization: 'Guardián' },
+  { name: 'Dragón de los glaciares cantores', emoji: '🐉', base: [12, 10, 11], rarity: 'Legendario', element: 'Hielo', specialization: 'Místico' },
+  { name: 'Libélula de cristal solar', emoji: '🦋', base: [7, 8, 12], rarity: 'Raro', element: 'Luz', specialization: 'Apoyo' },
+  { name: 'Ciervo del alba eterna', emoji: '🦌', base: [11, 12, 10], rarity: 'Legendario', element: 'Luz', specialization: 'Guardián' },
+  { name: 'Cuervo del eclipse vacío', emoji: '🐦‍⬛', base: [11, 9, 10], rarity: 'Épico', element: 'Sombra', specialization: 'Místico' },
+  { name: 'Leviatán de la noche sin luna', emoji: '🐉', base: [12, 11, 10], rarity: 'Legendario', element: 'Sombra', specialization: 'Atacante' },
+  { name: 'Topo de geoda violeta', emoji: '🐹', base: [10, 12, 8], rarity: 'Épico', element: 'Tierra', specialization: 'Guardián' },
+  { name: 'Titán de jade dormido', emoji: '🪨', base: [12, 13, 8], rarity: 'Legendario', element: 'Tierra', specialization: 'Guardián' },
+  { name: 'Liebre de chispa azul', emoji: '🐇', base: [9, 7, 12], rarity: 'Raro', element: 'Rayo', specialization: 'Explorador' },
+  { name: 'Serpiente del relámpago doble', emoji: '🐍', base: [12, 8, 12], rarity: 'Épico', element: 'Rayo', specialization: 'Atacante' },
+  { name: 'Quimera del trueno eterno', emoji: '🦁', base: [13, 11, 10], rarity: 'Legendario', element: 'Rayo', specialization: 'Atacante' },
+];
+const balancedSpecies: PetSpecies[] = [
+  { name: 'Ajolote de carbón', emoji: '🦎', base: [8, 8, 7], rarity: 'Común', element: 'Fuego', specialization: 'Apoyo' },
+  { name: 'Cascabel de brasa', emoji: '🐍', base: [9, 6, 9], rarity: 'Común', element: 'Fuego', specialization: 'Atacante' },
+  { name: 'Coatí de tizón', emoji: '🦝', base: [8, 7, 9], rarity: 'Común', element: 'Fuego', specialization: 'Explorador' },
+  { name: 'Venado de magma', emoji: '🦌', base: [9, 9, 8], rarity: 'Poco común', element: 'Fuego', specialization: 'Guardián' },
+  { name: 'Tortuga volcánica', emoji: '🐢', base: [7, 12, 6], rarity: 'Poco común', element: 'Fuego', specialization: 'Guardián' },
+  { name: 'Polilla de rescoldo', emoji: '🦋', base: [8, 7, 10], rarity: 'Poco común', element: 'Fuego', specialization: 'Místico' },
+  { name: 'Mantarraya de lluvia azul', emoji: '🐟', base: [7, 9, 11], rarity: 'Poco común', element: 'Agua', specialization: 'Místico' },
+  { name: 'Zorro cometa', emoji: '🦊', base: [9, 7, 11], rarity: 'Poco común', element: 'Viento', specialization: 'Explorador' },
+  { name: 'Gavilán de nubes', emoji: '🦅', base: [10, 7, 10], rarity: 'Poco común', element: 'Viento', specialization: 'Atacante' },
+  { name: 'Foca copo', emoji: '🦭', base: [7, 10, 7], rarity: 'Común', element: 'Hielo', specialization: 'Guardián' },
+  { name: 'Ardilla de escarcha', emoji: '🐿️', base: [7, 7, 10], rarity: 'Común', element: 'Hielo', specialization: 'Explorador' },
+  { name: 'Lemming de hielo', emoji: '🐹', base: [8, 9, 7], rarity: 'Común', element: 'Hielo', specialization: 'Guardián' },
+  { name: 'Perrito glaciar', emoji: '🐕', base: [8, 8, 8], rarity: 'Común', element: 'Hielo', specialization: 'Apoyo' },
+  { name: 'Salamandra nevada', emoji: '🦎', base: [8, 7, 9], rarity: 'Común', element: 'Hielo', specialization: 'Místico' },
+  { name: 'Búho de cristal helado', emoji: '🦉', base: [7, 8, 9], rarity: 'Común', element: 'Hielo', specialization: 'Místico' },
+  { name: 'Lince aurora', emoji: '🐈', base: [9, 7, 11], rarity: 'Poco común', element: 'Hielo', specialization: 'Explorador' },
+  { name: 'Bisonte de ventisca', emoji: '🦬', base: [8, 12, 6], rarity: 'Poco común', element: 'Hielo', specialization: 'Guardián' },
+  { name: 'Topo de cobre', emoji: '🐹', base: [7, 8, 8], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+  { name: 'Ratón de chispas', emoji: '🐭', base: [8, 6, 10], rarity: 'Común', element: 'Rayo', specialization: 'Atacante' },
+  { name: 'Polilla voltaica', emoji: '🦋', base: [7, 6, 10], rarity: 'Común', element: 'Rayo', specialization: 'Místico' },
+  { name: 'Geco fulgor', emoji: '🦎', base: [8, 7, 9], rarity: 'Común', element: 'Rayo', specialization: 'Atacante' },
+  { name: 'Cuy de tormenta', emoji: '🐹', base: [8, 9, 7], rarity: 'Común', element: 'Rayo', specialization: 'Guardián' },
+  { name: 'Zorrillo de estática', emoji: '🦨', base: [8, 7, 9], rarity: 'Común', element: 'Rayo', specialization: 'Apoyo' },
+  { name: 'Caracol chispeante', emoji: '🐌', base: [6, 10, 7], rarity: 'Común', element: 'Rayo', specialization: 'Guardián' },
+  { name: 'Lechuza conductora', emoji: '🦉', base: [7, 7, 10], rarity: 'Común', element: 'Rayo', specialization: 'Explorador' },
+  { name: 'Jaguar del arco eléctrico', emoji: '🐆', base: [10, 7, 10], rarity: 'Poco común', element: 'Rayo', specialization: 'Atacante' },
+  { name: 'Lagartija de geoda', emoji: '🦎', base: [8, 9, 7], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+  { name: 'Gatito de eclipse', emoji: '🐈‍⬛', base: [7, 7, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+  { name: 'Murciélago de ceniza lunar', emoji: '🦇', base: [8, 6, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+  { name: 'Rana de humo violeta', emoji: '🐸', base: [7, 8, 8], rarity: 'Común', element: 'Sombra', specialization: 'Místico' },
+  { name: 'Jabalí de obsidiana', emoji: '🐗', base: [10, 8, 8], rarity: 'Poco común', element: 'Tierra', specialization: 'Atacante' },
+  { name: 'Armadillo de cuarzo', emoji: '🦔', base: [7, 11, 8], rarity: 'Poco común', element: 'Tierra', specialization: 'Guardián' },
+  { name: 'Mapache de nebulosa', emoji: '🦝', base: [8, 7, 10], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+  { name: 'Conejo de cometa azul', emoji: '🐇', base: [7, 7, 11], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+  { name: 'Loro de constelaciones', emoji: '🦜', base: [8, 7, 11], rarity: 'Poco común', element: 'Astral', specialization: 'Apoyo' },
+  { name: 'Gacela de polvo estelar', emoji: '🦌', base: [9, 8, 10], rarity: 'Poco común', element: 'Astral', specialization: 'Místico' },
+];
+species.push(...additionalSpecies, ...rarityCoverageSpecies, ...balancedSpecies);
 export function getPetSpeciesMetadata(name: string): PetSpecies | undefined {
   return species.find((candidate) => candidate.name === name);
 }
@@ -280,8 +395,9 @@ export async function equipRpgMoves(guildId: string, userId: string, moveIds: st
 const rarityWeights: Array<[PetRarity, number, number]> = [
   ['Común', 58, 0], ['Poco común', 25, 1], ['Raro', 11, 2], ['Épico', 5, 3], ['Legendario', 1, 4],
 ];
-function rarityWeightsForElement(element?: PetElement): Array<[PetRarity, number, number]> {
-  return element ? rarityWeights.filter(([rarity]) => species.some((candidate) => candidate.element === element && candidate.rarity === rarity)) : rarityWeights;
+function rarityWeightsForElement(_element?: PetElement): Array<[PetRarity, number, number]> {
+  // Cada huevo usa la misma tabla. El catálogo cubre todas las rarezas para cada elemento.
+  return rarityWeights;
 }
 export function getPetRarityOdds(element: PetElement): Array<{ rarity: PetRarity; odds: number }> {
   const available = rarityWeightsForElement(element);
@@ -291,17 +407,24 @@ export function getPetRarityOdds(element: PetElement): Array<{ rarity: PetRarity
   if (values.length) values[0]!.odds += 100 - roundedTotal;
   return values;
 }
+export function getPetRarityCounts(element: PetElement): Array<{ rarity: PetRarity; count: number }> {
+  return rarityWeights.map(([rarity]) => ({ rarity, count: species.filter((candidate) => candidate.element === element && candidate.rarity === rarity).length }));
+}
 const rarityRank: Record<PetRarity, number> = { 'Común': 0, 'Poco común': 1, 'Raro': 2, 'Épico': 3, 'Legendario': 4 };
 export const RPG_DAILY_XP_CAP = 650;
 export const RPG_EXPLORE_COOLDOWN = 4 * 60 * 60;
 export const RPG_BATTLE_COOLDOWN = 3 * 60 * 60;
 export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
+export const RPG_TRAIN_COIN_COST = 180;
+export const RPG_TRAIN_ENERGY_COST = 15;
+export const RPG_TRAIN_HUNGER_COST = 6;
+export const RPG_TRAIN_MIN_HUNGER = 8;
+export const RPG_CARE_COOLDOWN = 6 * 60 * 60;
 export const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
-const CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
   { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 40 },
-  { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 50 },
+  { id: 'battle', title: 'Guardián', description: 'Gana 1 combate contra un enemigo', target: 1, reward: 50 },
   { id: 'train', title: 'Disciplina', description: 'Entrena a tu mascota 1 vez', target: 1, reward: 30 },
 ] as const;
 
@@ -462,7 +585,7 @@ export async function careForRpgPet(guildId: string, userId: string): Promise<
   const at = now();
   const care = (pet: RpgPet) => {
     if (pet.affection >= 100) return { ok: false as const, reason: 'max_affection' as const };
-    const remaining = (pet.lastCareAt ?? 0) + CARE_COOLDOWN - at;
+    const remaining = (pet.lastCareAt ?? 0) + RPG_CARE_COOLDOWN - at;
     if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
     const affectionGained = pet.hunger < 30 ? 4 : pet.hunger < 60 ? 6 : 8;
     return { ok: true as const, affectionGained, pet: { ...pet, affection: Math.min(100, pet.affection + affectionGained), lastCareAt: at } };
@@ -765,18 +888,18 @@ export async function battleRpg(guildId: string, userId: string, reference: stri
 
 export async function trainRpgPet(guildId: string, userId: string, stat: 'strength' | 'defense' | 'agility', reference: string): Promise<{ ok: true; pet: RpgPet; balance: number } | { ok: false; reason: 'no_pet' | 'low_energy' | 'low_hunger' | 'funds' | 'cooldown'; secondsRemaining?: number }> {
   guildId = GLOBAL_SCOPE_ID;
-  const cost = 180; const at = now();
-  const levelPet = (pet: RpgPet): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - 15, hunger: Math.max(0, pet.hunger - 6), needsUpdatedAt: at, lastTrainAt: at });
+  const at = now();
+  const levelPet = (pet: RpgPet): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - RPG_TRAIN_ENERGY_COST, hunger: Math.max(0, pet.hunger - RPG_TRAIN_HUNGER_COST), needsUpdatedAt: at, lastTrainAt: at });
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
     const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
-    if (pet.energy < 15) return { ok: false as const, reason: 'low_energy' as const };
-    if (pet.hunger < 8) return { ok: false as const, reason: 'low_hunger' as const };
-    const payment = await changeBalanceMysql(connection, guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const };
+    if (pet.energy < RPG_TRAIN_ENERGY_COST) return { ok: false as const, reason: 'low_energy' as const };
+    if (pet.hunger < RPG_TRAIN_MIN_HUNGER) return { ok: false as const, reason: 'low_hunger' as const };
+    const payment = await changeBalanceMysql(connection, guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const };
     const updated = levelPet(pet); await savePetMysql(connection, guildId, userId, updated, at); await updateQuestMysql(connection, guildId, userId, 'train', at);
     return { ok: true as const, pet: updated, balance: payment.balance };
   });
-  const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining }; if (pet.energy < 15) return { ok: false as const, reason: 'low_energy' as const }; if (pet.hunger < 8) return { ok: false as const, reason: 'low_hunger' as const }; const payment = changeBalanceSqlite(guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true as const, pet: updated, balance: payment.balance }; });
+  const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining }; if (pet.energy < RPG_TRAIN_ENERGY_COST) return { ok: false as const, reason: 'low_energy' as const }; if (pet.hunger < RPG_TRAIN_MIN_HUNGER) return { ok: false as const, reason: 'low_hunger' as const }; const payment = changeBalanceSqlite(guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true as const, pet: updated, balance: payment.balance }; });
   return run.immediate();
 }
 

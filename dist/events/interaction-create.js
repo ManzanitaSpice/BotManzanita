@@ -452,7 +452,7 @@ export function registerInteractionHandler(client) {
                     return;
                 }
                 if (interaction.customId.startsWith('rpg:logs:') && interaction.isButton()) {
-                    const page = Number(interaction.customId.slice('rpg:logs:'.length));
+                    const page = Number(interaction.customId.split(':').at(-1));
                     await interaction.update(componentUpdate(await expeditionLogPanel(guildId, interaction.user.id, Number.isSafeInteger(page) ? page : 0)));
                     return;
                 }

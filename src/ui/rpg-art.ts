@@ -1,19 +1,19 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { AttachmentBuilder } from 'discord.js';
 import { resolve } from 'node:path';
-import { getPetRarityOdds, type PetElement, type RpgPet } from '../services/rpg.js';
+import { getPetRarityCounts, getPetRarityOdds, type PetElement, type RpgPet } from '../services/rpg.js';
 
 export const rpgEggOptions: Array<{ element: PetElement; emoji: string; accent: string; backdrop: string; egg: string; title: string; flavor: string }> = [
-  { element: 'Fuego', emoji: '🔥', accent: '#fb6846', backdrop: 'zone-ruinas.png', egg: 'legendario.png', title: 'Huevo de brasa', flavor: 'Criaturas de fuego y ceniza' },
-  { element: 'Agua', emoji: '💧', accent: '#4dc4ef', backdrop: 'zone-cumbres.png', egg: 'hielo.png', title: 'Huevo de marea', flavor: 'Criaturas de ríos y corrientes' },
-  { element: 'Naturaleza', emoji: '🌿', accent: '#79d36c', backdrop: 'zone-bosque.png', egg: 'naturaleza.png', title: 'Huevo de brote', flavor: 'Criaturas de bosque y jardín' },
-  { element: 'Viento', emoji: '🌬️', accent: '#c2e9f0', backdrop: 'zone-cumbres.png', egg: 'comun.png', title: 'Huevo de nube', flavor: 'Criaturas de los cielos' },
-  { element: 'Hielo', emoji: '❄️', accent: '#77caff', backdrop: 'zone-cumbres.png', egg: 'hielo.png', title: 'Huevo de escarcha', flavor: 'Criaturas de nieve y aurora' },
-  { element: 'Luz', emoji: '☀️', accent: '#ffd76a', backdrop: 'zone-ruinas.png', egg: 'legendario.png', title: 'Huevo solar', flavor: 'Criaturas de luz y resplandor' },
-  { element: 'Sombra', emoji: '🌘', accent: '#a983e8', backdrop: 'zone-astral.png', egg: 'astral.png', title: 'Huevo umbrío', flavor: 'Criaturas nocturnas y misteriosas' },
-  { element: 'Tierra', emoji: '🪨', accent: '#d6ae72', backdrop: 'zone-dunas.png', egg: 'naturaleza.png', title: 'Huevo de piedra', flavor: 'Criaturas de roca y desierto' },
-  { element: 'Rayo', emoji: '⚡', accent: '#ffe25c', backdrop: 'zone-ruinas.png', egg: 'legendario.png', title: 'Huevo de tormenta', flavor: 'Criaturas veloces y eléctricas' },
-  { element: 'Astral', emoji: '🌌', accent: '#bd91ff', backdrop: 'zone-astral.png', egg: 'astral.png', title: 'Huevo astral', flavor: 'Criaturas de estrellas y sueños' },
+  { element: 'Fuego', emoji: '🔥', accent: '#fb6846', backdrop: 'egg-backgrounds/fuego.png', egg: 'huevo-fuego.png', title: 'Huevo de brasa', flavor: 'Criaturas de fuego y ceniza' },
+  { element: 'Agua', emoji: '💧', accent: '#4dc4ef', backdrop: 'egg-backgrounds/agua.png', egg: 'huevo-agua.png', title: 'Huevo de marea', flavor: 'Criaturas de ríos y corrientes' },
+  { element: 'Naturaleza', emoji: '🌿', accent: '#79d36c', backdrop: 'egg-backgrounds/naturaleza.png', egg: 'huevo-naturaleza.png', title: 'Huevo de brote', flavor: 'Criaturas de bosque y jardín' },
+  { element: 'Viento', emoji: '🌬️', accent: '#c2e9f0', backdrop: 'egg-backgrounds/viento.png', egg: 'huevo-viento.png', title: 'Huevo de nube', flavor: 'Criaturas de los cielos' },
+  { element: 'Hielo', emoji: '❄️', accent: '#77caff', backdrop: 'egg-backgrounds/hielo.png', egg: 'huevo-hielo.png', title: 'Huevo de escarcha', flavor: 'Criaturas de nieve y aurora' },
+  { element: 'Luz', emoji: '☀️', accent: '#ffd76a', backdrop: 'egg-backgrounds/luz.png', egg: 'huevo-luz.png', title: 'Huevo solar', flavor: 'Criaturas de luz y resplandor' },
+  { element: 'Sombra', emoji: '🌘', accent: '#a983e8', backdrop: 'egg-backgrounds/sombra.png', egg: 'huevo-sombra.png', title: 'Huevo umbrío', flavor: 'Criaturas nocturnas y misteriosas' },
+  { element: 'Tierra', emoji: '🪨', accent: '#d6ae72', backdrop: 'egg-backgrounds/tierra.png', egg: 'huevo-tierra.png', title: 'Huevo de piedra', flavor: 'Criaturas de roca y desierto' },
+  { element: 'Rayo', emoji: '⚡', accent: '#ffe25c', backdrop: 'egg-backgrounds/rayo.png', egg: 'huevo-rayo.png', title: 'Huevo de tormenta', flavor: 'Criaturas veloces y eléctricas' },
+  { element: 'Astral', emoji: '🌌', accent: '#bd91ff', backdrop: 'egg-backgrounds/astral.png', egg: 'huevo-astral.png', title: 'Huevo astral', flavor: 'Criaturas de estrellas y sueños' },
 ];
 
 const WIDTH = 1280;
@@ -48,10 +48,22 @@ function drawCardShell(context: ReturnType<ReturnType<typeof createCanvas>['getC
   context.beginPath(); context.roundRect(2, 2, WIDTH - 4, HEIGHT - 4, 28); context.stroke();
 }
 
-function drawPill(context: ReturnType<ReturnType<typeof createCanvas>['getContext']>, x: number, y: number, width: number, text: string, color: string) {
-  context.fillStyle = 'rgba(12, 16, 28, .76)'; context.beginPath(); context.roundRect(x, y, width, 42, 20); context.fill();
-  context.strokeStyle = `${color}88`; context.lineWidth = 1; context.stroke();
-  context.fillStyle = color; context.font = '600 17px sans-serif'; context.fillText(text, x + 16, y + 27);
+function drawEggRarityRow(
+  context: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
+  x: number,
+  y: number,
+  width: number,
+  rarity: string,
+  odds: number,
+  count: number,
+  color: string,
+) {
+  context.fillStyle = 'rgba(12, 16, 28, .76)'; context.beginPath(); context.roundRect(x, y, width, 28, 8); context.fill();
+  context.strokeStyle = `${color}66`; context.lineWidth = 1; context.stroke();
+  context.fillStyle = color; context.font = '600 15px sans-serif'; context.textAlign = 'left'; context.fillText(rarity, x + 12, y + 19);
+  context.fillStyle = '#f8fafc'; context.font = '700 15px sans-serif'; context.textAlign = 'right'; context.fillText(`${odds}%`, x + 340, y + 19);
+  context.fillStyle = '#cbd5e1'; context.font = '500 15px sans-serif'; context.fillText(`${count}`, x + width - 14, y + 19);
+  context.textAlign = 'left';
 }
 
 function drawMeter(context: ReturnType<ReturnType<typeof createCanvas>['getContext']>, x: number, y: number, width: number, label: string, value: number, max: number, color: string) {
@@ -81,10 +93,14 @@ export async function renderEggCard(username: string, element: PetElement) {
   context.fillStyle = '#cbd5e1'; context.font = '24px sans-serif'; context.fillText(`Afinidad: ${element}`, 78, 204);
   context.fillStyle = '#94a3b8'; context.font = '20px sans-serif'; context.fillText(option.flavor, 78, 244);
   context.fillStyle = '#f8fafc'; context.font = '600 20px sans-serif'; context.fillText(`Una criatura aleatoria de elemento ${element}.`, 78, 300);
-  context.fillStyle = '#94a3b8'; context.font = '18px sans-serif'; context.fillText('Cada huevo respeta su afinidad al eclosionar.', 78, 332);
-  context.fillStyle = '#94a3b8'; context.font = '600 16px sans-serif'; context.fillText('PROBABILIDAD POR RAREZA', 78, 365);
+  const rarityCounts = getPetRarityCounts(element);
+  const totalSpecies = rarityCounts.reduce((sum, entry) => sum + entry.count, 0);
+  context.fillStyle = '#94a3b8'; context.font = '18px sans-serif'; context.fillText(`${totalSpecies} especies · probabilidades iguales en todos los huevos.`, 78, 332);
+  context.fillStyle = '#94a3b8'; context.font = '600 14px sans-serif'; context.fillText('RAREZA', 88, 380);
+  context.textAlign = 'right'; context.fillText('PROBABILIDAD', 416, 380); context.fillText('ESPECIES', 512, 380); context.textAlign = 'left';
   const rarityColors: Record<string, string> = { 'Común': '#cbd5e1', 'Poco común': '#65d487', 'Raro': '#69b9ff', 'Épico': '#c29aff', 'Legendario': '#ffc35d' };
-  getPetRarityOdds(element).forEach(({ rarity, odds }, index) => drawPill(context, 76 + (index % 2) * 230, 380 + Math.floor(index / 2) * 50, 214, `${rarity} · ${odds}%`, rarityColors[rarity] ?? '#cbd5e1'));
+  const countsByRarity = new Map(rarityCounts.map(({ rarity, count }) => [rarity, count] as const));
+  getPetRarityOdds(element).forEach(({ rarity, odds }, index) => drawEggRarityRow(context, 76, 386 + index * 31, 450, rarity, odds, countsByRarity.get(rarity) ?? 0, rarityColors[rarity] ?? '#cbd5e1'));
   context.fillStyle = '#cbd5e1'; context.font = '500 17px sans-serif'; context.fillText(`Preparado para ${username}`, 78, 555);
   return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'rpg-egg-selection.png' });
 }
