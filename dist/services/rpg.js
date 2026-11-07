@@ -457,7 +457,7 @@ export const RPG_BATTLE_COOLDOWN = 3 * 60 * 60;
 export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
 export const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
-const CARE_COOLDOWN = 6 * 60 * 60;
+export const RPG_CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
     { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 40 },
     { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 50 },
@@ -662,7 +662,7 @@ export async function careForRpgPet(guildId, userId) {
     const care = (pet) => {
         if (pet.affection >= 100)
             return { ok: false, reason: 'max_affection' };
-        const remaining = (pet.lastCareAt ?? 0) + CARE_COOLDOWN - at;
+        const remaining = (pet.lastCareAt ?? 0) + RPG_CARE_COOLDOWN - at;
         if (remaining > 0)
             return { ok: false, reason: 'cooldown', secondsRemaining: remaining };
         const affectionGained = pet.hunger < 30 ? 4 : pet.hunger < 60 ? 6 : 8;
