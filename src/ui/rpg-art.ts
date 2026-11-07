@@ -74,6 +74,18 @@ function drawMeter(context: ReturnType<ReturnType<typeof createCanvas>['getConte
   if (ratio > 0) { context.fillStyle = color; context.beginPath(); context.roundRect(x, y + 8, Math.max(8, width * ratio), 9, 5); context.fill(); }
 }
 
+function drawPill(context: ReturnType<ReturnType<typeof createCanvas>['getContext']>, x: number, y: number, width: number, text: string, color: string) {
+  context.fillStyle = 'rgba(12, 16, 28, .76)'; context.beginPath(); context.roundRect(x, y, width, 42, 20); context.fill();
+  context.strokeStyle = `${color}88`; context.lineWidth = 1; context.stroke();
+  let fontSize = 16;
+  while (fontSize > 12) {
+    context.font = `600 ${fontSize}px sans-serif`;
+    if (context.measureText(text).width <= width - 30) break;
+    fontSize -= 1;
+  }
+  context.fillStyle = color; context.fillText(text, x + 15, y + 27);
+}
+
 export async function renderEggCard(username: string, element: PetElement) {
   const option = rpgEggOptions.find((entry) => entry.element === element) ?? rpgEggOptions[0]!;
   const canvas = createCanvas(WIDTH, HEIGHT); const context = canvas.getContext('2d');
@@ -108,7 +120,6 @@ export async function renderEggCard(username: string, element: PetElement) {
 export async function renderPetCard(
   pet: Pick<RpgPet, 'name' | 'species' | 'rarity' | 'element' | 'specialization' | 'level' | 'xp' | 'strength' | 'defense' | 'agility' | 'hp' | 'maxHp' | 'energy' | 'maxEnergy' | 'hunger' | 'affection'>,
   backgroundName: string,
-  zone: { emoji: string; name: string; difficulty: string },
   xpNext: number,
 ) {
   const theme = rpgEggOptions.find((entry) => entry.element === pet.element) ?? rpgEggOptions[0]!;
@@ -120,32 +131,54 @@ export async function renderPetCard(
   drawCover(context, background); drawCardShell(context, theme.accent);
   context.fillStyle = 'rgba(12,16,27,.82)'; context.beginPath(); context.roundRect(40, 38, 585, 545, 24); context.fill();
   context.strokeStyle = `${theme.accent}55`; context.lineWidth = 1; context.stroke();
-  context.fillStyle = theme.accent; context.font = '700 17px sans-serif'; context.fillText('FICHA DE COMPAÑERA  /  RPG', 76, 92);
-  context.fillStyle = '#f8fafc'; context.font = '700 43px sans-serif'; context.fillText(pet.name.slice(0, 22), 76, 151);
-  context.fillStyle = '#dbe3ef'; context.font = '22px sans-serif'; context.fillText(`${pet.species}  ·  ${pet.rarity}  ·  Nivel ${pet.level}`, 78, 190);
+  context.fillStyle = theme.accent; context.font = '700 16px sans-serif'; context.fillText('FICHA DE COMPAÑERA', 76, 91);
+  let nameSize = 43;
+  context.font = `700 ${nameSize}px sans-serif`;
+  while (context.measureText(pet.name).width > 510 && nameSize > 25) {
+    nameSize -= 1;
+    context.font = `700 ${nameSize}px sans-serif`;
+  }
+  context.fillStyle = '#f8fafc'; context.fillText(pet.name, 76, 150);
+  const sameNameAsSpecies = pet.name.trim().toLocaleLowerCase('es') === pet.species.trim().toLocaleLowerCase('es');
+  const subtitle = sameNameAsSpecies ? `${pet.rarity}  ·  Nivel ${pet.level}` : `${pet.species}  ·  ${pet.rarity}  ·  Nivel ${pet.level}`;
+  let subtitleSize = 21;
+  context.font = `600 ${subtitleSize}px sans-serif`;
+  while (context.measureText(subtitle).width > 510 && subtitleSize > 15) {
+    subtitleSize -= 1;
+    context.font = `600 ${subtitleSize}px sans-serif`;
+  }
+  context.fillStyle = '#dbe3ef'; context.fillText(subtitle, 78, 188);
   drawPill(context, 76, 211, 220, `Elemento · ${pet.element}`, theme.accent);
-  drawPill(context, 310, 211, 275, `Especialidad · ${pet.specialization}`, '#c9b6ff');
+  drawPill(context, 310, 211, 275, `Talento · ${pet.specialization}`, '#c9b6ff');
   context.fillStyle = '#dbe3ef'; context.font = '600 18px sans-serif'; context.fillText('PROGRESO DE NIVEL', 78, 286);
   context.textAlign = 'right'; context.fillText(`${pet.xp}/${xpNext} XP`, 585, 286); context.textAlign = 'left';
   context.fillStyle = 'rgba(255,255,255,.14)'; context.beginPath(); context.roundRect(78, 297, 507, 10, 5); context.fill();
   const xpRatio = Math.max(0, Math.min(1, pet.xp / Math.max(1, xpNext)));
   if (xpRatio > 0) { context.fillStyle = theme.accent; context.beginPath(); context.roundRect(78, 297, Math.max(8, 507 * xpRatio), 10, 5); context.fill(); }
 
-  context.fillStyle = '#f8fafc'; context.font = '700 16px sans-serif'; context.fillText('ATRIBUTOS', 78, 349);
-  context.fillStyle = '#cbd5e1'; context.font = '600 21px sans-serif';
-  context.fillText(`⚔  Fuerza       ${pet.strength}`, 80, 391);
-  context.fillText(`🛡  Defensa     ${pet.defense}`, 80, 438);
-  context.fillText(`💨  Agilidad    ${pet.agility}`, 80, 485);
-  context.fillStyle = '#f8fafc'; context.font = '700 16px sans-serif'; context.fillText('ESTADO', 335, 349);
-  drawMeter(context, 335, 377, 250, '❤️ PV', pet.hp, pet.maxHp, '#43d18d');
-  drawMeter(context, 335, 421, 250, '⚡ Energía', pet.energy, pet.maxEnergy, '#f6c453');
-  drawMeter(context, 335, 465, 250, '🍖 Saciedad', pet.hunger, 100, '#f4a340');
-  drawMeter(context, 335, 509, 250, '🫶 Cariño', pet.affection, 100, '#ed83c4');
-  context.fillStyle = 'rgba(4,8,16,.34)'; context.beginPath(); context.ellipse(910, 518, 180, 28, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = 'rgba(255,255,255,.045)'; context.beginPath(); context.roundRect(67, 322, 238, 228, 17); context.fill();
+  context.beginPath(); context.roundRect(313, 322, 292, 228, 17); context.fill();
+  context.fillStyle = theme.accent; context.font = '700 15px sans-serif'; context.fillText('ATRIBUTOS', 84, 352);
+  context.fillStyle = '#cbd5e1'; context.font = '600 19px sans-serif';
+  const attributes = [['Fuerza', pet.strength], ['Defensa', pet.defense], ['Agilidad', pet.agility]] as const;
+  attributes.forEach(([label, value], index) => {
+    const y = 397 + index * 49;
+    context.fillStyle = 'rgba(255,255,255,.16)'; context.beginPath(); context.arc(88, y - 6, 3, 0, Math.PI * 2); context.fill();
+    context.fillStyle = '#cbd5e1'; context.font = '600 19px sans-serif'; context.fillText(label, 101, y);
+    context.fillStyle = '#f8fafc'; context.font = '700 20px sans-serif'; context.textAlign = 'right'; context.fillText(String(value), 283, y); context.textAlign = 'left';
+    if (index < attributes.length - 1) {
+      context.strokeStyle = 'rgba(255,255,255,.08)'; context.beginPath(); context.moveTo(84, y + 17); context.lineTo(286, y + 17); context.stroke();
+    }
+  });
+  context.fillStyle = theme.accent; context.font = '700 15px sans-serif'; context.fillText('BIENESTAR', 330, 352);
+  drawMeter(context, 330, 388, 258, 'Salud', pet.hp, pet.maxHp, '#43d18d');
+  drawMeter(context, 330, 430, 258, 'Energía', pet.energy, pet.maxEnergy, '#f6c453');
+  drawMeter(context, 330, 472, 258, 'Saciedad', pet.hunger, 100, '#f4a340');
+  drawMeter(context, 330, 514, 258, 'Cariño', pet.affection, 100, '#ed83c4');
+  context.fillStyle = `${theme.accent}1e`; context.beginPath(); context.ellipse(910, 344, 230, 210, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = 'rgba(4,8,16,.34)'; context.beginPath(); context.ellipse(910, 536, 180, 28, 0, 0, Math.PI * 2); context.fill();
   context.save(); context.shadowColor = `${theme.accent}bb`; context.shadowBlur = 34;
-  context.drawImage(sprite, 650, 72, 490, 490); context.restore();
-  context.fillStyle = 'rgba(8,12,25,.82)'; context.beginPath(); context.roundRect(675, 548, 520, 46, 18); context.fill();
-  context.fillStyle = '#ffffff'; context.font = '600 18px sans-serif'; context.fillText(`${zone.emoji} ${zone.name}  ·  ${zone.difficulty}`, 696, 578);
+  context.drawImage(sprite, 650, 58, 500, 500); context.restore();
   return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'rpg-pet-card.png' });
 }
 

@@ -328,14 +328,30 @@ export function registerInteractionHandler(client) {
                     await interaction.update(componentUpdate(await rpgFeedPanel(guildId, interaction.user.id)));
                     return;
                 }
-                if (interaction.customId === 'rpg:feed:select' && interaction.isStringSelectMenu()) {
-                    const item = rpgItems.find((candidate) => candidate.id === interaction.values[0] && candidate.effect === 'snack');
+                if (interaction.customId.startsWith('rpg:feed:select') && interaction.isStringSelectMenu()) {
+                    const [, , , source = 'profile', pageValue = '0'] = interaction.customId.split(':');
+                    const parsedPage = Number(pageValue);
+                    const currentPage = Number.isSafeInteger(parsedPage) && parsedPage >= 0 ? parsedPage : 0;
+                    const selection = interaction.values[0] ?? '';
+                    if (selection.startsWith('__page:')) {
+                        const requestedPage = Number(selection.slice('__page:'.length));
+                        const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0;
+                        const panel = source === 'feed'
+                            ? await rpgFeedPanel(guildId, interaction.user.id, page)
+                            : await rpgPanel(guildId, interaction.user.id, interaction.user.username, page);
+                        await interaction.update(componentUpdate(panel));
+                        return;
+                    }
+                    const item = rpgItems.find((candidate) => candidate.id === selection && candidate.effect === 'snack');
                     if (!item) {
                         await interaction.reply({ content: 'Ese alimento ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
                     const result = await useRpgItem(guildId, interaction.user.id, item.id, interaction.id);
-                    await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
+                    const updatedPanel = source === 'feed'
+                        ? await rpgFeedPanel(guildId, interaction.user.id, currentPage)
+                        : await rpgPanel(guildId, interaction.user.id, interaction.user.username, currentPage);
+                    await interaction.update(componentUpdate(updatedPanel));
                     await interaction.followUp({ content: result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'Ya no tienes ese alimento.' : 'Tu mascota ya está saciada y recuperada.', flags: MessageFlags.Ephemeral });
                     return;
                 }
@@ -565,10 +581,20 @@ export function registerInteractionHandler(client) {
                     await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
                     return;
                 }
-                if (interaction.customId === 'rpg:use' && interaction.isStringSelectMenu()) {
-                    const result = await useRpgItem(guildId, interaction.user.id, interaction.values[0] ?? '', interaction.id);
-                    const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'Ese artículo ya no está en tu mochila.' : rpgItems.find((item) => item.id === interaction.values[0])?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'No hace falta usarlo ahora.';
-                    await interaction.update(componentUpdate(await rpgInventoryPanel(guildId, interaction.user.id)));
+                if (interaction.customId.startsWith('rpg:use') && interaction.isStringSelectMenu()) {
+                    const [, , pageValue = '0'] = interaction.customId.split(':');
+                    const parsedPage = Number(pageValue);
+                    const currentPage = Number.isSafeInteger(parsedPage) && parsedPage >= 0 ? parsedPage : 0;
+                    const selection = interaction.values[0] ?? '';
+                    if (selection.startsWith('__page:')) {
+                        const requestedPage = Number(selection.slice('__page:'.length));
+                        const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0;
+                        await interaction.update(componentUpdate(await rpgInventoryPanel(guildId, interaction.user.id, page)));
+                        return;
+                    }
+                    const result = await useRpgItem(guildId, interaction.user.id, selection, interaction.id);
+                    const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'Ese artículo ya no está en tu mochila.' : rpgItems.find((item) => item.id === selection)?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'No hay PV, energía ni tiempo de espera que este artículo pueda recuperar ahora.';
+                    await interaction.update(componentUpdate(await rpgInventoryPanel(guildId, interaction.user.id, currentPage)));
                     await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
                     return;
                 }

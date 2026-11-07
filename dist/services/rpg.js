@@ -63,7 +63,6 @@ for (let tier = 0; tier < raritySets.length; tier++) {
             add(suffix, category, name, group.emoji, position ? 'expedition_luck' : 'expedition_safety', position ? luck : safety, 1.25 + position * 0.25);
     }));
 }
-export const rpgItems = [...coreRpgItems, ...additionalRpgItems];
 if (additionalRpgItems.length !== 70)
     throw new Error(`El catálogo extra RPG debe contener 70 artículos; contiene ${additionalRpgItems.length}.`);
 function itemDescription(effect, power) {
@@ -81,14 +80,76 @@ function itemDescription(effect, power) {
         return `Equipo permanente: mejora ${effect.slice(6)} en +${power}.`;
     if (effect === 'expedition_safety')
         return `Protege la siguiente salida: reduce el peligro en ${power} puntos.`;
+    if (effect === 'expedition_haste')
+        return `Reduce hasta ${Math.floor(power / 60)} min del descanso activo de exploración.`;
+    if (effect === 'battle_haste')
+        return `Reduce hasta ${Math.floor(power / 60)} min de la espera activa entre combates.`;
     return `Mejora la siguiente salida: aumenta en ${power}% la oportunidad de hallar objetos.`;
 }
+const elementalFoodDefinitions = [
+    { element: 'Fuego', key: 'fuego', emoji: '🍑', names: ['Durazno de brasa', 'Caldo volcánico', 'Dátil del fénix'], affinityBonus: 'expedition_safety', bonusPower: [6, 8, 10] },
+    { element: 'Agua', key: 'agua', emoji: '🍇', names: ['Uvas de marea', 'Sopa de perla azul', 'Néctar de luna líquida'], affinityBonus: 'energy', bonusPower: [6, 10, 14] },
+    { element: 'Naturaleza', key: 'naturaleza', emoji: '🥝', names: ['Pera del roble', 'Ensalada de luz de hoja', 'Miel del árbol antiguo'], affinityBonus: 'satiety', bonusPower: [8, 12, 16] },
+    { element: 'Viento', key: 'viento', emoji: '🍎', names: ['Manzana de nube', 'Té de plumón', 'Merengue de vendaval'], affinityBonus: 'expedition_haste', bonusPower: [8, 14, 20] },
+    { element: 'Hielo', key: 'hielo', emoji: '🫐', names: ['Arándano boreal', 'Granizado de aurora', 'Crema de glaciar'], affinityBonus: 'heal', bonusPower: [6, 10, 14] },
+    { element: 'Luz', key: 'luz', emoji: '🥭', names: ['Mango solar', 'Tarta del mediodía', 'Néctar de lucero'], affinityBonus: 'affection', bonusPower: [2, 4, 6] },
+    { element: 'Sombra', key: 'sombra', emoji: '🍮', names: ['Mora de penumbra', 'Pudín de obsidiana', 'Trufa del eclipse'], affinityBonus: 'expedition_luck', bonusPower: [5, 8, 12] },
+    { element: 'Tierra', key: 'tierra', emoji: '🥔', names: ['Papa dulce de cantera', 'Pan de roca mielada', 'Estofado de geoda'], affinityBonus: 'expedition_safety', bonusPower: [6, 10, 14] },
+    { element: 'Rayo', key: 'rayo', emoji: '🍋', names: ['Lima chispeante', 'Gelatina de relámpago', 'Brocheta de nube eléctrica'], affinityBonus: 'energy', bonusPower: [8, 12, 16] },
+    { element: 'Astral', key: 'astral', emoji: '🥧', names: ['Arándano de constelación', 'Tartaleta de polvo estelar', 'Sorbete de nebulosa'], affinityBonus: 'expedition_xp', bonusPower: [6, 10, 14] },
+];
+const elementalFoodTiers = [
+    { key: 'comun', rarity: 'Común', cost: 75, hp: 8, energy: 10, hunger: 25, affection: 1 },
+    { key: 'inusual', rarity: 'Poco común', cost: 175, hp: 13, energy: 15, hunger: 34, affection: 2 },
+    { key: 'raro', rarity: 'Raro', cost: 340, hp: 18, energy: 20, hunger: 42, affection: 3 },
+];
+function foodAffinityDescription(effect, power) {
+    if (effect === 'heal')
+        return `recupera +${power} PV`;
+    if (effect === 'energy')
+        return `recupera +${power} energía`;
+    if (effect === 'satiety')
+        return `añade +${power} saciedad`;
+    if (effect === 'affection')
+        return `añade +${power} cariño`;
+    if (effect === 'expedition_safety')
+        return `da +${power} seguridad en la próxima expedición`;
+    if (effect === 'expedition_luck')
+        return `da +${power} puntos de hallazgo en la próxima expedición`;
+    if (effect === 'expedition_haste')
+        return `reduce ${power} min el descanso tras tu próxima expedición`;
+    return `da +${power} XP en la próxima expedición`;
+}
+const elementalFoodItems = elementalFoodDefinitions.flatMap((definition) => definition.names.map((name, index) => {
+    const tier = elementalFoodTiers[index];
+    const bonusPower = definition.bonusPower[index];
+    const food = {
+        element: definition.element, hp: tier.hp, energy: tier.energy, hunger: tier.hunger, affection: tier.affection,
+        affinityBonus: definition.affinityBonus, bonusPower: definition.affinityBonus === 'expedition_haste' ? bonusPower * 60 : bonusPower,
+    };
+    const bonusText = foodAffinityDescription(food.affinityBonus, bonusPower);
+    return {
+        id: `rpg_food_${definition.key}_${tier.key}`, name, emoji: definition.emoji, rarity: tier.rarity, category: 'Alimento', cost: tier.cost,
+        description: `Afinidad ${definition.element}: +20% nutrición y ${bonusText}. Base +${tier.hunger} saciedad, +${tier.hp} PV y +${tier.energy} energía.`,
+        effect: 'snack', power: tier.hp, food,
+    };
+}));
+const cooldownConsumables = [
+    { id: 'rpg_trail_chalk', name: 'Tiza de atajo', emoji: '🧭', rarity: 'Común', category: 'Exploración', cost: 120, description: 'Adelanta 30 min el descanso de exploración activo.', effect: 'expedition_haste', power: 30 * 60 },
+    { id: 'rpg_shortcut_compass', name: 'Brújula del amanecer', emoji: '🧭', rarity: 'Poco común', category: 'Exploración', cost: 260, description: 'Adelanta 60 min el descanso de exploración activo.', effect: 'expedition_haste', power: 60 * 60 },
+    { id: 'rpg_route_clock', name: 'Reloj de rutas', emoji: '⌛', rarity: 'Raro', category: 'Exploración', cost: 480, description: 'Adelanta 90 min el descanso de exploración activo.', effect: 'expedition_haste', power: 90 * 60 },
+    { id: 'rpg_pause_bell', name: 'Campanilla de tregua', emoji: '🔔', rarity: 'Poco común', category: 'Combate', cost: 220, description: 'Adelanta 30 min la espera activa entre combates.', effect: 'battle_haste', power: 30 * 60 },
+    { id: 'rpg_rematch_tonic', name: 'Tónico de revancha', emoji: '⚔️', rarity: 'Raro', category: 'Combate', cost: 420, description: 'Adelanta 60 min la espera activa entre combates.', effect: 'battle_haste', power: 60 * 60 },
+];
+export const rpgItems = [...coreRpgItems, ...additionalRpgItems, ...elementalFoodItems, ...cooldownConsumables];
+if (rpgItems.length !== 115)
+    throw new Error(`El catálogo RPG debe contener 115 artículos; contiene ${rpgItems.length}.`);
 export const rpgZones = [
-    { id: 'bosque', name: 'Bosque Susurrante', emoji: '🌲', background: 'zone-bosque.png', difficulty: 'Tranquila', minLevel: 1, danger: 18, reward: [45, 95], lootChance: 34, lootWeights: [['Común', 66], ['Poco común', 26], ['Raro', 7], ['Épico', 1], ['Legendario', 0]], drops: ['rpg_berries', 'rpg_potion', 'rpg_ether', 'rpg_comun_parche', 'rpg_comun_caldo', 'rpg_comun_resguardo'], boss: { name: 'Ciervo Zarzal', emoji: '🦌', spawnChance: 6, power: 24, reward: [90, 150], xp: [35, 55], dropChance: 38, drops: ['rpg_comun_armadura', 'rpg_comun_agilidad', 'rpg_inusual_parche'] } },
-    { id: 'cumbres', name: 'Cumbres de Bruma', emoji: '🏔️', background: 'zone-cumbres.png', difficulty: 'Moderada', minLevel: 3, danger: 32, reward: [90, 165], lootChance: 39, lootWeights: [['Común', 35], ['Poco común', 40], ['Raro', 20], ['Épico', 5], ['Legendario', 0]], drops: ['rpg_super_potion', 'rpg_energy_crystal', 'rpg_training_manual', 'rpg_inusual_manual', 'rpg_raro_manual', 'rpg_raro_armadura'], boss: { name: 'Yeti de la Cumbre', emoji: '❄️', spawnChance: 9, power: 36, reward: [170, 270], xp: [55, 80], dropChance: 48, drops: ['rpg_inusual_defensa', 'rpg_raro_parche', 'rpg_raro_botas'] } },
-    { id: 'ruinas', name: 'Ruinas Antiguas', emoji: '🏛️', background: 'zone-ruinas.png', difficulty: 'Difícil', minLevel: 6, danger: 48, reward: [140, 250], lootChance: 44, lootWeights: [['Común', 15], ['Poco común', 35], ['Raro', 35], ['Épico', 13], ['Legendario', 2]], drops: ['rpg_revive', 'rpg_iron_charm', 'rpg_swift_boots', 'rpg_raro_cronica', 'rpg_epico_manual', 'rpg_raro_agilidad'], boss: { name: 'Coloso del Archivo', emoji: '🗿', spawnChance: 12, power: 50, reward: [260, 400], xp: [85, 120], dropChance: 58, drops: ['rpg_raro_defensa', 'rpg_epico_agilidad', 'rpg_epico_armadura'] } },
-    { id: 'dunas', name: 'Dunas de Cristal', emoji: '🏜️', background: 'zone-dunas.png', difficulty: 'Élite', minLevel: 8, danger: 54, reward: [180, 300], lootChance: 48, lootWeights: [['Común', 10], ['Poco común', 30], ['Raro', 38], ['Épico', 18], ['Legendario', 4]], drops: ['rpg_training_manual', 'rpg_iron_charm', 'rpg_star_collar', 'rpg_raro_hallazgo', 'rpg_epico_hallazgo', 'rpg_legendario_hallazgo'], boss: { name: 'Dragón Espejismo', emoji: '🐲', spawnChance: 14, power: 58, reward: [350, 520], xp: [110, 155], dropChance: 65, drops: ['rpg_epico_fuerza', 'rpg_epico_armadura', 'rpg_legendario_parche'] } },
-    { id: 'astral', name: 'Mar Astral', emoji: '🌌', background: 'zone-astral.png', difficulty: 'Mítica', minLevel: 10, danger: 60, reward: [220, 360], lootChance: 52, lootWeights: [['Común', 5], ['Poco común', 20], ['Raro', 35], ['Épico', 30], ['Legendario', 10]], drops: ['rpg_star_collar', 'rpg_revive', 'rpg_training_manual', 'rpg_epico_cronica', 'rpg_legendario_hallazgo', 'rpg_legendario_botas'], boss: { name: 'Leviatán de las Estrellas', emoji: '🐋', spawnChance: 18, power: 70, reward: [500, 750], xp: [150, 220], dropChance: 72, drops: ['rpg_epico_agilidad', 'rpg_legendario_armadura', 'rpg_legendario_cronica'] } },
+    { id: 'bosque', name: 'Bosque Susurrante', emoji: '🌲', background: 'zone-bosque.png', difficulty: 'Tranquila', minLevel: 1, danger: 18, reward: [45, 95], lootChance: 34, lootWeights: [['Común', 66], ['Poco común', 26], ['Raro', 7], ['Épico', 1], ['Legendario', 0]], drops: ['rpg_berries', 'rpg_potion', 'rpg_ether', 'rpg_comun_parche', 'rpg_comun_caldo', 'rpg_comun_resguardo', 'rpg_food_naturaleza_comun', 'rpg_food_agua_comun', 'rpg_food_naturaleza_raro'], boss: { name: 'Ciervo Zarzal', emoji: '🦌', spawnChance: 6, power: 24, reward: [90, 150], xp: [35, 55], dropChance: 38, drops: ['rpg_comun_armadura', 'rpg_comun_agilidad', 'rpg_inusual_parche'] } },
+    { id: 'cumbres', name: 'Cumbres de Bruma', emoji: '🏔️', background: 'zone-cumbres.png', difficulty: 'Moderada', minLevel: 3, danger: 32, reward: [90, 165], lootChance: 39, lootWeights: [['Común', 35], ['Poco común', 40], ['Raro', 20], ['Épico', 5], ['Legendario', 0]], drops: ['rpg_super_potion', 'rpg_energy_crystal', 'rpg_training_manual', 'rpg_inusual_manual', 'rpg_raro_manual', 'rpg_raro_armadura', 'rpg_food_viento_comun', 'rpg_food_hielo_comun', 'rpg_food_rayo_comun', 'rpg_food_hielo_raro', 'rpg_food_viento_raro'], boss: { name: 'Yeti de la Cumbre', emoji: '❄️', spawnChance: 9, power: 36, reward: [170, 270], xp: [55, 80], dropChance: 48, drops: ['rpg_inusual_defensa', 'rpg_raro_parche', 'rpg_raro_botas'] } },
+    { id: 'ruinas', name: 'Ruinas Antiguas', emoji: '🏛️', background: 'zone-ruinas.png', difficulty: 'Difícil', minLevel: 6, danger: 48, reward: [140, 250], lootChance: 44, lootWeights: [['Común', 15], ['Poco común', 35], ['Raro', 35], ['Épico', 13], ['Legendario', 2]], drops: ['rpg_revive', 'rpg_iron_charm', 'rpg_swift_boots', 'rpg_raro_cronica', 'rpg_epico_manual', 'rpg_raro_agilidad', 'rpg_food_tierra_comun', 'rpg_food_sombra_comun', 'rpg_food_fuego_comun', 'rpg_food_sombra_raro', 'rpg_food_fuego_raro'], boss: { name: 'Coloso del Archivo', emoji: '🗿', spawnChance: 12, power: 50, reward: [260, 400], xp: [85, 120], dropChance: 58, drops: ['rpg_raro_defensa', 'rpg_epico_agilidad', 'rpg_epico_armadura'] } },
+    { id: 'dunas', name: 'Dunas de Cristal', emoji: '🏜️', background: 'zone-dunas.png', difficulty: 'Élite', minLevel: 8, danger: 54, reward: [180, 300], lootChance: 48, lootWeights: [['Común', 10], ['Poco común', 30], ['Raro', 38], ['Épico', 18], ['Legendario', 4]], drops: ['rpg_training_manual', 'rpg_iron_charm', 'rpg_star_collar', 'rpg_raro_hallazgo', 'rpg_epico_hallazgo', 'rpg_legendario_hallazgo', 'rpg_food_fuego_raro', 'rpg_food_tierra_raro', 'rpg_food_viento_raro'], boss: { name: 'Dragón Espejismo', emoji: '🐲', spawnChance: 14, power: 58, reward: [350, 520], xp: [110, 155], dropChance: 65, drops: ['rpg_epico_fuerza', 'rpg_epico_armadura', 'rpg_legendario_parche'] } },
+    { id: 'astral', name: 'Mar Astral', emoji: '🌌', background: 'zone-astral.png', difficulty: 'Mítica', minLevel: 10, danger: 60, reward: [220, 360], lootChance: 52, lootWeights: [['Común', 5], ['Poco común', 20], ['Raro', 35], ['Épico', 30], ['Legendario', 10]], drops: ['rpg_star_collar', 'rpg_revive', 'rpg_training_manual', 'rpg_epico_cronica', 'rpg_legendario_hallazgo', 'rpg_legendario_botas', 'rpg_food_astral_comun', 'rpg_food_luz_comun', 'rpg_food_astral_raro', 'rpg_food_luz_raro'], boss: { name: 'Leviatán de las Estrellas', emoji: '🐋', spawnChance: 18, power: 70, reward: [500, 750], xp: [150, 220], dropChance: 72, drops: ['rpg_epico_agilidad', 'rpg_legendario_armadura', 'rpg_legendario_cronica'] } },
 ];
 for (const zone of rpgZones) {
     for (const itemId of [...zone.drops, ...zone.boss.drops]) {
@@ -428,12 +489,12 @@ function petFromRow(row) {
     catch {
         equipment = {};
     }
-    let expeditionEffects = { safety: 0, luck: 0 };
+    let expeditionEffects = { safety: 0, luck: 0, haste: 0, bonusXp: 0 };
     try {
         expeditionEffects = { ...expeditionEffects, ...JSON.parse(row.expeditionEffects ?? '{}') };
     }
     catch {
-        expeditionEffects = { safety: 0, luck: 0 };
+        expeditionEffects = { safety: 0, luck: 0, haste: 0, bonusXp: 0 };
     }
     const lineage = species.find((candidate) => candidate.name === row.species);
     const element = row.element === 'Neutral' && lineage ? lineage.element : row.element;
@@ -639,7 +700,7 @@ export async function adoptRpgPet(guildId, userId, name, element) {
     const stats = chosen.base.map((n) => n + randomInt(4) + rarity.bonus);
     const pet = { name: normalizedName || chosen.name, species: chosen.name, rarity: rarity.rarity, element: chosen.element, specialization: chosen.specialization, level: 1, xp: 0,
         strength: stats[0], defense: stats[1], agility: stats[2], hp: 70 + rarity.bonus * 2, maxHp: 70 + rarity.bonus * 2,
-        energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0 },
+        energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 },
         knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), movePoints: 0, freeNameUsed: Boolean(normalizedName) };
     const at = now();
     if (economyPool)
@@ -670,7 +731,7 @@ export async function adminGrantRpgPet(guildId, userId, speciesName, name = '') 
         name: normalizedName || lineage.name, species: lineage.name, rarity: lineage.rarity, element: lineage.element,
         specialization: lineage.specialization, level: 1, xp: 0, strength: stats[0], defense: stats[1], agility: stats[2],
         hp: 70 + bonus * 2, maxHp: 70 + bonus * 2, energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(),
-        equipment: {}, expeditionEffects: { safety: 0, luck: 0 }, knownMoves: starterMoves(lineage.element),
+        equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, knownMoves: starterMoves(lineage.element),
         equippedMoves: starterMoves(lineage.element), movePoints: 0, freeNameUsed: Boolean(normalizedName),
     };
     const at = now();
@@ -783,7 +844,7 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
         const success = randomInt(100) >= effectiveDanger;
         let coins = success ? Math.floor((zone.reward[0] + randomInt(zone.reward[1] - zone.reward[0] + 1)) * RPG_COIN_REWARD_SCALE) : 0;
         const xpRaw = success ? 32 + randomInt(34) : 14 + randomInt(18);
-        let xp = pet.specialization === 'Místico' ? Math.floor(xpRaw * 1.15) : xpRaw;
+        let xp = (pet.specialization === 'Místico' ? Math.floor(xpRaw * 1.15) : xpRaw) + pet.expeditionEffects.bonusXp;
         const baseDamage = success ? randomInt(6) : 9 + randomInt(19);
         let damage = Math.max(0, baseDamage - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
         const bondLoot = pet.affection >= 75 ? 4 : pet.affection < 25 ? -5 : 0;
@@ -829,11 +890,12 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
         events.push({ emoji: '🏕️', title: 'Regreso al gremio', detail: `${pet.name} vuelve con ${xp} XP${damage ? ` y ${damage} PV de daño` : ' ilesa'}${coins ? `, ${coins} monedas` : ''}${boss ? `; ${boss.won ? 'derrotó' : 'se enfrentó a'} al jefe ${boss.name}` : ''}.` });
         const recoveredHp = pet.specialization === 'Apoyo' && success ? 5 : 0;
         const hungerCost = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
+        const cooldownHaste = Math.min(60 * 60, pet.expeditionEffects.haste);
         const updated = { ...leveled.pet, hp: Math.max(1, Math.min(leveled.pet.maxHp, leveled.pet.hp - damage + recoveredHp)), energy: pet.energy - 20,
-            hunger: pet.hunger - hungerCost, affection: Math.min(100, pet.affection + (success ? 2 : 1)), needsUpdatedAt: at, lastExploreAt: at,
-            expeditionEffects: { safety: 0, luck: 0 } };
+            hunger: pet.hunger - hungerCost, affection: Math.min(100, pet.affection + (success ? 2 : 1)), needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
+            expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 } };
         return { ok: true, pet: updated, zone, coins, xp, damage, item: dropped, bossItem, ...(boss ? { boss } : {}), levelUps: leveled.levels, events,
-            message: `${zone.emoji} ${success ? 'Expedición completada' : 'Expedición difícil'} en **${zone.name}**. ${boss ? `${zone.boss.emoji} ${boss.won ? `Derrotó a ${boss.name}` : `Perdió contra ${boss.name}`}. ` : ''}${dropped ? `Hallazgo: ${dropped.emoji} **${dropped.name}**. ` : ''}${bossItem ? `Botín de jefe: ${bossItem.emoji} **${bossItem.name}**. ` : ''}${coins ? `Botín: **${coins} monedas**. ` : ''}${leveled.levels ? `¡Subió ${leveled.levels} nivel(es)!` : ''}` };
+            message: `${zone.emoji} ${success ? 'Expedición completada' : 'Expedición difícil'} en **${zone.name}**. ${boss ? `${zone.boss.emoji} ${boss.won ? `Derrotó a ${boss.name}` : `Perdió contra ${boss.name}`}. ` : ''}${dropped ? `Hallazgo: ${dropped.emoji} **${dropped.name}**. ` : ''}${bossItem ? `Botín de jefe: ${bossItem.emoji} **${bossItem.name}**. ` : ''}${coins ? `Botín: **${coins} monedas**. ` : ''}${pet.expeditionEffects.bonusXp ? `Bono de comida: +${pet.expeditionEffects.bonusXp} XP. ` : ''}${cooldownHaste ? `Descanso posterior reducido ${Math.floor(cooldownHaste / 60)} min. ` : ''}${leveled.levels ? `¡Subió ${leveled.levels} nivel(es)!` : ''}` };
     };
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
@@ -1027,7 +1089,7 @@ export async function useRpgItem(guildId, userId, itemId, _reference) {
     if (!item)
         return { ok: false, reason: 'missing_item' };
     const applyItem = (pet) => {
-        let updated = { ...pet, equipment: { ...pet.equipment } };
+        let updated = { ...pet, equipment: { ...pet.equipment }, expeditionEffects: { ...pet.expeditionEffects } };
         let message = '';
         if (item.effect === 'heal') {
             if (pet.hp >= pet.maxHp)
@@ -1042,16 +1104,92 @@ export async function useRpgItem(guildId, userId, itemId, _reference) {
             message = `⚡ ${pet.name} recuperó ${updated.energy - pet.energy} de energía.`;
         }
         else if (item.effect === 'snack') {
-            const satiety = Math.min(45, 20 + item.power);
-            if (pet.hp >= pet.maxHp && pet.energy >= pet.maxEnergy && pet.hunger >= 100)
-                return undefined;
-            updated.hp = Math.min(pet.maxHp, pet.hp + item.power);
-            updated.energy = Math.min(pet.maxEnergy, pet.energy + item.power);
-            updated.hunger = Math.min(100, pet.hunger + satiety);
-            const affectionGain = pet.hunger < 35 ? 4 : pet.hunger < 60 ? 2 : 0;
-            updated.affection = Math.min(100, pet.affection + affectionGain);
-            updated.needsUpdatedAt = at;
-            message = `🫐 ${pet.name} comió **${item.name}** · +${updated.hunger - pet.hunger} saciedad${affectionGain ? ` · +${Math.min(affectionGain, 100 - pet.affection)} cariño` : ''}.`;
+            if (!item.food) {
+                const satiety = Math.min(45, 20 + item.power);
+                if (pet.hp >= pet.maxHp && pet.energy >= pet.maxEnergy && pet.hunger >= 100)
+                    return undefined;
+                updated.hp = Math.min(pet.maxHp, pet.hp + item.power);
+                updated.energy = Math.min(pet.maxEnergy, pet.energy + item.power);
+                updated.hunger = Math.min(100, pet.hunger + satiety);
+                const affectionGain = pet.hunger < 35 ? 4 : pet.hunger < 60 ? 2 : 0;
+                updated.affection = Math.min(100, pet.affection + affectionGain);
+                updated.needsUpdatedAt = at;
+                message = `🫐 ${pet.name} comió **${item.name}** · +${updated.hunger - pet.hunger} saciedad${affectionGain ? ` · +${Math.min(affectionGain, 100 - pet.affection)} cariño` : ''}.`;
+            }
+            else {
+                const food = item.food;
+                const affinityMatch = pet.element === food.element;
+                const scale = affinityMatch ? 1.2 : 1;
+                const hpGain = Math.ceil(food.hp * scale);
+                const energyGain = Math.ceil(food.energy * scale);
+                const hungerGain = Math.ceil(food.hunger * scale);
+                const affectionGain = Math.ceil(food.affection * scale);
+                const bonusUseful = affinityMatch && (food.affinityBonus === 'heal' ? pet.hp < pet.maxHp
+                    : food.affinityBonus === 'energy' ? pet.energy < pet.maxEnergy
+                        : food.affinityBonus === 'satiety' ? pet.hunger < 100
+                            : food.affinityBonus === 'affection' ? pet.affection < 100
+                                : food.affinityBonus === 'expedition_safety' ? pet.expeditionEffects.safety < 50
+                                    : food.affinityBonus === 'expedition_luck' ? pet.expeditionEffects.luck < 50
+                                        : food.affinityBonus === 'expedition_haste' ? pet.expeditionEffects.haste < 60 * 60
+                                            : pet.expeditionEffects.bonusXp < 40 && pet.dailyXp < RPG_DAILY_XP_CAP);
+                const baseUseful = (hpGain > 0 && pet.hp < pet.maxHp) || (energyGain > 0 && pet.energy < pet.maxEnergy)
+                    || (hungerGain > 0 && pet.hunger < 100) || (affectionGain > 0 && pet.affection < 100);
+                if (!baseUseful && !bonusUseful)
+                    return undefined;
+                updated.hp = Math.min(pet.maxHp, pet.hp + hpGain);
+                updated.energy = Math.min(pet.maxEnergy, pet.energy + energyGain);
+                updated.hunger = Math.min(100, pet.hunger + hungerGain);
+                updated.affection = Math.min(100, pet.affection + affectionGain);
+                let affinityMessage = '';
+                if (affinityMatch) {
+                    const power = food.bonusPower;
+                    let appliedPower = power;
+                    if (food.affinityBonus === 'heal') {
+                        const before = updated.hp;
+                        updated.hp = Math.min(pet.maxHp, updated.hp + power);
+                        appliedPower = updated.hp - before;
+                    }
+                    else if (food.affinityBonus === 'energy') {
+                        const before = updated.energy;
+                        updated.energy = Math.min(pet.maxEnergy, updated.energy + power);
+                        appliedPower = updated.energy - before;
+                    }
+                    else if (food.affinityBonus === 'satiety') {
+                        const before = updated.hunger;
+                        updated.hunger = Math.min(100, updated.hunger + power);
+                        appliedPower = updated.hunger - before;
+                    }
+                    else if (food.affinityBonus === 'affection') {
+                        const before = updated.affection;
+                        updated.affection = Math.min(100, updated.affection + power);
+                        appliedPower = updated.affection - before;
+                    }
+                    else if (food.affinityBonus === 'expedition_safety') {
+                        const before = updated.expeditionEffects.safety;
+                        updated.expeditionEffects.safety = Math.min(50, before + power);
+                        appliedPower = updated.expeditionEffects.safety - before;
+                    }
+                    else if (food.affinityBonus === 'expedition_luck') {
+                        const before = updated.expeditionEffects.luck;
+                        updated.expeditionEffects.luck = Math.min(50, before + power);
+                        appliedPower = updated.expeditionEffects.luck - before;
+                    }
+                    else if (food.affinityBonus === 'expedition_haste') {
+                        const before = updated.expeditionEffects.haste;
+                        updated.expeditionEffects.haste = Math.min(60 * 60, before + power);
+                        appliedPower = updated.expeditionEffects.haste - before;
+                    }
+                    else {
+                        const before = updated.expeditionEffects.bonusXp;
+                        updated.expeditionEffects.bonusXp = Math.min(40, before + power);
+                        appliedPower = updated.expeditionEffects.bonusXp - before;
+                    }
+                    if (appliedPower > 0)
+                        affinityMessage = ` Afinidad ${food.element}: ${foodAffinityDescription(food.affinityBonus, food.affinityBonus === 'expedition_haste' ? Math.ceil(appliedPower / 60) : appliedPower)}.`;
+                }
+                updated.needsUpdatedAt = at;
+                message = `${item.emoji} ${pet.name} disfrutó **${item.name}**: +${updated.hunger - pet.hunger} saciedad · +${updated.hp - pet.hp} PV · +${updated.energy - pet.energy} energía${updated.affection > pet.affection ? ` · +${updated.affection - pet.affection} cariño` : ''}.${affinityMessage}`;
+            }
         }
         else if (item.effect === 'full_energy') {
             if (pet.energy >= pet.maxEnergy)
@@ -1099,6 +1237,22 @@ export async function useRpgItem(guildId, userId, itemId, _reference) {
             const field = item.effect === 'expedition_safety' ? 'safety' : 'luck';
             updated.expeditionEffects[field] = Math.min(50, updated.expeditionEffects[field] + item.power);
             message = `${item.emoji} ${item.name} preparado para la próxima expedición de ${pet.name}.`;
+        }
+        else if (item.effect === 'expedition_haste' || item.effect === 'battle_haste') {
+            const isExpedition = item.effect === 'expedition_haste';
+            const lastAt = isExpedition ? pet.lastExploreAt : pet.lastBattleAt;
+            const cooldown = isExpedition ? RPG_EXPLORE_COOLDOWN : RPG_BATTLE_COOLDOWN;
+            const remaining = (lastAt ?? 0) + cooldown - at;
+            if (lastAt === null || remaining <= 0)
+                return undefined;
+            const reduced = Math.min(remaining, item.power);
+            if (isExpedition)
+                updated.lastExploreAt = lastAt - reduced;
+            else
+                updated.lastBattleAt = lastAt - reduced;
+            const reducedMinutes = Math.ceil(reduced / 60);
+            const remainingMinutes = Math.ceil(Math.max(0, remaining - reduced) / 60);
+            message = `⏩ ${item.name} adelantó ${reducedMinutes} min de la espera de ${isExpedition ? 'exploración' : 'combate'}${remainingMinutes ? `; quedan ${remainingMinutes} min` : ' · ya puedes volver'}.`;
         }
         return { pet: updated, message };
     };

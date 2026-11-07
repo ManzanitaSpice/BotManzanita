@@ -25,6 +25,20 @@ import { equippedProfileBadges, getProfileProgress, getProfileSettings, profileI
 
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
+type RpgMenuItem = { entry: { itemId: string; quantity: number }; item: (typeof rpgItems)[number] };
+
+function rpgItemMenu(entries: RpgMenuItem[], requestedPage = 0, noun = 'artículos') {
+  const pageSize = entries.length > 25 ? 23 : 25;
+  const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
+  const requested = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
+  const page = Math.min(requested, pageCount - 1);
+  const options = entries.slice(page * pageSize, (page + 1) * pageSize).map(({ entry, item }) => ({
+    label: `${item.name} · x${entry.quantity}`, value: item.id, emoji: item.emoji, description: item.description.slice(0, 100),
+  }));
+  if (page > 0) options.unshift({ label: `Ver ${noun} anteriores`, value: `__page:${page - 1}`, emoji: '⬅️', description: `Volver a la página ${page} de ${pageCount}` });
+  if (page + 1 < pageCount) options.push({ label: `Ver más ${noun}`, value: `__page:${page + 1}`, emoji: '➡️', description: `Página ${page + 2} de ${pageCount}` });
+  return { page, pageCount, pageSize, options };
+}
 
 export function listPanel(title: string, subtitle: string, entries: string[], accent = colors.economy, emptyMessage = 'Todavía no hay elementos para mostrar.', ephemeral = true) {
   const rows = entries.length ? entries.map((entry) => `›  ${entry}`).join('\n') : `_ ${emptyMessage} _`;
@@ -146,41 +160,37 @@ function statBar(value: number, max: number, width = 10): string {
   return `${'▰'.repeat(filled)}${'▱'.repeat(width - filled)}`;
 }
 
-export async function rpgPanel(guildId: string, userId: string, username: string) {
+export async function rpgPanel(guildId: string, userId: string, username: string, foodPage = 0) {
   const pet = await getRpgPet(guildId, userId);
   const container = new ContainerBuilder().setAccentColor(pet ? ({ 'Común': 0x94a3b8, 'Poco común': 0x22c55e, 'Raro': 0x3b82f6, 'Épico': 0xa855f7, 'Legendario': 0xf59e0b } as const)[pet.rarity] : 0x14b8a6);
   if (!pet) return rpgAdoptionPanel(username, 'Fuego');
   const inventory = await getRpgInventory(guildId, userId);
-  const foods = inventory.map((entry) => ({ entry, item: rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack') })).filter((row) => row.item);
+  const foods = inventory.flatMap((entry) => {
+    const item = rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack');
+    return item ? [{ entry, item }] : [];
+  })
+    .sort((a, b) => Number(b.item!.food?.element === pet.element) - Number(a.item!.food?.element === pet.element));
   const xpNext = 100 + (pet.level - 1) * 45;
-  const currentTime = Math.floor(Date.now() / 1000);
-  const exploreReady = !pet.lastExploreAt || pet.lastExploreAt + RPG_EXPLORE_COOLDOWN <= currentTime;
   const nextCareAt = (pet.lastCareAt ?? 0) + RPG_CARE_COOLDOWN;
+  const currentTime = Math.floor(Date.now() / 1000);
   const careReady = pet.affection < 100 && (!pet.lastCareAt || nextCareAt <= currentTime);
-  const exploreStatus = !exploreReady ? `⏳ Descansa · disponible <t:${pet.lastExploreAt! + RPG_EXPLORE_COOLDOWN}:R>`
-    : pet.energy < 20 ? '⚡ Necesita 20 de energía para salir.'
-      : pet.hunger < 15 ? '🍖 Necesita comer antes de salir.'
-        : '🟢 Lista para explorar';
-  const careStatus = pet.affection >= 100 ? '🫶 Cariño al máximo.'
-    : !careReady ? `🫶 Podrás acariciarla <t:${nextCareAt}:R>.`
-      : `🫶 Acariciar: hasta +8 de cariño según su saciedad · cada ${RPG_CARE_COOLDOWN / 3600} h.`;
-  const profileArt = { ...rpgZones[0]!, emoji: '🐾', name: 'Ficha de compañera', difficulty: `Nivel ${pet.level}` };
-  const petCard = await renderPetCard(pet, rpgZones[0]!.background, profileArt, xpNext);
+  const careStatus = pet.affection >= 100 ? 'Ya tiene todo el cariño que necesita.'
+    : !careReady ? `Unas caricias más estarán disponibles <t:${nextCareAt}:R>.`
+      : 'Unas caricias le ayudarán a sentirse más querida.';
+  const petCard = await renderPetCard(pet, rpgZones[0]!.background, xpNext);
   container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`Ficha de ${pet.name}: ${pet.species}, ${pet.rarity}, nivel ${pet.level}; ${pet.element}, especialidad ${pet.specialization}. ${pet.hp}/${pet.maxHp} PV, ${pet.energy}/${pet.maxEnergy} energía, saciedad ${pet.hunger}/100 y cariño ${pet.affection}/100.`),
+      new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`Retrato de ${pet.name}, su ficha de compañera.`),
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🐾 ${pet.name}\n${exploreStatus} · 📘 XP RPG hoy: ${pet.dailyXp}/${RPG_DAILY_XP_CAP}\n${careStatus}\n${foods.length ? '🍓 Elige comida en la lista.' : '🍓 Sin comida; consíguela en Tienda.'}`));
-  if (foods.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId('rpg:feed:select').setPlaceholder(`Alimentar a ${pet.name}`).addOptions(foods.slice(0, 25).map(({ entry, item }) => ({
-      label: `${item!.name} · x${entry.quantity}`, value: entry.itemId, emoji: item!.emoji, description: item!.description.slice(0, 100),
-    }))),
-  ));
+      `# 🫶 Cuidado de compañera\n${careStatus}${foods.length ? '\n🍓 La comida de su elemento le da un impulso extra.' : '\n🍓 Se quedó sin bocadillos. Consigue comida en Aventura o Tienda.'}`));
+  if (foods.length) {
+    const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
+    container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:profile:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options),
+    ));
+  }
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('rpg:exploration:open').setLabel('Explorar').setEmoji('🧭').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('rpg:care').setLabel('Acariciar').setEmoji('🫶').setStyle(ButtonStyle.Secondary).setDisabled(!careReady),
-    new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('📋').setStyle(ButtonStyle.Secondary),
   ));
   return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
@@ -200,7 +210,7 @@ export async function rpgExplorePanel(guildId: string, userId: string, username:
         : pet.hunger < 15 ? '🍖 Necesita comer antes de salir.'
           : '🟢 Lista para salir.';
   const consumption = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
-  const petCard = await renderPetCard(pet, zone.background, zone, xpNext);
+  const petCard = await renderPetCard(pet, zone.background, xpNext);
   const container = new ContainerBuilder().setAccentColor(0x14b8a6)
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name} · ${zone.name}`),
@@ -274,21 +284,19 @@ export async function expeditionLogPanel(guildId: string, userId: string, reques
 
 export async function rpgMenuPanel(guildId: string, userId: string) {
   const pet = await getRpgPet(guildId, userId);
-  const status = pet
-    ? `🐾 **${pet.name}** · nivel ${pet.level}\n❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad · 🫶 ${pet.affection}/100 cariño`
-    : '🥚 Aún no tienes mascota. Adopta una desde **Mascota**.';
+  const intro = pet ? `**${pet.name}** te espera en el gremio.` : 'Aún no tienes mascota. Adopta una para comenzar tu aventura.';
   const container = new ContainerBuilder().setAccentColor(0x8b5cf6)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🐾 GREMIO RPG\n${status}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ✨ Tu aventura RPG\n${intro}\n\n¿A dónde vamos?`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('rpg:menu:category').setPlaceholder('Elegir categoría').addOptions(
-        { label: 'Mascota', value: 'pet', emoji: '🐾', description: 'Estado, nivel y estadísticas' },
-        { label: 'Aventura', value: 'explore', emoji: '📜', description: 'Bitácora y nuevas expediciones' },
+        { label: 'Compañera', value: 'pet', emoji: '🐾', description: 'Ficha, comida y cariño' },
+        { label: 'Aventura', value: 'explore', emoji: '🧭', description: 'Exploraciones, botín y bitácora' },
         { label: 'Combate', value: 'battle', emoji: '⚔️', description: 'Enemigos y técnicas' },
-        { label: 'Mochila', value: 'inventory', emoji: '🎒', description: 'Objetos que llevas y equipo' },
+        { label: 'Mochila', value: 'inventory', emoji: '🎒', description: 'Tus objetos y equipo' },
         { label: 'Tienda', value: 'shop', emoji: '🛍️', description: 'Comida, equipo y consumibles' },
         { label: 'Misiones', value: 'missions', emoji: '📜', description: 'Encargos y recompensas' },
-        { label: 'Mejoras', value: 'manage', emoji: '⚙️', description: pet?.freeNameUsed ? 'Entrenar sus atributos' : 'Entrenar atributos o cambiar el nombre' },
-        { label: 'Duelos y ranking', value: 'social', emoji: '🏆', description: 'Retos y clasificación' },
+        { label: 'Mejoras', value: 'manage', emoji: '⚙️', description: pet?.freeNameUsed ? 'Entrena sus atributos' : 'Entrena o cambia su nombre' },
+        { label: 'Duelos y ranking', value: 'social', emoji: '🏆', description: 'Desafíos PvP y clasificación' },
       ),
     ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
@@ -368,14 +376,18 @@ export async function rpgRankingPanel(guildId: string) {
   return panel;
 }
 
-export async function rpgInventoryPanel(guildId: string, userId: string) {
+export async function rpgInventoryPanel(guildId: string, userId: string, itemPage = 0) {
   const [pet, inventory] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
-  const entries = inventory.map((entry) => ({ entry, item: rpgItems.find((candidate) => candidate.id === entry.itemId) })).filter((row) => row.item);
+  const entries = inventory.flatMap((entry) => {
+    const item = rpgItems.find((candidate) => candidate.id === entry.itemId);
+    return item ? [{ entry, item }] : [];
+  });
+  const menu = rpgItemMenu(entries, itemPage);
   const text = entries.slice(0, 8).map(({ entry, item }) => `${item!.emoji} **${item!.name}** ×${entry.quantity} · ${item!.rarity}\n${item!.description}`).join('\n\n');
   const container = new ContainerBuilder().setAccentColor(0x16a085)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎒 MOCHILA${pet ? ` · ${pet.name}` : ''}\n${inventory.reduce((sum, entry) => sum + entry.quantity, 0)} objetos\n\n${text || '_Aún no tienes objetos. Encuentra botín explorando o visita la tienda._'}`));
   if (entries.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId('rpg:use').setPlaceholder('Usar o equipar un objeto').addOptions(entries.slice(0, 25).map(({ entry, item }) => ({ label: `${item!.name} · x${entry.quantity}`, value: entry.itemId, emoji: item!.emoji, description: item!.description.slice(0, 100) }))),
+    new StringSelectMenuBuilder().setCustomId(`rpg:use:${menu.page}`).setPlaceholder(`Usar o equipar · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options),
   ));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
@@ -384,19 +396,20 @@ export async function rpgInventoryPanel(guildId: string, userId: string) {
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export async function rpgFeedPanel(guildId: string, userId: string) {
+export async function rpgFeedPanel(guildId: string, userId: string, foodPage = 0) {
   const [pet, inventory] = await Promise.all([getRpgPet(guildId, userId), getRpgInventory(guildId, userId)]);
-  const foods = inventory.map((entry) => ({ entry, item: rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack') })).filter((row) => row.item);
+  const foods = inventory.flatMap((entry) => {
+    const item = rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack');
+    return item ? [{ entry, item }] : [];
+  }).sort((a, b) => Number(Boolean(pet && b.item.food?.element === pet.element)) - Number(Boolean(pet && a.item.food?.element === pet.element)));
   const container = new ContainerBuilder().setAccentColor(0xf59e0b)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🍓 ALIMENTAR${pet ? ` · ${pet.name}` : ''}\n${pet ? `🍖 Saciedad **${pet.hunger}/100**　🫶 Cariño **${pet.affection}/100**\n\n${foods.length ? 'Elige comida de tu mochila.' : 'Consigue comida explorando o cómprala en Tienda.'}` : 'Primero adopta una mascota.'}`));
-  if (foods.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId('rpg:feed:select').setPlaceholder('Elegir alimento').addOptions(foods.slice(0, 25).map(({ entry, item }) => ({ label: `${item!.name} · x${entry.quantity}`, value: entry.itemId, emoji: item!.emoji, description: item!.description.slice(0, 100) }))),
-  ));
-  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('rpg:care').setLabel('Acariciar').setEmoji('🫶').setStyle(ButtonStyle.Secondary).setDisabled(!pet),
-    new ButtonBuilder().setCustomId('rpg:shop').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('rpg:panel').setLabel('Mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
-  ));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🍓 Dar de comer${pet ? ` · ${pet.name}` : ''}\n${pet ? `Saciedad **${pet.hunger}/100**　·　Cariño **${pet.affection}/100**\n\n${foods.length ? `Elige un bocadillo. Los de afinidad ${pet.element} son más eficaces.` : 'No quedan bocadillos. Encuéntralos en Aventura o en la Tienda.'}` : 'Primero adopta una mascota.'}`));
+  if (foods.length) {
+    const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
+    container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:feed:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options),
+    ));
+  }
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 

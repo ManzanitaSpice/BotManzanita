@@ -171,7 +171,7 @@ export const rpgCommand = {
         }
         if (action === 'usar') {
             const result = await useRpgItem(guildId, userId, interaction.options.getString('articulo', true), interaction.id);
-            const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese artículo en tu mochila.' : rpgItems.find((item) => item.id === interaction.options.getString('articulo', true))?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'Ese objeto no se puede usar ahora; revisa los PV, energía o equipo.';
+            const message = result.ok ? result.message : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'missing_item' ? 'No tienes ese artículo en tu mochila.' : rpgItems.find((item) => item.id === interaction.options.getString('articulo', true))?.effect === 'xp' ? 'Ya alcanzaste el límite de XP de hoy. El manual sigue en tu mochila.' : 'No hay PV, energía ni tiempo de espera que este artículo pueda recuperar ahora.';
             await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             return;
         }
