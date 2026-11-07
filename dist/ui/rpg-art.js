@@ -50,23 +50,26 @@ function drawCardShell(context, accent) {
     context.roundRect(2, 2, WIDTH - 4, HEIGHT - 4, 28);
     context.stroke();
 }
-function drawPill(context, x, y, width, text, color) {
+function drawEggRarityRow(context, x, y, width, rarity, odds, count, color) {
     context.fillStyle = 'rgba(12, 16, 28, .76)';
     context.beginPath();
-    context.roundRect(x, y, width, 42, 20);
+    context.roundRect(x, y, width, 28, 8);
     context.fill();
-    context.strokeStyle = `${color}88`;
+    context.strokeStyle = `${color}66`;
     context.lineWidth = 1;
     context.stroke();
-    let fontSize = 16;
-    while (fontSize > 12) {
-        context.font = `600 ${fontSize}px sans-serif`;
-        if (context.measureText(text).width <= width - 30)
-            break;
-        fontSize -= 1;
-    }
     context.fillStyle = color;
-    context.fillText(text, x + 15, y + 27);
+    context.font = '600 15px sans-serif';
+    context.textAlign = 'left';
+    context.fillText(rarity, x + 12, y + 19);
+    context.fillStyle = '#f8fafc';
+    context.font = '700 15px sans-serif';
+    context.textAlign = 'right';
+    context.fillText(`${odds}%`, x + 340, y + 19);
+    context.fillStyle = '#cbd5e1';
+    context.font = '500 15px sans-serif';
+    context.fillText(`${count}`, x + width - 14, y + 19);
+    context.textAlign = 'left';
 }
 function drawMeter(context, x, y, width, label, value, max, color) {
     const ratio = Math.max(0, Math.min(1, value / Math.max(1, max)));
@@ -88,6 +91,24 @@ function drawMeter(context, x, y, width, label, value, max, color) {
         context.roundRect(x, y + 8, Math.max(8, width * ratio), 9, 5);
         context.fill();
     }
+}
+function drawPill(context, x, y, width, text, color) {
+    context.fillStyle = 'rgba(12, 16, 28, .76)';
+    context.beginPath();
+    context.roundRect(x, y, width, 42, 20);
+    context.fill();
+    context.strokeStyle = `${color}88`;
+    context.lineWidth = 1;
+    context.stroke();
+    let fontSize = 16;
+    while (fontSize > 12) {
+        context.font = `600 ${fontSize}px sans-serif`;
+        if (context.measureText(text).width <= width - 30)
+            break;
+        fontSize -= 1;
+    }
+    context.fillStyle = color;
+    context.fillText(text, x + 15, y + 27);
 }
 export async function renderEggCard(username, element) {
     const option = rpgEggOptions.find((entry) => entry.element === element) ?? rpgEggOptions[0];
@@ -134,15 +155,21 @@ export async function renderEggCard(username, element) {
     context.fillStyle = '#f8fafc';
     context.font = '600 20px sans-serif';
     context.fillText(`Una criatura aleatoria de elemento ${element}.`, 78, 300);
+    const rarityCounts = getPetRarityCounts(element);
+    const totalSpecies = rarityCounts.reduce((sum, entry) => sum + entry.count, 0);
     context.fillStyle = '#94a3b8';
     context.font = '18px sans-serif';
-    const totalSpecies = getPetRarityCounts(element).reduce((sum, entry) => sum + entry.count, 0);
-    context.fillText(totalSpecies + ' especies · misma composición en los diez huevos.', 78, 332);
+    context.fillText(`${totalSpecies} especies · probabilidades iguales en todos los huevos.`, 78, 332);
     context.fillStyle = '#94a3b8';
-    context.font = '600 16px sans-serif';
-    context.fillText('PROBABILIDAD POR RAREZA', 78, 365);
+    context.font = '600 14px sans-serif';
+    context.fillText('RAREZA', 88, 380);
+    context.textAlign = 'right';
+    context.fillText('PROBABILIDAD', 416, 380);
+    context.fillText('ESPECIES', 512, 380);
+    context.textAlign = 'left';
     const rarityColors = { 'Común': '#cbd5e1', 'Poco común': '#65d487', 'Raro': '#69b9ff', 'Épico': '#c29aff', 'Legendario': '#ffc35d' };
-    getPetRarityOdds(element).forEach(({ rarity, odds }, index) => drawPill(context, 76 + (index % 2) * 230, 380 + Math.floor(index / 2) * 50, 214, `${rarity} · ${odds}%`, rarityColors[rarity] ?? '#cbd5e1'));
+    const countsByRarity = new Map(rarityCounts.map(({ rarity, count }) => [rarity, count]));
+    getPetRarityOdds(element).forEach(({ rarity, odds }, index) => drawEggRarityRow(context, 76, 386 + index * 31, 450, rarity, odds, countsByRarity.get(rarity) ?? 0, rarityColors[rarity] ?? '#cbd5e1'));
     context.fillStyle = '#cbd5e1';
     context.font = '500 17px sans-serif';
     context.fillText(`Preparado para ${username}`, 78, 555);
@@ -215,6 +242,8 @@ export async function renderPetCard(pet, backgroundName, xpNext) {
     context.fillStyle = theme.accent;
     context.font = '700 15px sans-serif';
     context.fillText('ATRIBUTOS', 84, 352);
+    context.fillStyle = '#cbd5e1';
+    context.font = '600 19px sans-serif';
     const attributes = [['Fuerza', pet.strength], ['Defensa', pet.defense], ['Agilidad', pet.agility]];
     attributes.forEach(([label, value], index) => {
         const y = 397 + index * 49;

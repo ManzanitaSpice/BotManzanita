@@ -590,8 +590,8 @@ async function routeMessage(message) {
         if (['care', 'cuidar', 'mimar'].includes(action)) {
             const result = await careForRpgPet(guildId, userId);
             if (!result.ok)
-                return say(message, result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
-            await sendPanel(message, rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`));
+                return say(message, result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El cariño de tu mascota ya está al máximo.' : `Podrás volver a acariciarla en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+            await sendPanel(message, rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su cariño aumentó **+${result.affectionGained}**.`));
             return;
         }
         if (['adopt', 'adoptar'].includes(action)) {
@@ -641,7 +641,7 @@ async function routeMessage(message) {
             if (!stat)
                 return say(message, 'Uso: `a!rpg train fuerza|defensa|agilidad`.');
             const result = await trainRpgPet(guildId, userId, stat, message.id);
-            return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'Necesitas 180 monedas.');
+            return say(message, result.ok ? `🏋️ ${stat}: ${result.pet[stat]} · saldo ${money.format(result.balance)}.` : result.reason === 'no_pet' ? 'Adopta una mascota primero.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : 'Necesitas 180 monedas.');
         }
         if (['buy', 'comprar'].includes(action)) {
             const item = findRpgItem(args.join(' '));

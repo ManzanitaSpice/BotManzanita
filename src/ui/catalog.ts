@@ -3,7 +3,7 @@ import { ActionRowBuilder, ContainerBuilder, StringSelectMenuBuilder, TextDispla
 const categories = {
   inicio: {
     label: 'Inicio', description: 'Ayuda rápida y paneles', emoji: '🏠',
-    body: '# 📚 CENTRO DE COMANDOS\nExplora una categoría con el menú de abajo. Los comandos funcionan con **a!** y también puedes usar los comandos slash.\n\n## ⚡ Atajos populares\n• `a!p canción` · reproducir música\n• `a!bal` · consultar saldo\n• `a!perfil` · abrir tu tarjeta\n• `a!rpg` · ver tu mascota\n• `a!happy` · compartir una expresión\n\nLos paneles incluyen botones y menús para controlar cada función desde Discord.',
+    body: '# 📚 AYUDA\nLos comandos de texto empiezan con `a!`; también puedes usar comandos slash.\n\n## 🚀 Ejemplos rápidos\n• Música: `a!p canción` · reproducir una canción\n• Economía: `a!bal` · consultar saldo · `a!daily` · cobrar la recompensa diaria\n• Perfil: `a!perfil` · abrir tu tarjeta\n• RPG: `a!rpg` · abrir el menú de mascota\n• Expresiones: `a!happy` · enviar un GIF\n\n## 🧭 Categorías\nLos comandos están agrupados por tema; varios abren paneles con botones y menús.',
   },
   expresiones: {
     label: 'Expresiones', description: 'Gestos e interacciones en GIF con frases divertidas', emoji: '✨',
@@ -32,6 +32,8 @@ const categories = {
 } as const;
 
 export type CatalogCategory = keyof typeof categories;
+const categoryOrder: CatalogCategory[] = ['inicio', 'musica', 'economia', 'rpg', 'expresiones', 'utilidades', 'admin'];
+
 export function catalogPanel(selected: string = 'inicio') {
   const key: CatalogCategory = selected in categories ? selected as CatalogCategory : 'inicio';
   const category = categories[key];
@@ -43,8 +45,11 @@ export function catalogPanel(selected: string = 'inicio') {
   const container = new ContainerBuilder().setAccentColor(0x8b75dc)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${category.body}${helpAddition}`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId('catalog:category').setPlaceholder('📚 Explorar categorías').setOptions(
-        ...Object.entries(categories).map(([value, entry]) => ({ label: entry.label, description: entry.description, value, emoji: entry.emoji, default: value === key })),
+      new StringSelectMenuBuilder().setCustomId('catalog:category').setPlaceholder('📚 Elegir categoría').setOptions(
+        ...categoryOrder.map((value) => {
+          const entry = categories[value];
+          return { label: entry.label, description: entry.description, value, emoji: entry.emoji, default: value === key };
+        }),
       ),
     ));
   return { components: [container], flags: ['IsComponentsV2'] as const };

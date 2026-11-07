@@ -157,197 +157,228 @@ for (const zone of rpgZones) {
             throw new Error(`El botín RPG ${itemId} de ${zone.id} no existe en el catálogo.`);
     }
 }
-const zoneStories = {
-    bosque: {
-        arrival: ['El rocío cubre las hojas y deja un rastro brillante.', 'Una bandada levanta el vuelo entre los árboles.', 'El aroma a bayas guía los primeros pasos.', 'Un arroyo divide el sendero y refleja el sol.', 'Las setas luminosas marcan un camino entre raíces.'],
-        decisions: { Atacante: ['se adelanta para ahuyentar a la criatura del sendero', 'protege el paso enfrentando los gruñidos entre los matorrales', 'rompe una rama caída y abre camino al claro'], Guardián: ['revisa el terreno y escoge la ruta más protegida', 'camina delante para cubrir el cruce del arroyo', 'busca un refugio antes de que cambie el tiempo'], Explorador: ['sigue unas huellas pequeñas hasta una zona escondida', 'trepa una roca para observar el bosque desde arriba', 'marca el camino con hojas para no perderse'], Místico: ['escucha el murmullo de las setas luminosas', 'interpreta unas marcas antiguas en la corteza', 'sigue una chispa de magia entre los helechos'], Apoyo: ['reúne hierbas y ayuda a un pajarillo herido', 'comparte bayas con una familia de ratones', 'deja agua junto al sendero para los animales'] },
-        threats: ['un jabalí de zarzas', 'un enjambre territorial', 'un slime verde', 'un cuervo ladrón', 'una raíz que se mueve'],
-        safeFinds: ['una bolsa olvidada junto al tronco', 'monedas bajo un puente de madera', 'un nido de objetos brillantes', 'una vieja caja de guardabosques'],
-    },
-    cumbres: {
-        arrival: ['La niebla tapa el camino y el viento silba entre los pinos.', 'El sendero asciende hacia una cascada helada.', 'Una corriente de aire trae olor a nieve.', 'Unas huellas cruzan la ladera hacia una cueva.', 'El sol ilumina un paso estrecho sobre las nubes.'],
-        decisions: { Atacante: ['se planta ante un desprendimiento y aparta las rocas', 'ahuyenta a una bestia que bloquea el paso', 'cruza primero para asegurar el puente de hielo'], Guardián: ['busca una cornisa firme y cubre la subida', 'guía el paso lejos del borde de la montaña', 'se refugia detrás de una pared de piedra'], Explorador: ['lee las corrientes de viento para encontrar un atajo', 'sigue las huellas hasta un mirador escondido', 'marca con tiza el tramo más seguro'], Místico: ['descifra runas cubiertas de escarcha', 'sigue un brillo azul bajo la nieve', 'escucha ecos que señalan una cueva cercana'], Apoyo: ['comparte una fruta caliente y recupera el ánimo', 'ayuda a un pichón a volver a su nido', 'limpia la nieve de las señales del camino'] },
-        threats: ['un gólem de hielo', 'un grifo joven', 'una avalancha repentina', 'un lobo de la cumbre', 'un puente que cruje'],
-        safeFinds: ['un alijo de montañistas', 'monedas atrapadas en el hielo', 'un campamento abandonado', 'una veta de cristales azules'],
-    },
-    ruinas: {
-        arrival: ['Las columnas cubiertas de musgo forman un corredor silencioso.', 'Una runa turquesa parpadea en la pared.', 'El polvo se levanta al cruzar una sala antigua.', 'Un mosaico señala dos caminos distintos.', 'La luz entra por una cúpula rota.'],
-        decisions: { Atacante: ['activa la trampa antes de que cierre el pasillo', 'despeja una puerta bloqueada por escombros', 'se interpone entre el grupo y una estatua animada'], Guardián: ['prueba cada baldosa antes de avanzar', 'sostiene un arco de piedra mientras cruza', 'protege el regreso con una ruta fácil de reconocer'], Explorador: ['detecta marcas casi invisibles en el suelo', 'abre un compartimento oculto tras un relieve', 'se desliza por un corredor lateral sin ruido'], Místico: ['compara las runas y resuelve un acertijo', 'canaliza la energía de un obelisco', 'lee un mapa celeste tallado en mármol'], Apoyo: ['ordena los fragmentos de una inscripción', 'calma a un espíritu perdido con una luz suave', 'limpia el polvo de una palanca antigua'] },
-        threats: ['un guardián de piedra', 'una sombra del archivo', 'una trampa de dardos', 'un escarabajo de bronce', 'un pasillo que se derrumba'],
-        safeFinds: ['un cofre de la antigua guardia', 'una cámara secreta de ofrendas', 'un depósito de monedas reales', 'un altar con objetos intactos'],
-    },
-    dunas: {
-        arrival: ['El sol poniente enciende las dunas de cobre.', 'Unas agujas de cristal sobresalen de la arena.', 'Las huellas se borran detrás de cada ráfaga.', 'Una torre astronómica aparece entre los espejismos.', 'La arena canta alrededor de un arco enterrado.'],
-        decisions: { Atacante: ['rompe una formación cristalina que bloquea la ruta', 'ahuyenta a un escorpión de arena', 'se enfrenta a una ráfaga cargada de fragmentos'], Guardián: ['protege el paso detrás de una roca', 'busca sombra y espera a que pase el viento', 'cubre el cruce de una quebrada estrecha'], Explorador: ['sigue unas marcas hasta un observatorio sepultado', 'busca una ruta firme entre las dunas', 'usa las estrellas para orientarse en el espejismo'], Místico: ['lee el brillo de las vetas de cristal', 'activa un reloj de sol cubierto por la arena', 'sigue un pulso mágico bajo el suelo'], Apoyo: ['comparte agua con un pequeño viajero', 'despeja un nido de las arenas movedizas', 'reúne hierbas que crecen junto a los cristales'] },
-        threats: ['un escorpión de cristal', 'una ráfaga de arena cortante', 'un espejismo que oculta el sendero', 'un gólem de cuarzo', 'un enjambre de polillas del desierto'],
-        safeFinds: ['un alijo oculto bajo un mojón', 'un cofre del observatorio', 'un campamento de caravanas', 'una veta de gemas junto a una duna'],
-    },
-    astral: {
-        arrival: ['El mar brilla como un cielo lleno de estrellas.', 'Una isla flotante cruza lentamente sobre la ruta.', 'Las olas dejan pequeñas luces en la orilla.', 'Un arco de constelaciones aparece en el horizonte.', 'La luna dibuja un camino plateado sobre el agua.'],
-        decisions: { Atacante: ['salta a una plataforma para frenar una sombra errante', 'abre paso entre cristales que vibran con energía', 'se enfrenta a un guardián hecho de luz'], Guardián: ['ancla una plataforma flotante antes de cruzar', 'forma un refugio contra la marea astral', 'cubre la retirada cuando cambia la corriente'], Explorador: ['salta entre islas siguiendo una constelación', 'busca una ruta escondida en la espuma luminosa', 'observa el horizonte para anticipar la marea'], Místico: ['traza un símbolo y abre una brecha segura', 'conversa con una estrella fugaz', 'descifra el pulso de un monolito celeste'], Apoyo: ['devuelve una pequeña estrella al cielo', 'cura una medusa de luz varada en la playa', 'comparte energía con un espíritu cansado'] },
-        threats: ['una mantarraya de sombra', 'un centinela astral', 'un remolino de luz', 'un fragmento de cometa', 'una isla que pierde estabilidad'],
-        safeFinds: ['un cofre de navegante estelar', 'monedas de una isla flotante', 'un observatorio olvidado', 'una cápsula llegada en un cometa'],
-    },
+const scene = (id, kind, emoji, title, skill, difficulty, opening, success, setback, extra = {}) => ({
+    id, kind, emoji, title, skill, difficulty, opening, success, setback, weight: 10, duration: [18, 55], xp: [5, 13], choices: {}, ...extra,
+});
+const expeditionScenes = {
+    bosque: [
+        scene('arroyo', 'serena', '💧', 'El arroyo de las luciérnagas', 'agilidad', 0, ['El arroyo está más alto que ayer y las luciérnagas dibujan un puente en el aire.', 'Entre las raíces, el agua corre clara y deja burbujas redondas en la orilla.'], ['{name} cruza por unas piedras cubiertas de musgo; del otro lado, un petirrojo continúa su canción como si nada.', '{name} encuentra un paso firme y espera a que una familia de erizos termine de beber.'], ['Una piedra rueda bajo sus patas. {name} alcanza la orilla, aunque se moja hasta las orejas.'], { weight: 12, duration: [12, 32], xp: [4, 10], calm: true, choices: { Explorador: ['sigue las burbujas hasta el vado menos profundo'], Apoyo: ['cede el paso a los animales que esperan'] } }),
+        scene('guardabosques', 'social', '🧺', 'Una cesta volcada', 'vinculo', 0, ['Iria, la guardabosques, intenta recoger manzanas antes de que rueden ladera abajo.', 'Un silbido corto llega desde el sendero: Iria vuelve a buscar ayuda con su cesta.'], ['—Llegaste justo a tiempo —ríe Iria—. La mitad de la cosecha ya quería explorar por su cuenta.', 'Iria le ofrece una manzana y le cuenta qué senderos están llenos de flores esta semana.'], ['La cesta se atasca entre dos raíces; al final, Iria recupera casi todo y le agradece el intento.'], { weight: 10, friend: 'iria', duration: [20, 42], xp: [7, 15], recover: 1, choices: { Atacante: ['sujeta la cesta mientras Iria levanta las raíces'], Guardián: ['mantiene despejada la ladera'], Apoyo: ['reúne las manzanas más pequeñas'] } }),
+        scene('zarzas', 'riesgo', '🌿', 'El sendero de zarzas', 'defensa', 1, ['Las zarzas se han cerrado sobre el camino y algo pequeño gruñe al otro lado.', 'Un crujido corre entre las ramas; unas espinas frescas señalan un paso estrecho.'], ['{name} aparta las ramas con cuidado y deja espacio para que un tejón asustado se retire.', '{name} encuentra un hueco entre las raíces y evita que las espinas alcancen su cara.'], ['Una espina le rasga el costado antes de que consiga liberar el paso.'], { weight: 8, hazard: 'zarzas', damage: [2, 7], duration: [24, 50], xp: [7, 15], choices: { Atacante: ['abre un hueco con un empujón firme'], Guardián: ['protege el hocico y avanza despacio'], Explorador: ['busca dónde la maleza cede'] } }),
+        scene('nido', 'hallazgo', '🪺', 'El nido bajo el roble', 'intuicion', 1, ['Unas plumas doradas asoman de la base de un roble partido.', 'Del hueco del roble llega un piar débil y nervioso.'], ['{name} descubre un nido intacto y lo coloca en una rama segura; una pluma brillante queda entre las hojas.', '{name} guía a la cría de vuelta a su nido. La madre aparece enseguida y deja caer una semilla lustrosa.'], ['La entrada es demasiado estrecha. {name} avisa a Iria y no fuerza las raíces.'], { weight: 8, discovery: 'nido-del-roble', item: true, duration: [22, 48], xp: [8, 16], recover: 2, choices: { Místico: ['escucha desde dónde responde la madre'], Apoyo: ['acomoda las hojas para que el nido no se incline'] } }),
+        scene('jabalí', 'encuentro', '🐗', 'Visita inesperada', 'fuerza', 2, ['Un jabalí de zarzas bloquea el sendero y resopla con una bellota pegada al hocico.', 'Las hojas se agitan. Un jabalí joven sale del matorral, más asustado que furioso.'], ['{name} retrocede sin acorralarlo; el animal olfatea el aire y se pierde entre los helechos.', '{name} distrae al jabalí con una rama cargada de bellotas. El sendero queda libre y nadie sale herido.'], ['El jabalí embiste antes de encontrar la salida. {name} se aparta, pero el golpe le deja un moretón.'], { weight: 5, hazard: 'jabalí', damage: [5, 12], duration: [20, 45], xp: [9, 18], choices: { Atacante: ['se interpone y le deja una vía de escape'], Guardián: ['retrocede para no acorralarlo'], Apoyo: ['le ofrece bellotas desde una distancia prudente'] } }),
+        scene('clarohongo', 'hallazgo', '🍄', 'El claro de los hongos azules', 'agilidad', 1, ['Una lluvia breve dejó gotas luminosas sobre un claro de hongos azules.', 'El olor dulce de los hongos llega desde una hondonada escondida.'], ['{name} encuentra un pequeño refugio de exploradores con provisiones secas.', '{name} sigue las huellas hasta una caja de campo que Iria había dado por perdida.'], ['La hondonada termina en barro profundo; {name} vuelve con las patas limpias solo a medias.'], { weight: 7, discovery: 'claro-azul', item: true, coins: true, coinDetail: 'En el refugio quedan unas monedas guardadas dentro de una lata.', duration: [25, 60], xp: [8, 17], choices: { Explorador: ['marca el camino con dos hojas cruzadas'], Místico: ['compara el brillo de cada hongo antes de acercarse'] } }),
+        scene('sombrahojas', 'descanso', '🌤️', 'Un descanso entre raíces', 'vinculo', 0, ['El sol se cuela en una raíz hueca que parece hecha a la medida de una siesta.', 'Un tronco tibio ofrece sombra y un buen lugar para escuchar el bosque.'], ['{name} descansa un rato. Cuando vuelve a ponerse en marcha, hasta el canto de los pájaros parece más cercano.'], ['Una rama cruje justo cuando iba a dormirse; aun así, recupera el aliento antes de seguir.'], { weight: 7, recover: 5, calm: true, duration: [18, 40], xp: [3, 8], choices: { Apoyo: ['comparte un poco de agua con un ratoncito que pasa'] } }),
+    ],
+    cumbres: [
+        scene('mirador', 'serena', '🏔️', 'El mirador de nubes', 'agilidad', 1, ['La niebla se abre por un instante y deja ver tres picos teñidos de rosa.', 'Una corriente tibia atraviesa la cornisa y despeja el olor a nieve.'], ['{name} reconoce un atajo por las marcas de los montañistas y lo deja señalado para la próxima visita.'], ['La bruma vuelve antes de que pueda orientarse; {name} espera a que el viento calme.'], { weight: 10, discovery: 'mirador-rosa', duration: [18, 42], xp: [5, 12], calm: true, choices: { Explorador: ['lee las corrientes de aire antes de elegir el paso'], Místico: ['sigue el eco que rebota desde el pico'] } }),
+        scene('montanista', 'social', '🧤', 'La bufanda de Nara', 'vinculo', 0, ['Nara, una montañista de guantes verdes, busca la bufanda que el viento le arrebató.', 'Una bufanda verde cuelga de una roca; Nara la reconoce desde el otro lado de la cornisa.'], ['—¡Mi abuela la tejió! —dice Nara, apretándola contra el pecho—. Te debo una historia y chocolate caliente.', '—Te guardé un poco de chocolate —dice Nara—. Ya sabía que volverías por este lado.'], ['El viento la arrastra hasta una grieta segura, pero Nara tendrá que volver con una cuerda.'], { weight: 9, friend: 'nara', duration: [20, 46], xp: [7, 15], choices: { Atacante: ['asegura la bufanda contra una roca'], Guardián: ['se coloca del lado del viento para cubrir a Nara'], Explorador: ['sigue la prenda sin acercarse al borde'] } }),
+        scene('puentehielo', 'riesgo', '🧊', 'El puente que canta', 'defensa', 2, ['El puente de hielo emite un sonido hueco bajo cada ráfaga.', 'Un crujido sube desde la superficie blanca y se pierde en la niebla.'], ['{name} encuentra las placas más firmes y cruza marcando cada apoyo con una huella.', '{name} espera el cambio del viento y guía el cruce cuando el hielo deja de vibrar.'], ['Una placa cede. {name} se sujeta a la baranda, aunque el tirón le lastima una pata.'], { weight: 8, hazard: 'puente-de-hielo', damage: [4, 12], duration: [26, 58], xp: [8, 17], choices: { Guardián: ['prueba el hielo antes de que nadie pise'], Explorador: ['busca grietas antiguas para elegir la línea segura'], Atacante: ['afirma una baranda suelta con el hombro'] } }),
+        scene('cabra', 'encuentro', '🐐', 'Una cabra en apuros', 'fuerza', 1, ['Una cabra montés quedó atrapada entre dos rocas y no para de llamar a su manada.', 'Un cascabel tintinea junto a una grieta: una cabrita asoma apenas el hocico.'], ['{name} mueve una piedra pequeña y la cabra salta libre hacia la ladera.', '—Gracias, montañista peludo —balbucea el pastor al aparecer—. Ella siempre se mete donde no cabe.'], ['La roca pesa demasiado. {name} busca al pastor en vez de arriesgar un derrumbe.'], { weight: 7, friend: 'pastor-teo', duration: [18, 42], xp: [7, 15], recover: 2, choices: { Atacante: ['apoya el lomo contra la piedra más liviana'], Apoyo: ['calma a la cabra mientras llega su dueño'], Místico: ['escucha por dónde se comunica la manada'] } }),
+        scene('avalancha', 'riesgo', '🌨️', 'La ladera despierta', 'agilidad', 3, ['Una vibración recorre la nieve y desprende una cortina blanca del filo.', 'El silencio se rompe con un rugido lejano: algo de nieve baja por la ladera.'], ['{name} corre hacia una cornisa protegida y espera a que el polvo blanco se asiente.', '{name} encuentra una oquedad entre rocas antes de que la nieve cruce el sendero.'], ['La nieve alcanza a {name} y lo arrastra unos metros antes de frenarse contra un pino.'], { weight: 4, hazard: 'avalancha', damage: [8, 18], duration: [24, 55], xp: [10, 20], choices: { Explorador: ['busca una salida por las marcas en la roca'], Guardián: ['cubre la retirada hacia la cornisa'] } }),
+        scene('cuevacristal', 'hallazgo', '🔷', 'La cueva de cristal azul', 'intuicion', 2, ['Una luz azulada late al fondo de una cueva que no estaba en el mapa.', 'El deshielo dejó al descubierto una abertura bajo la nieve.'], ['{name} reconoce una veta estable y memoriza cómo la luz azulada cambia con la luna.', '{name} sigue antiguas marcas de montañistas hasta un nicho de descanso en la roca.'], ['El túnel se estrecha demasiado. {name} deja una señal visible y vuelve a la cornisa.'], { weight: 7, discovery: 'cueva-azul', item: true, coins: true, coinDetail: 'En un hueco lateral encuentra monedas que alguien dejó para el camino de regreso.', duration: [30, 65], xp: [9, 19], choices: { Místico: ['observa el pulso de la veta antes de tocarla'], Explorador: ['comprueba el aire que sale por la grieta'] } }),
+        scene('refugio', 'descanso', '🔥', 'El refugio de la cornisa', 'defensa', 0, ['Una vieja caseta de piedra conserva un brasero apagado y mantas secas.', 'El viento arrecia justo cuando una puerta de refugio se entreabre.'], ['{name} se resguarda hasta que baja la ventisca y recupera el calor de las patas.'], ['La caseta está vacía y fría; el techo ofrece algo de abrigo mientras pasa la ráfaga.'], { weight: 8, recover: 7, calm: true, duration: [20, 50], xp: [4, 9] }),
+    ],
+    ruinas: [
+        scene('mosaico', 'serena', '🧩', 'El mosaico de los peces', 'intuicion', 1, ['Un mosaico de peces señala el oeste, aunque uno de ellos mira en dirección contraria.', 'La luz atraviesa la cúpula rota y hace brillar una pieza azul entre el polvo.'], ['{name} descubre que la pieza giratoria marca un corredor ventilado y anota el giro correcto.'], ['La pieza no se mueve y {name} evita forzarla; quizá haga falta otra pista.'], { weight: 10, discovery: 'mosaico-peces', calm: true, duration: [18, 44], xp: [6, 13], choices: { Místico: ['compara la inscripción con el dibujo del techo'], Explorador: ['observa el polvo para localizar una corriente de aire'] } }),
+        scene('archivista', 'social', '📚', 'El archivista de barro', 'vinculo', 0, ['Boro, un pequeño gólem cubierto de arcilla, ordena tablillas por el sonido que hacen al caer.', 'Un golpecito acompasado viene de una sala lateral: Boro está otra vez clasificando tablillas.'], ['—Esta dice “lluvia después del mercado” —traduce Boro—. Las ruinas también tenían días aburridos.', '—Te guardé una tablilla con un dibujo nuevo —dice Boro—. Esta sí apunta hacia la salida.'], ['Una tablilla se parte al moverla. Boro suspira, pero rescata los fragmentos importantes.'], { weight: 9, friend: 'boro', duration: [20, 48], xp: [7, 16], choices: { Apoyo: ['ayuda a ordenar las piezas por tamaño'], Místico: ['lee en voz alta los símbolos que todavía distingue'] } }),
+        scene('baldosas', 'riesgo', '🪤', 'Las baldosas huecas', 'agilidad', 2, ['El pasillo tiene baldosas de tonos distintos y el aire huele a metal antiguo.', 'Un clic bajo las patas de {name} despierta un mecanismo escondido.'], ['{name} identifica las baldosas seguras por el polvo intacto y cruza sin activar nada.', '{name} usa una losa suelta para trabar el mecanismo antes de seguir.'], ['Un dardo roza su hombro cuando el mecanismo se dispara; la trampa se detiene enseguida.'], { weight: 8, hazard: 'baldosas', damage: [4, 11], duration: [25, 54], xp: [8, 18], choices: { Explorador: ['mide la distancia entre las marcas del suelo'], Guardián: ['prueba cada losa con una piedra antes de cruzar'], Místico: ['escucha el clic que se repite bajo el mármol'] } }),
+        scene('espiritu', 'encuentro', '🕯️', 'La luz que busca su puerta', 'vinculo', 1, ['Una lucecita azul flota frente a una puerta pintada en una pared sin salida.', 'El aire se enfría y una voz pequeña pregunta si ya amaneció.'], ['{name} descubre una puerta dibujada bajo el polvo. La luz entra y deja de temblar.', '{name} acompaña al espíritu hasta un nicho lleno de juguetes; allí, por fin, se queda en paz.'], ['El espíritu se asusta con el eco y desaparece detrás de una columna antes de poder ayudarlo.'], { weight: 6, friend: 'luz-azul', duration: [20, 45], xp: [8, 16], recover: 1, choices: { Apoyo: ['habla en voz baja para no asustarlo'], Místico: ['sigue el rastro tenue que deja la luz'] } }),
+        scene('columnas', 'riesgo', '🗿', 'El corredor de columnas', 'fuerza', 3, ['El techo cruje y una grieta atraviesa las columnas del corredor.', 'Un fragmento de piedra cae detrás de {name}; el arco no aguantará mucho más.'], ['{name} sostiene una columna el tiempo justo para cruzar y salir del corredor.', '{name} aparta dos bloques y encuentra una salida lateral bajo el relieve.'], ['El arco cede antes de tiempo. {name} logra escapar, aunque los cascotes le golpean el lomo.'], { weight: 4, hazard: 'derrumbe', damage: [8, 18], duration: [26, 58], xp: [10, 20], choices: { Atacante: ['empuja el bloque que obstruye la salida'], Guardián: ['se coloca bajo el arco para proteger el paso'] } }),
+        scene('archivo', 'hallazgo', '🗝️', 'El archivo de las cosas pequeñas', 'intuicion', 2, ['Tras un relieve de tortugas hay un cajón que todavía conserva su cerradura.', 'Una hilera de marcas en el suelo termina justo frente a un muro sin puerta.'], ['{name} encuentra anotaciones y un dibujo de brújula cuidadosamente copiados sobre la piedra.', '{name} abre el compartimento sin romper el sello y alcanza a leer una nota sobre las rutas antiguas.'], ['La cerradura está oxidada. {name} toma nota del mecanismo y no lo fuerza.'], { weight: 7, discovery: 'archivo-menor', item: true, coins: true, coinDetail: 'Dentro del compartimento, unas monedas siguen envueltas en tela seca.', duration: [30, 68], xp: [9, 18], choices: { Explorador: ['busca marcas de dedos alrededor del cajón'], Místico: ['compara el símbolo de la cerradura con las paredes'] } }),
+        scene('patio', 'descanso', '🌿', 'El patio de lluvia', 'defensa', 0, ['Un patio interior recoge el agua de la última lluvia en una fuente limpia.', 'Las enredaderas han cubierto un banco de piedra y frenan el viento.'], ['{name} se toma un respiro junto a la fuente; el agua fresca le devuelve el ánimo.'], ['El agua está turbia, pero el patio sigue siendo un buen lugar para descansar a cubierto.'], { weight: 8, recover: 6, calm: true, duration: [18, 42], xp: [4, 9] }),
+    ],
+    dunas: [
+        scene('sombras', 'serena', '🏜️', 'Las sombras alargadas', 'intuicion', 1, ['Al atardecer, las dunas dejan ver líneas oscuras que el sol ocultaba.', 'El viento dibuja ondas parejas en la arena y el calor empieza a ceder.'], ['{name} sigue la sombra de una aguja de cristal hasta un paso fresco entre las rocas.'], ['El espejismo cambia con la luz; {name} espera a que aparezcan las primeras estrellas.'], { weight: 10, calm: true, duration: [18, 40], xp: [5, 12], choices: { Místico: ['compara las sombras con la posición de las estrellas'], Explorador: ['busca una línea de huellas que el viento no borró'] } }),
+        scene('caravana', 'social', '🐪', 'El té de Samir', 'vinculo', 0, ['Samir, un vendedor de mapas, prepara té mientras su caravana descansa junto a una roca.', 'Un tintineo conocido anuncia el regreso de Samir con su caravana.'], ['—Este mapa está al revés —admite Samir, riéndose—. La parte buena es que por eso encontramos un oasis.', '—Te guardé dátiles —dice Samir—. El mapa puede esperar; cuéntame qué viste desde la última vez.'], ['El viento levanta el campamento antes de que puedan conversar; Samir promete guardar una taza para después.'], { weight: 10, friend: 'samir', duration: [22, 50], xp: [7, 16], recover: 2, choices: { Apoyo: ['ayuda a sujetar la lona mientras se prepara el té'], Explorador: ['compara las marcas de la caravana con el mapa'] } }),
+        scene('vientoarena', 'riesgo', '🌬️', 'La pared de arena', 'defensa', 2, ['El horizonte desaparece detrás de una nube color cobre.', 'Los granos golpean las piedras y el aire se vuelve difícil de respirar.'], ['{name} se cubre tras un saliente y espera a que la tormenta abra una ventana.', '{name} ata una tela a una roca y encuentra el camino de vuelta siguiendo la cuerda.'], ['La ráfaga lo empuja contra la arena y le deja varios raspones antes de amainar.'], { weight: 7, hazard: 'tormenta-de-arena', damage: [5, 14], duration: [24, 58], xp: [8, 18], choices: { Guardián: ['busca una pared de roca antes de moverse'], Atacante: ['sujeta la lona para evitar que salga volando'] } }),
+        scene('lagarto', 'encuentro', '🦂', 'El escorpión de cristal', 'agilidad', 2, ['Un escorpión translúcido bloquea una grieta y hace chocar sus pinzas.', 'El caparazón de un escorpión refleja el sol; parece proteger algo bajo la arena.'], ['{name} rodea al escorpión sin acorralarlo y descubre que solo estaba cuidando su madriguera.', '{name} distrae al escorpión con un destello y se aparta mientras vuelve a su refugio.'], ['Una pinza alcanza la pata de {name} antes de que consiga apartarse.'], { weight: 5, hazard: 'escorpion-de-cristal', damage: [6, 14], duration: [20, 48], xp: [9, 19], choices: { Explorador: ['observa el ritmo de sus pinzas antes de moverse'], Atacante: ['le ofrece una salida en lugar de arrinconarlo'] } }),
+        scene('observatorio', 'hallazgo', '🔭', 'El observatorio sepultado', 'agilidad', 2, ['Un arco de piedra sobresale de una duna y conserva grabadas las fases de la luna.', 'Las estrellas parecen alinearse con una torre medio enterrada.'], ['{name} descubre un mapa celeste tallado en el techo al girar el antiguo telescopio.', '{name} limpia de arena una lente y descubre cómo alinearla con las estrellas.'], ['La arena llena la escalera antes de llegar a la cámara interior; {name} deja una señal para volver.'], { weight: 8, discovery: 'observatorio-sepultado', item: true, coins: true, coinDetail: 'Entre los mapas y frascos, queda una pequeña reserva de monedas.', duration: [30, 70], xp: [9, 20], choices: { Místico: ['orienta el telescopio con las constelaciones'], Explorador: ['trepa por el muro donde la arena está más compacta'] } }),
+        scene('oasis', 'descanso', '🌴', 'La sombra del oasis', 'vinculo', 0, ['Entre dos peñascos aparece un oasis pequeño, escondido del camino principal.', 'Las hojas de una palmera se mueven sobre un charco de agua clara.'], ['{name} bebe y se refresca a la sombra; el oasis queda anotado para otra visita.'], ['El agua es poca, pero alcanza para que {name} se enfríe antes de continuar.'], { weight: 8, discovery: 'oasis-escondido', recover: 8, calm: true, duration: [20, 48], xp: [4, 10], choices: { Apoyo: ['deja unas gotas en una hoja para un lagarto sediento'] } }),
+        scene('marcas', 'hallazgo', '🪙', 'Las marcas del mojón', 'intuicion', 1, ['Un mojón semienterrado tiene símbolos de caravana en la cara que mira al norte.', 'Una bandada de aves desciende siempre al mismo punto de la duna.'], ['{name} encuentra una bolsa perdida y la devuelve al campamento; los viajeros le dan unas monedas por hallarla.', '{name} descubre una bolsita bajo el mojón y toma solo las monedas que otros viajeros dejaron para compartir.'], ['El mojón está vacío; {name} lo endereza para que vuelva a servir de guía.'], { weight: 7, discovery: 'mojon-del-norte', coins: true, duration: [22, 48], xp: [7, 15], choices: { Guardián: ['asegura el mojón para que no lo tumbe el viento'], Explorador: ['compara el símbolo con huellas recientes'] } }),
+    ],
+    astral: [
+        scene('orilla', 'serena', '🌌', 'La orilla que refleja estrellas', 'intuicion', 1, ['Las olas dejan un borde luminoso que tarda varios segundos en apagarse.', 'La noche está tan quieta que las constelaciones se reflejan bajo las patas.'], ['{name} sigue la orilla hasta una plataforma estable y memoriza el ritmo de la marea.'], ['Una ola cambia el reflejo y borra la ruta; {name} espera a que vuelva a dibujarse.'], { weight: 10, calm: true, discovery: 'orilla-estelar', duration: [18, 46], xp: [5, 13], choices: { Místico: ['compara el reflejo con el cielo real'], Explorador: ['cuenta los intervalos entre cada ola luminosa'] } }),
+        scene('navegante', 'social', '🧭', 'La brújula de Luma', 'vinculo', 0, ['Luma, una navegante de capa azul, intenta convencer a su brújula de que el norte no está bajo el agua.', 'Una luz azul parpadea en el muelle: Luma vuelve a corregir su brújula caprichosa.'], ['—Dice que hoy el norte está de vacaciones —bromea Luma—. Menos mal que tú sí sabes volver.', '—Cuando las islas cambien de lugar, busca la estrella que titila dos veces —le explica Luma—. Esa siempre nos encuentra.'], ['La brújula gira sin parar y la conversación termina entre risas, sin encontrar una ruta nueva.'], { weight: 9, friend: 'luma', duration: [22, 52], xp: [8, 17], recover: 1, choices: { Místico: ['sigue la vibración que acompaña a la aguja'], Apoyo: ['sujeta el mapa mientras Luma prueba la brújula'] } }),
+        scene('marea', 'riesgo', '🌊', 'La marea que sube', 'agilidad', 2, ['Una corriente violeta empuja la plataforma hacia el borde del archipiélago.', 'El brillo bajo el agua se intensifica y hace que las rocas floten sin rumbo.'], ['{name} salta a una isla firme justo antes de que la corriente se lleve la plataforma.', '{name} encuentra un arco de roca que parte la corriente y abre una ruta segura.'], ['La marea lo arrastra hasta una roca cercana; el golpe le deja el costado dolorido.'], { weight: 7, hazard: 'marea-violeta', damage: [6, 15], duration: [24, 58], xp: [9, 19], choices: { Explorador: ['mide el vaivén antes de dar el salto'], Guardián: ['asegura una cuerda entre las dos plataformas'] } }),
+        scene('medusa', 'encuentro', '🪼', 'La medusa de luz', 'vinculo', 1, ['Una medusa pequeña quedó varada en una poza entre dos islas.', 'Un destello azul pide ayuda desde una charca que se está secando.'], ['{name} guía a la medusa hacia el agua profunda; ella responde con una lluvia de chispas cálidas.', '{name} devuelve la medusa a la marea y esta lo acompaña un trecho, iluminando el agua.'], ['Un tentáculo roza su pata. La medusa no quería hacer daño, pero el cosquilleo le deja una marca luminosa.'], { weight: 6, friend: 'medusa-nima', duration: [20, 46], xp: [8, 17], recover: 2, choices: { Apoyo: ['humedece la poza con una concha'], Místico: ['le muestra el reflejo del agua abierta'] } }),
+        scene('fragmento', 'riesgo', '☄️', 'El fragmento inquieto', 'defensa', 3, ['Una roca celeste cruza el cielo y cae con un zumbido detrás de la isla.', 'El suelo vibra alrededor de un fragmento que todavía conserva calor.'], ['{name} espera a que el núcleo se enfríe y recoge solo una escama suelta.', '{name} lo cubre con arena lunar hasta que deja de vibrar.'], ['El fragmento estalla en una lluvia de polvo brillante que golpea a {name}.'], { weight: 4, hazard: 'fragmento-celeste', damage: [8, 18], duration: [26, 62], xp: [10, 21], discovery: 'fragmento-celeste', choices: { Atacante: ['lo aleja de la orilla con una roca'], Místico: ['reconoce el pulso que anuncia una descarga'] } }),
+        scene('observatorio', 'hallazgo', '🔭', 'El observatorio a la deriva', 'intuicion', 2, ['Una cúpula antigua deriva sin rumbo, pero su lente apunta a una estrella concreta.', 'La isla del observatorio aparece donde ayer solo había niebla.'], ['{name} alinea la lente y descifra marcas de navegación grabadas en el arco.', '{name} aprende una nueva referencia estelar para reconocer esta isla la próxima vez.'], ['La cúpula empieza a girar antes de poder explorarla. {name} registra la posición y salta a una isla estable.'], { weight: 8, discovery: 'observatorio-deriva', item: true, coins: true, coinDetail: 'Entre los mapas guardados hay un pequeño fondo de monedas para navegantes.', duration: [32, 72], xp: [10, 21], choices: { Místico: ['compara la lente con la constelación más cercana'], Explorador: ['asegura el borde antes de entrar'] } }),
+        scene('ensenada', 'descanso', '✨', 'La ensenada de calma', 'vinculo', 0, ['Entre dos islas hay una ensenada donde las olas no hacen ruido.', 'Una pequeña playa recibe luz de tres lunas distintas.'], ['{name} descansa junto al agua y recupera energía mientras las estrellas cambian de lugar.'], ['La calma dura poco, pero alcanza para recuperar el aliento antes de seguir.'], { weight: 8, recover: 8, calm: true, duration: [18, 44], xp: [4, 10], discovery: 'ensenada-calma' }),
+    ],
 };
-const decisionsBySpecialization = {
-    Atacante: ['La mascota decide actuar con valentía: {decision}.', 'Su instinto de combate la lleva a {decision}.', 'Sin dudarlo, {name} elige {decision}.'],
-    Guardián: ['Prioriza la seguridad y {decision}.', 'La mascota evalúa el riesgo y {decision}.', '{name} protege el camino mientras {decision}.'],
-    Explorador: ['Prefiere investigar antes de avanzar: {decision}.', 'Su curiosidad la guía; decide {decision}.', '{name} examina las señales y {decision}.'],
-    Místico: ['Percibe una corriente de energía y {decision}.', 'La intuición mágica le indica {decision}.', '{name} interpreta las señales y decide {decision}.'],
-    Apoyo: ['Primero piensa en los demás y {decision}.', 'La mascota se detiene a ayudar: {decision}.', '{name} elige una ruta amable y {decision}.'],
+const sceneChoices = {
+    Atacante: ['se adelanta para abrir espacio', 'se ofrece a apartar el obstáculo', 'mantiene la calma y despeja el paso'],
+    Guardián: ['busca primero dónde estará más seguro', 'se coloca en el lado expuesto para proteger el camino', 'avanza comprobando que el resto pueda seguir'],
+    Explorador: ['lee las señales antes de escoger una ruta', 'se fija en las huellas y prueba el camino más corto', 'marca un punto de referencia por si hay que volver'],
+    Místico: ['presta atención al pulso extraño del lugar', 'interpreta las marcas antes de tocar nada', 'sigue la corriente de energía que apenas se percibe'],
+    Apoyo: ['se acerca despacio para que nadie se asuste', 'ofrece ayuda antes de pensar en continuar', 'comparte agua y deja que los demás recuperen el ánimo'],
+};
+const petRarityOverrides = {
+    'Camaleón del viento': 'Común',
+    'Basilisco pequeño': 'Común',
+    'Medusa lunar': 'Común',
+    'Ardilla cometa': 'Común',
 };
 const species = [
-    {"name":"Zorrito de brasa","emoji":"🦊","base":[9,5,9],"rarity":"Común","element":"Fuego","specialization":"Atacante"},
-    {"name":"Lunagato","emoji":"🐈","base":[7,7,10],"rarity":"Común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Dracón de musgo","emoji":"🐉","base":[10,9,5],"rarity":"Común","element":"Naturaleza","specialization":"Guardián"},
-    {"name":"Ajolote astral","emoji":"🦎","base":[6,10,8],"rarity":"Común","element":"Agua","specialization":"Apoyo"},
-    {"name":"Cuervo de cristal","emoji":"🐦‍⬛","base":[8,6,10],"rarity":"Común","element":"Viento","specialization":"Explorador"},
-    {"name":"Osito trueno","emoji":"🐻","base":[10,10,4],"rarity":"Común","element":"Rayo","specialization":"Guardián"},
-    {"name":"Cierva lunar","emoji":"🦌","base":[7,8,9],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Tortuga nube","emoji":"🐢","base":[5,12,5],"rarity":"Común","element":"Tierra","specialization":"Guardián"},
-    {"name":"Fénix diminuto","emoji":"🔥","base":[10,6,8],"rarity":"Común","element":"Fuego","specialization":"Místico"},
-    {"name":"Lobo de escarcha","emoji":"🐺","base":[9,7,8],"rarity":"Común","element":"Hielo","specialization":"Atacante"},
-    {"name":"Conejo champiñón","emoji":"🐇","base":[7,8,9],"rarity":"Común","element":"Naturaleza","specialization":"Apoyo"},
-    {"name":"Oveja de nube","emoji":"🐑","base":[6,11,6],"rarity":"Común","element":"Viento","specialization":"Guardián"},
-    {"name":"Rana de cristal","emoji":"🐸","base":[8,7,10],"rarity":"Común","element":"Agua","specialization":"Explorador"},
-    {"name":"Gólemito","emoji":"🗿","base":[7,12,5],"rarity":"Común","element":"Tierra","specialization":"Guardián"},
-    {"name":"Espíritu koi","emoji":"🐟","base":[9,7,8],"rarity":"Común","element":"Agua","specialization":"Místico"},
-    {"name":"Murciélago de sombra","emoji":"🦇","base":[8,6,11],"rarity":"Común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Erizo de baya","emoji":"🦔","base":[7,10,7],"rarity":"Común","element":"Naturaleza","specialization":"Guardián"},
-    {"name":"Búho lunar","emoji":"🦉","base":[8,8,9],"rarity":"Común","element":"Astral","specialization":"Místico"},
-    {"name":"Caracol jardín","emoji":"🐌","base":[5,12,5],"rarity":"Común","element":"Tierra","specialization":"Apoyo"},
-    {"name":"Abeja dorada","emoji":"🐝","base":[9,6,10],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Pingüino viajero","emoji":"🐧","base":[7,10,7],"rarity":"Común","element":"Hielo","specialization":"Explorador"},
-    {"name":"Polilla arcoíris","emoji":"🦋","base":[7,6,12],"rarity":"Común","element":"Luz","specialization":"Místico"},
-    {"name":"Grifo miniatura","emoji":"🦅","base":[11,8,7],"rarity":"Común","element":"Viento","specialization":"Atacante"},
-    {"name":"Serpiente estelar","emoji":"🐍","base":[10,7,9],"rarity":"Común","element":"Astral","specialization":"Atacante"},
-    {"name":"Salamandra de ceniza","emoji":"🦎","base":[10,6,8],"rarity":"Común","element":"Fuego","specialization":"Atacante"},
-    {"name":"Cangrejo coral","emoji":"🦀","base":[7,12,5],"rarity":"Común","element":"Agua","specialization":"Guardián"},
-    {"name":"Yak musgoso","emoji":"🐃","base":[8,12,4],"rarity":"Común","element":"Naturaleza","specialization":"Guardián"},
-    {"name":"Pavo real prisma","emoji":"🦚","base":[7,7,10],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Lagartija cactus","emoji":"🦎","base":[8,9,8],"rarity":"Poco común","element":"Tierra","specialization":"Explorador"},
-    {"name":"Medusa burbuja","emoji":"🪼","base":[6,8,10],"rarity":"Poco común","element":"Agua","specialization":"Místico"},
-    {"name":"Lince lavanda","emoji":"🐈","base":[9,6,10],"rarity":"Poco común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Ratón autómata","emoji":"🐭","base":[8,7,10],"rarity":"Poco común","element":"Rayo","specialization":"Apoyo"},
-    {"name":"Liebre de nieve","emoji":"🐇","base":[7,7,12],"rarity":"Poco común","element":"Hielo","specialization":"Explorador"},
-    {"name":"Carnero trueno","emoji":"🐏","base":[11,8,6],"rarity":"Poco común","element":"Rayo","specialization":"Atacante"},
-    {"name":"Luciérnaga farol","emoji":"🪲","base":[6,8,11],"rarity":"Poco común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Pulpo de tinta","emoji":"🐙","base":[8,9,8],"rarity":"Poco común","element":"Sombra","specialization":"Místico"},
-    {"name":"Foca aurora","emoji":"🦭","base":[7,11,7],"rarity":"Poco común","element":"Hielo","specialization":"Guardián"},
-    {"name":"Pangolín de jade","emoji":"🦔","base":[7,12,6],"rarity":"Poco común","element":"Tierra","specialization":"Guardián"},
-    {"name":"Fénec del desierto","emoji":"🦊","base":[8,6,12],"rarity":"Poco común","element":"Fuego","specialization":"Explorador"},
-    {"name":"Grulla de papel","emoji":"🕊️","base":[6,7,12],"rarity":"Poco común","element":"Viento","specialization":"Apoyo"},
-    {"name":"Medusa lunar","emoji":"🪼","base":[7,8,10],"rarity":"Común","element":"Astral","specialization":"Místico"},
-    {"name":"Cachorro girasol","emoji":"🐕","base":[8,8,8],"rarity":"Raro","element":"Naturaleza","specialization":"Apoyo"},
-    {"name":"Escarabajo basalto","emoji":"🪲","base":[7,12,5],"rarity":"Raro","element":"Tierra","specialization":"Guardián"},
-    {"name":"Camaleón del viento","emoji":"🦎","base":[7,8,11],"rarity":"Común","element":"Viento","specialization":"Explorador"},
-    {"name":"Basilisco pequeño","emoji":"🐍","base":[11,7,7],"rarity":"Común","element":"Sombra","specialization":"Atacante"},
-    {"name":"Cisne de loto","emoji":"🦢","base":[7,9,9],"rarity":"Épico","element":"Agua","specialization":"Místico"},
-    {"name":"Ardilla cometa","emoji":"🐿️","base":[8,6,12],"rarity":"Común","element":"Astral","specialization":"Explorador"},
-    {"name":"Manta de ópalo","emoji":"🪽","base":[8,11,7],"rarity":"Legendario","element":"Astral","specialization":"Guardián"},
-    {"name":"Topillo campanero","emoji":"🐹","base":[8,8,8],"rarity":"Común","element":"Tierra","specialization":"Explorador"},
-    {"name":"Salamandra de piloncillo","emoji":"🦎","base":[10,7,8],"rarity":"Común","element":"Fuego","specialization":"Atacante"},
-    {"name":"Zorruela del rocío","emoji":"🦊","base":[7,7,11],"rarity":"Común","element":"Agua","specialization":"Explorador"},
-    {"name":"Tortuga tintera","emoji":"🐢","base":[6,12,5],"rarity":"Común","element":"Sombra","specialization":"Guardián"},
-    {"name":"Cabrita de neblina","emoji":"🐐","base":[7,11,6],"rarity":"Común","element":"Viento","specialization":"Apoyo"},
-    {"name":"Murciélago de menta","emoji":"🦇","base":[8,6,10],"rarity":"Común","element":"Naturaleza","specialization":"Explorador"},
-    {"name":"Ajolote cempasúchil","emoji":"🦎","base":[7,8,10],"rarity":"Común","element":"Fuego","specialization":"Apoyo"},
-    {"name":"Tlacuache de papel picado","emoji":"🐀","base":[8,8,8],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Tejón brisita","emoji":"🦡","base":[8,11,6],"rarity":"Común","element":"Viento","specialization":"Guardián"},
-    {"name":"Liebre de panal","emoji":"🐇","base":[7,8,10],"rarity":"Poco común","element":"Naturaleza","specialization":"Apoyo"},
-    {"name":"Medusita de lluvia","emoji":"🪼","base":[6,8,10],"rarity":"Común","element":"Agua","specialization":"Místico"},
-    {"name":"Cenzontle de nube","emoji":"🐦","base":[7,7,10],"rarity":"Común","element":"Viento","specialization":"Apoyo"},
-    {"name":"Caracol vitral","emoji":"🐌","base":[5,11,7],"rarity":"Poco común","element":"Luz","specialization":"Guardián"},
-    {"name":"Perrito de nopal","emoji":"🐕","base":[8,9,8],"rarity":"Común","element":"Naturaleza","specialization":"Apoyo"},
-    {"name":"Rana campanilla","emoji":"🐸","base":[8,8,9],"rarity":"Común","element":"Naturaleza","specialization":"Místico"},
-    {"name":"Conejo solsticio","emoji":"🐰","base":[7,8,10],"rarity":"Común","element":"Astral","specialization":"Explorador"},
-    {"name":"Serpiente de pluma","emoji":"🐍","base":[9,6,11],"rarity":"Común","element":"Viento","specialization":"Atacante"},
-    {"name":"Erizo naranjo","emoji":"🦔","base":[8,10,7],"rarity":"Poco común","element":"Naturaleza","specialization":"Guardián"},
-    {"name":"Gato de tinta lunar","emoji":"🐈‍⬛","base":[8,7,10],"rarity":"Común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Abejorro de ámbar","emoji":"🐝","base":[9,7,9],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Capibara de lirio","emoji":"🦫","base":[7,11,6],"rarity":"Común","element":"Agua","specialization":"Guardián"},
-    {"name":"Lagarto piñón","emoji":"🦎","base":[8,10,7],"rarity":"Común","element":"Tierra","specialization":"Explorador"},
-    {"name":"Búho trébol","emoji":"🦉","base":[7,9,10],"rarity":"Común","element":"Naturaleza","specialization":"Místico"},
-    {"name":"Pez globo cobrizo","emoji":"🐡","base":[8,11,6],"rarity":"Común","element":"Agua","specialization":"Guardián"},
-    {"name":"Venadito de papel picado","emoji":"🦌","base":[7,8,10],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Ovejita de algodón de azúcar","emoji":"🐑","base":[6,10,8],"rarity":"Común","element":"Luz","specialization":"Apoyo"},
-    {"name":"Cangrejín de limonita","emoji":"🦀","base":[7,12,5],"rarity":"Común","element":"Tierra","specialization":"Guardián"},
-    {"name":"Mapache de luciérnagas","emoji":"🦝","base":[8,6,11],"rarity":"Común","element":"Astral","specialization":"Explorador"},
-    {"name":"Axolote de obsidiana","emoji":"🦎","base":[8,10,7],"rarity":"Poco común","element":"Sombra","specialization":"Apoyo"},
-    {"name":"Lince de campanillas","emoji":"🐈","base":[9,7,10],"rarity":"Poco común","element":"Luz","specialization":"Explorador"},
-    {"name":"Mariposa de amapolas","emoji":"🦋","base":[7,6,12],"rarity":"Poco común","element":"Naturaleza","specialization":"Místico"},
-    {"name":"Dragón de jade rojo","emoji":"🐉","base":[11,8,7],"rarity":"Poco común","element":"Naturaleza","specialization":"Atacante"},
-    {"name":"Mantarraya del monzón","emoji":"🪽","base":[8,11,7],"rarity":"Poco común","element":"Agua","specialization":"Guardián"},
-    {"name":"Zorro de lluvia invertida","emoji":"🦊","base":[8,7,11],"rarity":"Poco común","element":"Viento","specialization":"Explorador"},
-    {"name":"Escarabajo de ópalo","emoji":"🪲","base":[8,11,7],"rarity":"Poco común","element":"Luz","specialization":"Guardián"},
-    {"name":"Colibrí de relámpago","emoji":"🐦","base":[8,6,12],"rarity":"Poco común","element":"Rayo","specialization":"Apoyo"},
-    {"name":"Coyote de espejos","emoji":"🐺","base":[10,7,9],"rarity":"Poco común","element":"Astral","specialization":"Atacante"},
-    {"name":"Caballito de mar tornasol","emoji":"🐠","base":[7,8,11],"rarity":"Poco común","element":"Agua","specialization":"Místico"},
-    {"name":"Ciervo de cometa","emoji":"🦌","base":[8,8,10],"rarity":"Poco común","element":"Astral","specialization":"Atacante"},
-    {"name":"Lechuza de la hora azul","emoji":"🦉","base":[7,9,10],"rarity":"Poco común","element":"Sombra","specialization":"Místico"},
-    {"name":"Quetzal de viento lunar","emoji":"🦜","base":[10,7,11],"rarity":"Raro","element":"Viento","specialization":"Místico"},
-    {"name":"Basilisco de vidrio ahumado","emoji":"🐍","base":[11,8,8],"rarity":"Raro","element":"Sombra","specialization":"Atacante"},
-    {"name":"Kraken de medianoche","emoji":"🐙","base":[8,11,9],"rarity":"Raro","element":"Agua","specialization":"Místico"},
-    {"name":"Fénix flor de cobre","emoji":"🔥","base":[12,7,10],"rarity":"Raro","element":"Fuego","specialization":"Atacante"},
-    {"name":"Tapir de constelación","emoji":"🐗","base":[8,12,8],"rarity":"Raro","element":"Astral","specialization":"Guardián"},
-    {"name":"Serafín de prisma","emoji":"🦋","base":[8,9,12],"rarity":"Épico","element":"Luz","specialization":"Apoyo"},
-    {"name":"Dragón del eclipse doble","emoji":"🐉","base":[12,10,8],"rarity":"Épico","element":"Astral","specialization":"Atacante"},
-    {"name":"Auraluz, dragón de la primera aurora","emoji":"🐲","base":[12,9,11],"rarity":"Legendario","element":"Fuego","specialization":"Místico"},
-    {"name":"Gallo de la hoguera azul","emoji":"🐓","base":[12,8,10],"rarity":"Épico","element":"Fuego","specialization":"Atacante"},
-    {"name":"Ballena de los siete espejos","emoji":"🐋","base":[12,11,10],"rarity":"Legendario","element":"Agua","specialization":"Místico"},
-    {"name":"Yaguarí de raíces cantoras","emoji":"🐆","base":[11,10,9],"rarity":"Épico","element":"Naturaleza","specialization":"Atacante"},
-    {"name":"Ceiba de los mil colibríes","emoji":"🌳","base":[10,12,11],"rarity":"Legendario","element":"Naturaleza","specialization":"Apoyo"},
-    {"name":"Albatros de los cuatro vientos","emoji":"🕊️","base":[10,9,12],"rarity":"Épico","element":"Viento","specialization":"Explorador"},
-    {"name":"León de la corriente celeste","emoji":"🦁","base":[12,12,10],"rarity":"Legendario","element":"Viento","specialization":"Guardián"},
-    {"name":"Armiño de escarcha azul","emoji":"🐁","base":[9,7,11],"rarity":"Raro","element":"Hielo","specialization":"Explorador"},
-    {"name":"Oso de la aurora rota","emoji":"🐻","base":[11,12,8],"rarity":"Épico","element":"Hielo","specialization":"Guardián"},
-    {"name":"Dragón de los glaciares cantores","emoji":"🐉","base":[12,10,11],"rarity":"Legendario","element":"Hielo","specialization":"Místico"},
-    {"name":"Libélula de cristal solar","emoji":"🦋","base":[7,8,12],"rarity":"Raro","element":"Luz","specialization":"Apoyo"},
-    {"name":"Ciervo del alba eterna","emoji":"🦌","base":[11,12,10],"rarity":"Legendario","element":"Luz","specialization":"Guardián"},
-    {"name":"Cuervo del eclipse vacío","emoji":"🐦‍⬛","base":[11,9,10],"rarity":"Épico","element":"Sombra","specialization":"Místico"},
-    {"name":"Leviatán de la noche sin luna","emoji":"🐉","base":[12,11,10],"rarity":"Legendario","element":"Sombra","specialization":"Atacante"},
-    {"name":"Topo de geoda violeta","emoji":"🐹","base":[10,12,8],"rarity":"Épico","element":"Tierra","specialization":"Guardián"},
-    {"name":"Titán de jade dormido","emoji":"🪨","base":[12,13,8],"rarity":"Legendario","element":"Tierra","specialization":"Guardián"},
-    {"name":"Liebre de chispa azul","emoji":"🐇","base":[9,7,12],"rarity":"Raro","element":"Rayo","specialization":"Explorador"},
-    {"name":"Serpiente del relámpago doble","emoji":"🐍","base":[12,8,12],"rarity":"Épico","element":"Rayo","specialization":"Atacante"},
-    {"name":"Quimera del trueno eterno","emoji":"🦁","base":[13,11,10],"rarity":"Legendario","element":"Rayo","specialization":"Atacante"},
-    {"name":"Ajolote de carbón","emoji":"🦎","base":[8,8,7],"rarity":"Común","element":"Fuego","specialization":"Apoyo"},
-    {"name":"Cascabel de brasa","emoji":"🐍","base":[9,6,9],"rarity":"Común","element":"Fuego","specialization":"Atacante"},
-    {"name":"Coatí de tizón","emoji":"🦝","base":[8,7,9],"rarity":"Común","element":"Fuego","specialization":"Explorador"},
-    {"name":"Venado de magma","emoji":"🦌","base":[9,9,8],"rarity":"Poco común","element":"Fuego","specialization":"Guardián"},
-    {"name":"Tortuga volcánica","emoji":"🐢","base":[7,12,6],"rarity":"Poco común","element":"Fuego","specialization":"Guardián"},
-    {"name":"Polilla de rescoldo","emoji":"🦋","base":[8,7,10],"rarity":"Poco común","element":"Fuego","specialization":"Místico"},
-    {"name":"Mantarraya de lluvia azul","emoji":"🐟","base":[7,9,11],"rarity":"Poco común","element":"Agua","specialization":"Místico"},
-    {"name":"Zorro cometa","emoji":"🦊","base":[9,7,11],"rarity":"Poco común","element":"Viento","specialization":"Explorador"},
-    {"name":"Gavilán de nubes","emoji":"🦅","base":[10,7,10],"rarity":"Poco común","element":"Viento","specialization":"Atacante"},
-    {"name":"Foca copo","emoji":"🦭","base":[7,10,7],"rarity":"Común","element":"Hielo","specialization":"Guardián"},
-    {"name":"Ardilla de escarcha","emoji":"🐿️","base":[7,7,10],"rarity":"Común","element":"Hielo","specialization":"Explorador"},
-    {"name":"Lemming de hielo","emoji":"🐹","base":[8,9,7],"rarity":"Común","element":"Hielo","specialization":"Guardián"},
-    {"name":"Perrito glaciar","emoji":"🐕","base":[8,8,8],"rarity":"Común","element":"Hielo","specialization":"Apoyo"},
-    {"name":"Salamandra nevada","emoji":"🦎","base":[8,7,9],"rarity":"Común","element":"Hielo","specialization":"Místico"},
-    {"name":"Búho de cristal helado","emoji":"🦉","base":[7,8,9],"rarity":"Común","element":"Hielo","specialization":"Místico"},
-    {"name":"Lince aurora","emoji":"🐈","base":[9,7,11],"rarity":"Poco común","element":"Hielo","specialization":"Explorador"},
-    {"name":"Bisonte de ventisca","emoji":"🦬","base":[8,12,6],"rarity":"Poco común","element":"Hielo","specialization":"Guardián"},
-    {"name":"Topo de cobre","emoji":"🐹","base":[7,8,8],"rarity":"Común","element":"Tierra","specialization":"Explorador"},
-    {"name":"Ratón de chispas","emoji":"🐭","base":[8,6,10],"rarity":"Común","element":"Rayo","specialization":"Atacante"},
-    {"name":"Polilla voltaica","emoji":"🦋","base":[7,6,10],"rarity":"Común","element":"Rayo","specialization":"Místico"},
-    {"name":"Geco fulgor","emoji":"🦎","base":[8,7,9],"rarity":"Común","element":"Rayo","specialization":"Atacante"},
-    {"name":"Cuy de tormenta","emoji":"🐹","base":[8,9,7],"rarity":"Común","element":"Rayo","specialization":"Guardián"},
-    {"name":"Zorrillo de estática","emoji":"🦨","base":[8,7,9],"rarity":"Común","element":"Rayo","specialization":"Apoyo"},
-    {"name":"Caracol chispeante","emoji":"🐌","base":[6,10,7],"rarity":"Común","element":"Rayo","specialization":"Guardián"},
-    {"name":"Lechuza conductora","emoji":"🦉","base":[7,7,10],"rarity":"Común","element":"Rayo","specialization":"Explorador"},
-    {"name":"Jaguar del arco eléctrico","emoji":"🐆","base":[10,7,10],"rarity":"Poco común","element":"Rayo","specialization":"Atacante"},
-    {"name":"Lagartija de geoda","emoji":"🦎","base":[8,9,7],"rarity":"Común","element":"Tierra","specialization":"Explorador"},
-    {"name":"Gatito de eclipse","emoji":"🐈‍⬛","base":[7,7,10],"rarity":"Común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Murciélago de ceniza lunar","emoji":"🦇","base":[8,6,10],"rarity":"Común","element":"Sombra","specialization":"Explorador"},
-    {"name":"Rana de humo violeta","emoji":"🐸","base":[7,8,8],"rarity":"Común","element":"Sombra","specialization":"Místico"},
-    {"name":"Jabalí de obsidiana","emoji":"🐗","base":[10,8,8],"rarity":"Poco común","element":"Tierra","specialization":"Atacante"},
-    {"name":"Armadillo de cuarzo","emoji":"🦔","base":[7,11,8],"rarity":"Poco común","element":"Tierra","specialization":"Guardián"},
-    {"name":"Mapache de nebulosa","emoji":"🦝","base":[8,7,10],"rarity":"Común","element":"Astral","specialization":"Explorador"},
-    {"name":"Conejo de cometa azul","emoji":"🐇","base":[7,7,11],"rarity":"Común","element":"Astral","specialization":"Explorador"},
-    {"name":"Loro de constelaciones","emoji":"🦜","base":[8,7,11],"rarity":"Poco común","element":"Astral","specialization":"Apoyo"},
-    {"name":"Gacela de polvo estelar","emoji":"🦌","base":[9,8,10],"rarity":"Poco común","element":"Astral","specialization":"Místico"},
+    { name: 'Zorrito de brasa', emoji: '🦊', base: [9, 5, 9], element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Lunagato', emoji: '🐈', base: [7, 7, 10], element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Dracón de musgo', emoji: '🐉', base: [10, 9, 5], element: 'Naturaleza', specialization: 'Guardián' },
+    { name: 'Ajolote astral', emoji: '🦎', base: [6, 10, 8], element: 'Agua', specialization: 'Apoyo' },
+    { name: 'Cuervo de cristal', emoji: '🐦‍⬛', base: [8, 6, 10], element: 'Viento', specialization: 'Explorador' },
+    { name: 'Osito trueno', emoji: '🐻', base: [10, 10, 4], element: 'Rayo', specialization: 'Guardián' },
+    { name: 'Cierva lunar', emoji: '🦌', base: [7, 8, 9], element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Tortuga nube', emoji: '🐢', base: [5, 12, 5], element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Fénix diminuto', emoji: '🔥', base: [10, 6, 8], element: 'Fuego', specialization: 'Místico' },
+    { name: 'Lobo de escarcha', emoji: '🐺', base: [9, 7, 8], element: 'Hielo', specialization: 'Atacante' },
+    { name: 'Conejo champiñón', emoji: '🐇', base: [7, 8, 9], element: 'Naturaleza', specialization: 'Apoyo' },
+    { name: 'Oveja de nube', emoji: '🐑', base: [6, 11, 6], element: 'Viento', specialization: 'Guardián' },
+    { name: 'Rana de cristal', emoji: '🐸', base: [8, 7, 10], element: 'Agua', specialization: 'Explorador' },
+    { name: 'Gólemito', emoji: '🗿', base: [7, 12, 5], element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Espíritu koi', emoji: '🐟', base: [9, 7, 8], element: 'Agua', specialization: 'Místico' },
+    { name: 'Murciélago de sombra', emoji: '🦇', base: [8, 6, 11], element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Erizo de baya', emoji: '🦔', base: [7, 10, 7], element: 'Naturaleza', specialization: 'Guardián' },
+    { name: 'Búho lunar', emoji: '🦉', base: [8, 8, 9], element: 'Astral', specialization: 'Místico' },
+    { name: 'Caracol jardín', emoji: '🐌', base: [5, 12, 5], element: 'Tierra', specialization: 'Apoyo' },
+    { name: 'Abeja dorada', emoji: '🐝', base: [9, 6, 10], element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Pingüino viajero', emoji: '🐧', base: [7, 10, 7], element: 'Hielo', specialization: 'Explorador' },
+    { name: 'Polilla arcoíris', emoji: '🦋', base: [7, 6, 12], element: 'Luz', specialization: 'Místico' },
+    { name: 'Grifo miniatura', emoji: '🦅', base: [11, 8, 7], element: 'Viento', specialization: 'Atacante' },
+    { name: 'Serpiente estelar', emoji: '🐍', base: [10, 7, 9], element: 'Astral', specialization: 'Atacante' },
+    { name: 'Salamandra de ceniza', emoji: '🦎', base: [10, 6, 8], element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Cangrejo coral', emoji: '🦀', base: [7, 12, 5], element: 'Agua', specialization: 'Guardián' },
+    { name: 'Yak musgoso', emoji: '🐃', base: [8, 12, 4], element: 'Naturaleza', specialization: 'Guardián' },
+    { name: 'Pavo real prisma', emoji: '🦚', base: [7, 7, 10], element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Lagartija cactus', emoji: '🦎', base: [8, 9, 8], element: 'Tierra', specialization: 'Explorador' },
+    { name: 'Medusa burbuja', emoji: '🪼', base: [6, 8, 10], element: 'Agua', specialization: 'Místico' },
+    { name: 'Lince lavanda', emoji: '🐈', base: [9, 6, 10], element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Ratón autómata', emoji: '🐭', base: [8, 7, 10], element: 'Rayo', specialization: 'Apoyo' },
+    { name: 'Liebre de nieve', emoji: '🐇', base: [7, 7, 12], element: 'Hielo', specialization: 'Explorador' },
+    { name: 'Carnero trueno', emoji: '🐏', base: [11, 8, 6], element: 'Rayo', specialization: 'Atacante' },
+    { name: 'Luciérnaga farol', emoji: '🪲', base: [6, 8, 11], element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Pulpo de tinta', emoji: '🐙', base: [8, 9, 8], element: 'Sombra', specialization: 'Místico' },
+    { name: 'Foca aurora', emoji: '🦭', base: [7, 11, 7], element: 'Hielo', specialization: 'Guardián' },
+    { name: 'Pangolín de jade', emoji: '🦔', base: [7, 12, 6], element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Fénec del desierto', emoji: '🦊', base: [8, 6, 12], element: 'Fuego', specialization: 'Explorador' },
+    { name: 'Grulla de papel', emoji: '🕊️', base: [6, 7, 12], element: 'Viento', specialization: 'Apoyo' },
+    { name: 'Medusa lunar', emoji: '🪼', base: [7, 8, 10], element: 'Astral', specialization: 'Místico' },
+    { name: 'Cachorro girasol', emoji: '🐕', base: [8, 8, 8], element: 'Naturaleza', specialization: 'Apoyo' },
+    { name: 'Escarabajo basalto', emoji: '🪲', base: [7, 12, 5], element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Camaleón del viento', emoji: '🦎', base: [7, 8, 11], element: 'Viento', specialization: 'Explorador' },
+    { name: 'Basilisco pequeño', emoji: '🐍', base: [11, 7, 7], element: 'Sombra', specialization: 'Atacante' },
+    { name: 'Cisne de loto', emoji: '🦢', base: [7, 9, 9], element: 'Agua', specialization: 'Místico' },
+    { name: 'Ardilla cometa', emoji: '🐿️', base: [8, 6, 12], element: 'Astral', specialization: 'Explorador' },
+    { name: 'Manta de ópalo', emoji: '🪽', base: [8, 11, 7], element: 'Astral', specialization: 'Guardián' },
+].map((entry, index) => ({ ...entry, rarity: petRarityOverrides[entry.name] ?? (index < 28 ? 'Común' : index < 40 ? 'Poco común' : index < 45 ? 'Raro' : index < 47 ? 'Épico' : 'Legendario') }));
+const additionalSpecies = [
+    { name: 'Topillo campanero', emoji: '🐹', base: [8, 8, 8], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+    { name: 'Salamandra de piloncillo', emoji: '🦎', base: [10, 7, 8], rarity: 'Común', element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Zorruela del rocío', emoji: '🦊', base: [7, 7, 11], rarity: 'Común', element: 'Agua', specialization: 'Explorador' },
+    { name: 'Tortuga tintera', emoji: '🐢', base: [6, 12, 5], rarity: 'Común', element: 'Sombra', specialization: 'Guardián' },
+    { name: 'Cabrita de neblina', emoji: '🐐', base: [7, 11, 6], rarity: 'Común', element: 'Viento', specialization: 'Apoyo' },
+    { name: 'Murciélago de menta', emoji: '🦇', base: [8, 6, 10], rarity: 'Común', element: 'Naturaleza', specialization: 'Explorador' },
+    { name: 'Ajolote cempasúchil', emoji: '🦎', base: [7, 8, 10], rarity: 'Común', element: 'Fuego', specialization: 'Apoyo' },
+    { name: 'Tlacuache de papel picado', emoji: '🐀', base: [8, 8, 8], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Tejón brisita', emoji: '🦡', base: [8, 11, 6], rarity: 'Común', element: 'Viento', specialization: 'Guardián' },
+    { name: 'Liebre de panal', emoji: '🐇', base: [7, 8, 10], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Apoyo' },
+    { name: 'Medusita de lluvia', emoji: '🪼', base: [6, 8, 10], rarity: 'Común', element: 'Agua', specialization: 'Místico' },
+    { name: 'Cenzontle de nube', emoji: '🐦', base: [7, 7, 10], rarity: 'Común', element: 'Viento', specialization: 'Apoyo' },
+    { name: 'Caracol vitral', emoji: '🐌', base: [5, 11, 7], rarity: 'Poco común', element: 'Luz', specialization: 'Guardián' },
+    { name: 'Perrito de nopal', emoji: '🐕', base: [8, 9, 8], rarity: 'Común', element: 'Naturaleza', specialization: 'Apoyo' },
+    { name: 'Rana campanilla', emoji: '🐸', base: [8, 8, 9], rarity: 'Común', element: 'Naturaleza', specialization: 'Místico' },
+    { name: 'Conejo solsticio', emoji: '🐰', base: [7, 8, 10], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+    { name: 'Serpiente de pluma', emoji: '🐍', base: [9, 6, 11], rarity: 'Común', element: 'Viento', specialization: 'Atacante' },
+    { name: 'Erizo naranjo', emoji: '🦔', base: [8, 10, 7], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Guardián' },
+    { name: 'Gato de tinta lunar', emoji: '🐈‍⬛', base: [8, 7, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Abejorro de ámbar', emoji: '🐝', base: [9, 7, 9], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Capibara de lirio', emoji: '🦫', base: [7, 11, 6], rarity: 'Común', element: 'Agua', specialization: 'Guardián' },
+    { name: 'Lagarto piñón', emoji: '🦎', base: [8, 10, 7], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+    { name: 'Búho trébol', emoji: '🦉', base: [7, 9, 10], rarity: 'Común', element: 'Naturaleza', specialization: 'Místico' },
+    { name: 'Pez globo cobrizo', emoji: '🐡', base: [8, 11, 6], rarity: 'Común', element: 'Agua', specialization: 'Guardián' },
+    { name: 'Venadito de papel picado', emoji: '🦌', base: [7, 8, 10], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Ovejita de algodón de azúcar', emoji: '🐑', base: [6, 10, 8], rarity: 'Común', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Cangrejín de limonita', emoji: '🦀', base: [7, 12, 5], rarity: 'Común', element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Mapache de luciérnagas', emoji: '🦝', base: [8, 6, 11], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+    { name: 'Axolote de obsidiana', emoji: '🦎', base: [8, 10, 7], rarity: 'Poco común', element: 'Sombra', specialization: 'Apoyo' },
+    { name: 'Lince de campanillas', emoji: '🐈', base: [9, 7, 10], rarity: 'Poco común', element: 'Luz', specialization: 'Explorador' },
+    { name: 'Mariposa de amapolas', emoji: '🦋', base: [7, 6, 12], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Místico' },
+    { name: 'Dragón de jade rojo', emoji: '🐉', base: [11, 8, 7], rarity: 'Poco común', element: 'Naturaleza', specialization: 'Atacante' },
+    { name: 'Mantarraya del monzón', emoji: '🪽', base: [8, 11, 7], rarity: 'Poco común', element: 'Agua', specialization: 'Guardián' },
+    { name: 'Zorro de lluvia invertida', emoji: '🦊', base: [8, 7, 11], rarity: 'Poco común', element: 'Viento', specialization: 'Explorador' },
+    { name: 'Escarabajo de ópalo', emoji: '🪲', base: [8, 11, 7], rarity: 'Poco común', element: 'Luz', specialization: 'Guardián' },
+    { name: 'Colibrí de relámpago', emoji: '🐦', base: [8, 6, 12], rarity: 'Poco común', element: 'Rayo', specialization: 'Apoyo' },
+    { name: 'Coyote de espejos', emoji: '🐺', base: [10, 7, 9], rarity: 'Poco común', element: 'Astral', specialization: 'Atacante' },
+    { name: 'Caballito de mar tornasol', emoji: '🐠', base: [7, 8, 11], rarity: 'Poco común', element: 'Agua', specialization: 'Místico' },
+    { name: 'Ciervo de cometa', emoji: '🦌', base: [8, 8, 10], rarity: 'Poco común', element: 'Astral', specialization: 'Atacante' },
+    { name: 'Lechuza de la hora azul', emoji: '🦉', base: [7, 9, 10], rarity: 'Poco común', element: 'Sombra', specialization: 'Místico' },
+    { name: 'Quetzal de viento lunar', emoji: '🦜', base: [10, 7, 11], rarity: 'Raro', element: 'Viento', specialization: 'Místico' },
+    { name: 'Basilisco de vidrio ahumado', emoji: '🐍', base: [11, 8, 8], rarity: 'Raro', element: 'Sombra', specialization: 'Atacante' },
+    { name: 'Kraken de medianoche', emoji: '🐙', base: [8, 11, 9], rarity: 'Raro', element: 'Agua', specialization: 'Místico' },
+    { name: 'Fénix flor de cobre', emoji: '🔥', base: [12, 7, 10], rarity: 'Raro', element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Tapir de constelación', emoji: '🐗', base: [8, 12, 8], rarity: 'Raro', element: 'Astral', specialization: 'Guardián' },
+    { name: 'Serafín de prisma', emoji: '🦋', base: [8, 9, 12], rarity: 'Épico', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Dragón del eclipse doble', emoji: '🐉', base: [12, 10, 8], rarity: 'Épico', element: 'Astral', specialization: 'Atacante' },
+    { name: 'Auraluz, dragón de la primera aurora', emoji: '🐲', base: [12, 9, 11], rarity: 'Legendario', element: 'Fuego', specialization: 'Místico' },
 ];
+const rarityCoverageSpecies = [
+    { name: 'Gallo de la hoguera azul', emoji: '🐓', base: [12, 8, 10], rarity: 'Épico', element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Ballena de los siete espejos', emoji: '🐋', base: [12, 11, 10], rarity: 'Legendario', element: 'Agua', specialization: 'Místico' },
+    { name: 'Yaguarí de raíces cantoras', emoji: '🐆', base: [11, 10, 9], rarity: 'Épico', element: 'Naturaleza', specialization: 'Atacante' },
+    { name: 'Ceiba de los mil colibríes', emoji: '🌳', base: [10, 12, 11], rarity: 'Legendario', element: 'Naturaleza', specialization: 'Apoyo' },
+    { name: 'Albatros de los cuatro vientos', emoji: '🕊️', base: [10, 9, 12], rarity: 'Épico', element: 'Viento', specialization: 'Explorador' },
+    { name: 'León de la corriente celeste', emoji: '🦁', base: [12, 12, 10], rarity: 'Legendario', element: 'Viento', specialization: 'Guardián' },
+    { name: 'Armiño de escarcha azul', emoji: '🐁', base: [9, 7, 11], rarity: 'Raro', element: 'Hielo', specialization: 'Explorador' },
+    { name: 'Oso de la aurora rota', emoji: '🐻', base: [11, 12, 8], rarity: 'Épico', element: 'Hielo', specialization: 'Guardián' },
+    { name: 'Dragón de los glaciares cantores', emoji: '🐉', base: [12, 10, 11], rarity: 'Legendario', element: 'Hielo', specialization: 'Místico' },
+    { name: 'Libélula de cristal solar', emoji: '🦋', base: [7, 8, 12], rarity: 'Raro', element: 'Luz', specialization: 'Apoyo' },
+    { name: 'Ciervo del alba eterna', emoji: '🦌', base: [11, 12, 10], rarity: 'Legendario', element: 'Luz', specialization: 'Guardián' },
+    { name: 'Cuervo del eclipse vacío', emoji: '🐦‍⬛', base: [11, 9, 10], rarity: 'Épico', element: 'Sombra', specialization: 'Místico' },
+    { name: 'Leviatán de la noche sin luna', emoji: '🐉', base: [12, 11, 10], rarity: 'Legendario', element: 'Sombra', specialization: 'Atacante' },
+    { name: 'Topo de geoda violeta', emoji: '🐹', base: [10, 12, 8], rarity: 'Épico', element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Titán de jade dormido', emoji: '🪨', base: [12, 13, 8], rarity: 'Legendario', element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Liebre de chispa azul', emoji: '🐇', base: [9, 7, 12], rarity: 'Raro', element: 'Rayo', specialization: 'Explorador' },
+    { name: 'Serpiente del relámpago doble', emoji: '🐍', base: [12, 8, 12], rarity: 'Épico', element: 'Rayo', specialization: 'Atacante' },
+    { name: 'Quimera del trueno eterno', emoji: '🦁', base: [13, 11, 10], rarity: 'Legendario', element: 'Rayo', specialization: 'Atacante' },
+];
+const balancedSpecies = [
+    { name: 'Ajolote de carbón', emoji: '🦎', base: [8, 8, 7], rarity: 'Común', element: 'Fuego', specialization: 'Apoyo' },
+    { name: 'Cascabel de brasa', emoji: '🐍', base: [9, 6, 9], rarity: 'Común', element: 'Fuego', specialization: 'Atacante' },
+    { name: 'Coatí de tizón', emoji: '🦝', base: [8, 7, 9], rarity: 'Común', element: 'Fuego', specialization: 'Explorador' },
+    { name: 'Venado de magma', emoji: '🦌', base: [9, 9, 8], rarity: 'Poco común', element: 'Fuego', specialization: 'Guardián' },
+    { name: 'Tortuga volcánica', emoji: '🐢', base: [7, 12, 6], rarity: 'Poco común', element: 'Fuego', specialization: 'Guardián' },
+    { name: 'Polilla de rescoldo', emoji: '🦋', base: [8, 7, 10], rarity: 'Poco común', element: 'Fuego', specialization: 'Místico' },
+    { name: 'Mantarraya de lluvia azul', emoji: '🐟', base: [7, 9, 11], rarity: 'Poco común', element: 'Agua', specialization: 'Místico' },
+    { name: 'Zorro cometa', emoji: '🦊', base: [9, 7, 11], rarity: 'Poco común', element: 'Viento', specialization: 'Explorador' },
+    { name: 'Gavilán de nubes', emoji: '🦅', base: [10, 7, 10], rarity: 'Poco común', element: 'Viento', specialization: 'Atacante' },
+    { name: 'Foca copo', emoji: '🦭', base: [7, 10, 7], rarity: 'Común', element: 'Hielo', specialization: 'Guardián' },
+    { name: 'Ardilla de escarcha', emoji: '🐿️', base: [7, 7, 10], rarity: 'Común', element: 'Hielo', specialization: 'Explorador' },
+    { name: 'Lemming de hielo', emoji: '🐹', base: [8, 9, 7], rarity: 'Común', element: 'Hielo', specialization: 'Guardián' },
+    { name: 'Perrito glaciar', emoji: '🐕', base: [8, 8, 8], rarity: 'Común', element: 'Hielo', specialization: 'Apoyo' },
+    { name: 'Salamandra nevada', emoji: '🦎', base: [8, 7, 9], rarity: 'Común', element: 'Hielo', specialization: 'Místico' },
+    { name: 'Búho de cristal helado', emoji: '🦉', base: [7, 8, 9], rarity: 'Común', element: 'Hielo', specialization: 'Místico' },
+    { name: 'Lince aurora', emoji: '🐈', base: [9, 7, 11], rarity: 'Poco común', element: 'Hielo', specialization: 'Explorador' },
+    { name: 'Bisonte de ventisca', emoji: '🦬', base: [8, 12, 6], rarity: 'Poco común', element: 'Hielo', specialization: 'Guardián' },
+    { name: 'Topo de cobre', emoji: '🐹', base: [7, 8, 8], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+    { name: 'Ratón de chispas', emoji: '🐭', base: [8, 6, 10], rarity: 'Común', element: 'Rayo', specialization: 'Atacante' },
+    { name: 'Polilla voltaica', emoji: '🦋', base: [7, 6, 10], rarity: 'Común', element: 'Rayo', specialization: 'Místico' },
+    { name: 'Geco fulgor', emoji: '🦎', base: [8, 7, 9], rarity: 'Común', element: 'Rayo', specialization: 'Atacante' },
+    { name: 'Cuy de tormenta', emoji: '🐹', base: [8, 9, 7], rarity: 'Común', element: 'Rayo', specialization: 'Guardián' },
+    { name: 'Zorrillo de estática', emoji: '🦨', base: [8, 7, 9], rarity: 'Común', element: 'Rayo', specialization: 'Apoyo' },
+    { name: 'Caracol chispeante', emoji: '🐌', base: [6, 10, 7], rarity: 'Común', element: 'Rayo', specialization: 'Guardián' },
+    { name: 'Lechuza conductora', emoji: '🦉', base: [7, 7, 10], rarity: 'Común', element: 'Rayo', specialization: 'Explorador' },
+    { name: 'Jaguar del arco eléctrico', emoji: '🐆', base: [10, 7, 10], rarity: 'Poco común', element: 'Rayo', specialization: 'Atacante' },
+    { name: 'Lagartija de geoda', emoji: '🦎', base: [8, 9, 7], rarity: 'Común', element: 'Tierra', specialization: 'Explorador' },
+    { name: 'Gatito de eclipse', emoji: '🐈‍⬛', base: [7, 7, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Murciélago de ceniza lunar', emoji: '🦇', base: [8, 6, 10], rarity: 'Común', element: 'Sombra', specialization: 'Explorador' },
+    { name: 'Rana de humo violeta', emoji: '🐸', base: [7, 8, 8], rarity: 'Común', element: 'Sombra', specialization: 'Místico' },
+    { name: 'Jabalí de obsidiana', emoji: '🐗', base: [10, 8, 8], rarity: 'Poco común', element: 'Tierra', specialization: 'Atacante' },
+    { name: 'Armadillo de cuarzo', emoji: '🦔', base: [7, 11, 8], rarity: 'Poco común', element: 'Tierra', specialization: 'Guardián' },
+    { name: 'Mapache de nebulosa', emoji: '🦝', base: [8, 7, 10], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+    { name: 'Conejo de cometa azul', emoji: '🐇', base: [7, 7, 11], rarity: 'Común', element: 'Astral', specialization: 'Explorador' },
+    { name: 'Loro de constelaciones', emoji: '🦜', base: [8, 7, 11], rarity: 'Poco común', element: 'Astral', specialization: 'Apoyo' },
+    { name: 'Gacela de polvo estelar', emoji: '🦌', base: [9, 8, 10], rarity: 'Poco común', element: 'Astral', specialization: 'Místico' },
+];
+species.push(...additionalSpecies, ...rarityCoverageSpecies, ...balancedSpecies);
 export function getPetSpeciesMetadata(name) {
     return species.find((candidate) => candidate.name === name);
 }
@@ -436,6 +467,7 @@ const rarityWeights = [
     ['Común', 58, 0], ['Poco común', 25, 1], ['Raro', 11, 2], ['Épico', 5, 3], ['Legendario', 1, 4],
 ];
 function rarityWeightsForElement(_element) {
+    // Cada huevo usa la misma tabla. El catálogo cubre todas las rarezas para cada elemento.
     return rarityWeights;
 }
 export function getPetRarityOdds(element) {
@@ -455,17 +487,36 @@ export const RPG_DAILY_XP_CAP = 650;
 export const RPG_EXPLORE_COOLDOWN = 4 * 60 * 60;
 export const RPG_BATTLE_COOLDOWN = 3 * 60 * 60;
 export const RPG_TRAIN_COOLDOWN = 8 * 60 * 60;
+export const RPG_TRAIN_COIN_COST = 180;
+export const RPG_TRAIN_ENERGY_COST = 15;
+export const RPG_TRAIN_HUNGER_COST = 6;
+export const RPG_TRAIN_MIN_HUNGER = 8;
+export const RPG_CARE_COOLDOWN = 6 * 60 * 60;
 export const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
-export const RPG_CARE_COOLDOWN = 6 * 60 * 60;
 const quests = [
     { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 40 },
-    { id: 'battle', title: 'Guardián', description: 'Gana 1 combate PvE', target: 1, reward: 50 },
+    { id: 'battle', title: 'Guardián', description: 'Gana 1 combate contra un enemigo', target: 1, reward: 50 },
     { id: 'train', title: 'Disciplina', description: 'Entrena a tu mascota 1 vez', target: 1, reward: 30 },
 ];
 function now() { return Math.floor(Date.now() / 1000); }
 function utcDate(at = now()) { return new Date(at * 1000).toISOString().slice(0, 10); }
 function pick(items) { return items[randomInt(items.length)]; }
+function emptyExpeditionMemory() { return { trips: 0, zoneVisits: {}, lastZoneId: null, lastOutcome: null, recentEvents: [], knownFriends: [], knownHazards: [], discoveries: [] }; }
+function parseExpeditionMemory(value) {
+    const empty = emptyExpeditionMemory();
+    try {
+        const parsed = JSON.parse(value ?? '{}');
+        const outcome = ['tranquila', 'social', 'afortunada', 'peligrosa', 'incompleta', 'fallida'].includes(String(parsed.lastOutcome)) ? parsed.lastOutcome : null;
+        const zoneVisits = parsed.zoneVisits && typeof parsed.zoneVisits === 'object' ? Object.fromEntries(Object.entries(parsed.zoneVisits).filter(([key, count]) => typeof key === 'string' && Number.isFinite(count)).map(([key, count]) => [key, Math.max(0, Math.floor(Number(count)))]).slice(-12)) : {};
+        const list = (items, limit) => Array.isArray(items) ? [...new Set(items.filter((item) => typeof item === 'string' && item.length > 0))].slice(-limit) : [];
+        return { trips: Math.max(0, Math.floor(Number(parsed.trips) || 0)), zoneVisits, lastZoneId: typeof parsed.lastZoneId === 'string' ? parsed.lastZoneId : null,
+            lastOutcome: outcome, recentEvents: list(parsed.recentEvents, 12), knownFriends: list(parsed.knownFriends, 30), knownHazards: list(parsed.knownHazards, 30), discoveries: list(parsed.discoveries, 50) };
+    }
+    catch {
+        return empty;
+    }
+}
 function starterMoves(element) {
     const elemental = element === 'Neutral' ? undefined : starterMoveByElement[element];
     return elemental ? ['quick_tackle', elemental] : ['quick_tackle'];
@@ -496,6 +547,7 @@ function petFromRow(row) {
     catch {
         expeditionEffects = { safety: 0, luck: 0, haste: 0, bonusXp: 0 };
     }
+    const expeditionMemory = parseExpeditionMemory(row.expeditionMemory);
     const lineage = species.find((candidate) => candidate.name === row.species);
     const element = row.element === 'Neutral' && lineage ? lineage.element : row.element;
     const specialization = row.specialization === 'Explorador' && lineage ? lineage.specialization : row.specialization;
@@ -519,13 +571,13 @@ function petFromRow(row) {
         lastCareAt: row.lastCareAt == null ? null : Number(row.lastCareAt),
         lastExploreAt: row.lastExploreAt == null ? null : Number(row.lastExploreAt),
         lastBattleAt: row.lastBattleAt == null ? null : Number(row.lastBattleAt), lastTrainAt: row.lastTrainAt == null ? null : Number(row.lastTrainAt),
-        dailyXp: String(row.dailyXpDate ?? '') === utcDate() ? Number(row.dailyXp ?? 0) : 0, dailyXpDate: utcDate(), equipment, expeditionEffects,
+        dailyXp: String(row.dailyXpDate ?? '') === utcDate() ? Number(row.dailyXp ?? 0) : 0, dailyXpDate: utcDate(), equipment, expeditionEffects, expeditionMemory,
         knownMoves: resolvedKnownMoves, equippedMoves: equippedMoves.length ? equippedMoves : resolvedKnownMoves.slice(0, 4), movePoints: Number(row.movePoints ?? Math.max(0, level - 1)), freeNameUsed: Boolean(row.freeNameUsed) };
 }
 function sqlitePet(guildId, userId) {
     const row = db.prepare(`SELECT name, species, rarity, element, specialization, level, xp, strength, defense, agility, hp, max_hp AS maxHp,
     energy, max_energy AS maxEnergy, hunger, affection, needs_updated_at AS needsUpdatedAt, last_care_at AS lastCareAt,
-    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
+    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects, expedition_memory_json AS expeditionMemory,
     known_moves_json AS knownMoves,equipped_moves_json AS equippedMoves,move_points AS movePoints,free_name_used AS freeNameUsed,updated_at AS updatedAt
     FROM rpg_pets WHERE guild_id = ? AND user_id = ?`).get(guildId, userId);
     return petFromRow(row);
@@ -533,7 +585,7 @@ function sqlitePet(guildId, userId) {
 async function mysqlPet(connection, guildId, userId, lock = false) {
     const [rows] = await connection.execute(`SELECT name, species, rarity, element, specialization, level, xp, strength, defense, agility, hp,
     max_hp AS maxHp, energy, max_energy AS maxEnergy, hunger, affection, needs_updated_at AS needsUpdatedAt, last_care_at AS lastCareAt,
-    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects,
+    last_explore_at AS lastExploreAt,last_battle_at AS lastBattleAt,last_train_at AS lastTrainAt,daily_xp AS dailyXp,daily_xp_date AS dailyXpDate, equipment_json AS equipment, expedition_effects_json AS expeditionEffects, expedition_memory_json AS expeditionMemory,
     known_moves_json AS knownMoves,equipped_moves_json AS equippedMoves,move_points AS movePoints,free_name_used AS freeNameUsed,updated_at AS updatedAt
     FROM rpg_pets WHERE guild_id = ? AND user_id = ?${lock ? ' FOR UPDATE' : ''}`, [guildId, userId]);
     return petFromRow(rows[0]);
@@ -575,12 +627,12 @@ function applyXp(pet, xpGain, enforceDailyCap = true, at = now()) {
 }
 async function savePetMysql(connection, guildId, userId, pet, updated = now()) {
     await connection.execute(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
-    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`, [pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
-        pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId]);
+    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`, [pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
+        pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId]);
 }
 function savePetSqlite(guildId, userId, pet, updated = now()) {
     db.prepare(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
-    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy, pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId);
+    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy, pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId);
 }
 async function changeBalanceMysql(connection, guildId, userId, amount, reason, ref, at = now()) {
     await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
@@ -700,7 +752,7 @@ export async function adoptRpgPet(guildId, userId, name, element) {
     const stats = chosen.base.map((n) => n + randomInt(4) + rarity.bonus);
     const pet = { name: normalizedName || chosen.name, species: chosen.name, rarity: rarity.rarity, element: chosen.element, specialization: chosen.specialization, level: 1, xp: 0,
         strength: stats[0], defense: stats[1], agility: stats[2], hp: 70 + rarity.bonus * 2, maxHp: 70 + rarity.bonus * 2,
-        energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 },
+        energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: emptyExpeditionMemory(),
         knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), movePoints: 0, freeNameUsed: Boolean(normalizedName) };
     const at = now();
     if (economyPool)
@@ -731,7 +783,7 @@ export async function adminGrantRpgPet(guildId, userId, speciesName, name = '') 
         name: normalizedName || lineage.name, species: lineage.name, rarity: lineage.rarity, element: lineage.element,
         specialization: lineage.specialization, level: 1, xp: 0, strength: stats[0], defense: stats[1], agility: stats[2],
         hp: 70 + bonus * 2, maxHp: 70 + bonus * 2, energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(),
-        equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, knownMoves: starterMoves(lineage.element),
+        equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: emptyExpeditionMemory(), knownMoves: starterMoves(lineage.element),
         equippedMoves: starterMoves(lineage.element), movePoints: 0, freeNameUsed: Boolean(normalizedName),
     };
     const at = now();
@@ -818,6 +870,256 @@ export async function releaseRpgPet(guildId, userId) {
 export async function adminRemoveRpgPet(guildId, userId) {
     return releaseRpgPet(guildId, userId);
 }
+const rollBetween = (range) => range[0] + randomInt(range[1] - range[0] + 1);
+const replacePetName = (line, petName) => line.replaceAll('{name}', petName);
+const remembered = (memory, value) => memory.includes(value);
+function sceneMood(pet) {
+    if (pet.hp < pet.maxHp * 0.35)
+        return 'herida';
+    if (pet.energy < 35)
+        return 'agotada';
+    if (pet.hunger < 35)
+        return 'hambrienta';
+    if (pet.affection < 25)
+        return 'precavida';
+    if (pet.affection >= 78 && pet.energy >= 65)
+        return 'animada';
+    return 'curiosa';
+}
+function weightedScene(scenes, pet, zone, mood, alreadyThisTrip) {
+    const memory = pet.expeditionMemory;
+    const visits = memory.zoneVisits[zone.id] ?? 0;
+    const recent = new Set(memory.recentEvents);
+    const unused = scenes.filter((candidate) => !alreadyThisTrip.includes(`${zone.id}:${candidate.id}`));
+    const adjusted = (unused.length ? unused : scenes).map((candidate) => {
+        let weight = candidate.weight;
+        if (recent.has(`${zone.id}:${candidate.id}`))
+            weight *= 0.14;
+        if (candidate.discovery && remembered(memory.discoveries, `${zone.id}:${candidate.discovery}`))
+            weight *= 0.34;
+        if (candidate.friend && remembered(memory.knownFriends, `${zone.id}:${candidate.friend}`))
+            weight *= 1.2;
+        if (candidate.hazard && remembered(memory.knownHazards, `${zone.id}:${candidate.hazard}`))
+            weight *= 0.72;
+        if (candidate.choices[pet.specialization])
+            weight *= 1.28;
+        if (candidate.calm || candidate.kind === 'social' || candidate.kind === 'descanso') {
+            if (mood === 'agotada' || mood === 'hambrienta' || mood === 'herida' || memory.lastOutcome === 'peligrosa' || memory.lastOutcome === 'incompleta')
+                weight *= 1.55;
+        }
+        if (candidate.difficulty >= 2 && (mood === 'agotada' || mood === 'hambrienta' || mood === 'herida' || memory.lastOutcome === 'peligrosa'))
+            weight *= 0.62;
+        if (visits > 0 && candidate.discovery && remembered(memory.discoveries, `${zone.id}:${candidate.discovery}`))
+            weight *= 0.75;
+        return { scene: candidate, weight: Math.max(0.1, weight) };
+    });
+    const total = adjusted.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * total;
+    for (const entry of adjusted) {
+        roll -= entry.weight;
+        if (roll < 0)
+            return entry.scene;
+    }
+    return adjusted.at(-1).scene;
+}
+function simulateExpedition(pet, zone, at) {
+    const memory = parseExpeditionMemory(JSON.stringify(pet.expeditionMemory));
+    const scenes = expeditionScenes[zone.id];
+    const familiarVisits = memory.zoneVisits[zone.id] ?? 0;
+    const targetEvents = 2 + randomInt(zone.danger >= 50 ? 3 : 4);
+    const events = [];
+    const memoryNotes = [];
+    const foundItems = [];
+    let coins = 0;
+    let xpGenerated = pet.expeditionEffects.bonusXp;
+    let totalMinutes = 12 + randomInt(24);
+    let energySpent = 2 + randomInt(4);
+    let hungerSpent = 0;
+    let hp = pet.hp;
+    let energy = pet.energy;
+    let hunger = pet.hunger;
+    let affection = pet.affection;
+    let failedChecks = 0;
+    let riskyFailures = 0;
+    let socialMoments = 0;
+    let madeDiscovery = false;
+    let earlyEnd = false;
+    let boss;
+    let bossItem;
+    const newRecent = [];
+    const familiarityBonus = Math.min(9, familiarVisits * 1.5) + (memory.lastZoneId === zone.id ? 2 : 0);
+    for (let index = 0; index < targetEvents; index++) {
+        const currentMoodPet = { ...pet, hp, energy: Math.max(0, pet.energy - energySpent), hunger: Math.max(0, pet.hunger - hungerSpent), affection };
+        const mood = sceneMood(currentMoodPet);
+        const chosen = weightedScene(scenes, currentMoodPet, zone, mood, newRecent);
+        const knownHazard = Boolean(chosen.hazard && remembered(memory.knownHazards, `${zone.id}:${chosen.hazard}`));
+        const knownDiscovery = Boolean(chosen.discovery && remembered(memory.discoveries, `${zone.id}:${chosen.discovery}`));
+        const knownFriend = Boolean(chosen.friend && remembered(memory.knownFriends, `${zone.id}:${chosen.friend}`));
+        const action = pick(chosen.choices[pet.specialization] ?? sceneChoices[pet.specialization]);
+        const openings = chosen.friend && knownFriend ? chosen.opening.slice(1) : chosen.opening.slice(0, chosen.opening.length > 1 ? 1 : undefined);
+        let opening = replacePetName(pick(openings.length ? openings : chosen.opening), pet.name);
+        if (familiarVisits > 0 && index === 0 && randomInt(100) < 40)
+            opening = `Esta ruta ya le resulta familiar a ${pet.name}. ${opening}`;
+        if (knownHazard && chosen.hazard)
+            opening = `Al reconocer ${chosen.hazard.replaceAll('-', ' ')}, ${pet.name} se prepara antes de acercarse. ${opening}`;
+        const stat = chosen.skill === 'fuerza' ? pet.strength : chosen.skill === 'defensa' ? pet.defense : chosen.skill === 'agilidad' ? pet.agility : chosen.skill === 'vinculo' ? Math.floor(affection / 7)
+            : pet.level * (pet.specialization === 'Místico' ? 2 : 1) + Math.floor((pet.agility + pet.defense) / 4);
+        const affinity = pet.element !== 'Neutral' && zoneAffinity[zone.id].includes(pet.element) ? 8 : 0;
+        const roleFit = chosen.choices[pet.specialization] ? 7 : 0;
+        const moodBonus = mood === 'animada' ? 5 : mood === 'agotada' || mood === 'hambrienta' || mood === 'herida' ? -8 : mood === 'precavida' ? -3 : 1;
+        const hungerPenalty = hunger < 35 ? 8 : hunger < 55 ? 4 : 0;
+        const affectionBonus = affection >= 75 ? 3 : affection < 25 ? -5 : 0;
+        const healthPenalty = hp < pet.maxHp * 0.3 ? 10 : hp < pet.maxHp * 0.55 ? 5 : 0;
+        const chance = Math.max(18, Math.min(92, 62 + (stat - 8) * 2 + pet.level * 1.2 + affinity + roleFit + moodBonus + affectionBonus + familiarityBonus
+            + (knownHazard ? 8 : 0) + pet.expeditionEffects.safety - chosen.difficulty * 11 - zone.danger * 0.28 - hungerPenalty - healthPenalty));
+        let succeeded = randomInt(100) < chance;
+        let eventCoins = 0;
+        let eventXp = rollBetween(chosen.xp);
+        let eventDamage = 0;
+        let eventItem;
+        let eventTitle = chosen.title;
+        let emoji = chosen.emoji;
+        let resultLine = replacePetName(pick(succeeded ? chosen.success : chosen.setback), pet.name);
+        if (chosen.kind === 'encuentro' && !boss && randomInt(100) < zone.boss.spawnChance) {
+            const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2
+                + (pet.specialization === 'Atacante' ? 5 : pet.specialization === 'Guardián' ? 3 : 0) + randomInt(12);
+            succeeded = bossPower >= zone.boss.power + randomInt(12);
+            boss = { name: zone.boss.name, won: succeeded };
+            emoji = zone.boss.emoji;
+            eventTitle = succeeded ? `Se cruzó con ${zone.boss.name}` : `Se apartó de ${zone.boss.name}`;
+            resultLine = succeeded ? `Tras un breve forcejeo, ${zone.boss.name} se retira y deja libre el paso.`
+                : `${zone.boss.name} cerró el paso. ${pet.name} eligió retirarse antes de que la situación empeorara.`;
+            if (succeeded) {
+                eventCoins += Math.floor(rollBetween(zone.boss.reward) * RPG_COIN_REWARD_SCALE);
+                eventXp += rollBetween(zone.boss.xp);
+                if (randomInt(100) < zone.boss.dropChance)
+                    bossItem = pick(zone.boss.drops.map((id) => rpgItems.find((item) => item.id === id)).filter(Boolean));
+            }
+            else
+                eventDamage += Math.max(6, 12 + randomInt(12) - Math.floor(pet.defense / 4));
+        }
+        else if (!succeeded && chosen.damage)
+            eventDamage = Math.max(1, rollBetween(chosen.damage)
+                - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
+        if (!succeeded)
+            failedChecks++;
+        if (!succeeded && (chosen.kind === 'riesgo' || chosen.kind === 'encuentro'))
+            riskyFailures++;
+        if (succeeded && chosen.coins) {
+            const zoneBase = rollBetween(zone.reward);
+            eventCoins += Math.max(1, Math.floor(zoneBase * RPG_COIN_REWARD_SCALE * (chosen.kind === 'social' ? 0.28 : 0.55)));
+        }
+        const dropChance = Math.max(5, Math.min(78, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0)
+            + rarityRank[pet.rarity] * 2 + (affection >= 75 ? 4 : affection < 25 ? -5 : 0) - (hunger < 35 ? 8 : 0) - (knownDiscovery ? 18 : 0)));
+        if (succeeded && chosen.item && foundItems.length === 0 && randomInt(100) < dropChance)
+            eventItem = rollExpeditionDrop(zone);
+        if (eventItem)
+            foundItems.push(eventItem);
+        if (bossItem && foundItems.length < 2)
+            foundItems.push(bossItem);
+        if (succeeded && chosen.recover)
+            hp = Math.min(pet.maxHp, hp + chosen.recover);
+        if (eventDamage > 0)
+            hp = Math.max(1, hp - eventDamage);
+        if (succeeded && (chosen.kind === 'social' || chosen.kind === 'serena' || chosen.kind === 'descanso'))
+            affection = Math.min(100, affection + (chosen.kind === 'social' ? 2 : 1));
+        else if (!succeeded && chosen.kind === 'riesgo')
+            affection = Math.max(0, affection - 1);
+        if (succeeded && chosen.discovery && !knownDiscovery) {
+            memory.discoveries.push(`${zone.id}:${chosen.discovery}`);
+            madeDiscovery = true;
+            memoryNotes.push(`Nuevo lugar: ${chosen.title.toLowerCase()}.`);
+        }
+        if (chosen.friend) {
+            const key = `${zone.id}:${chosen.friend}`;
+            if (!remembered(memory.knownFriends, key)) {
+                memory.knownFriends.push(key);
+                const friendName = { iria: 'Iria', nara: 'Nara', boro: 'Boro', samir: 'Samir', luma: 'Luma', 'pastor-teo': 'Teo', 'medusa-nima': 'Nima' };
+                memoryNotes.push(`Conoció a ${friendName[chosen.friend] ?? 'una nueva compañía'}.`);
+            }
+            socialMoments++;
+        }
+        if (chosen.hazard) {
+            const key = `${zone.id}:${chosen.hazard}`;
+            if (!remembered(memory.knownHazards, key)) {
+                memory.knownHazards.push(key);
+                if (!succeeded)
+                    memoryNotes.push(`Aprendió a reconocer ${chosen.hazard.replaceAll('-', ' ')}.`);
+            }
+        }
+        const lineHasPetSubject = resultLine.startsWith(`${pet.name} `);
+        const lineWithoutPet = lineHasPetSubject ? resultLine.slice(pet.name.length + 1) : resultLine;
+        let detail = !resultLine.includes('—') && randomInt(100) < 35
+            ? `${opening} ${resultLine}`
+            : `${opening} ${pet.name} ${action}; ${lineWithoutPet.charAt(0).toLowerCase()}${lineWithoutPet.slice(1)}`;
+        if (chosen.item && succeeded && !eventItem && !boss)
+            detail += ' El lugar deja una pista, aunque no aparece ningún objeto de aventura que pueda llevarse.';
+        if (eventCoins) {
+            coins += eventCoins;
+            if (chosen.coins && succeeded && chosen.coinDetail)
+                detail += ` ${chosen.coinDetail}`;
+            else if (boss?.won)
+                detail += ' Cuando el sendero queda libre, encuentra unas monedas entre las huellas.';
+        }
+        if (eventItem)
+            detail += ' Entre las cosas del lugar, encuentra algo útil y lo guarda para el viaje.';
+        if (bossItem)
+            detail += ' El encuentro deja un objeto aprovechable que no piensa soltar.';
+        if (chosen.friend && knownFriend && succeeded)
+            detail += ' Se reconocen con una sonrisa; ya se habían encontrado antes.';
+        if (chosen.discovery && knownDiscovery && succeeded)
+            detail += ' El lugar le resulta familiar por su visita anterior.';
+        events.push({ emoji, title: eventTitle, detail, kind: chosen.kind, success: succeeded, important: Boolean(chosen.friend || chosen.discovery || eventItem || boss || eventDamage) });
+        newRecent.push(`${zone.id}:${chosen.id}`);
+        const eventMinutes = rollBetween(chosen.duration);
+        totalMinutes += eventMinutes;
+        eventXp = Math.floor(eventXp * (pet.specialization === 'Místico' ? 1.12 : 1));
+        xpGenerated += eventXp;
+        energySpent += 2 + Math.floor(eventMinutes / 22);
+        hungerSpent += Math.max(1, Math.floor(eventMinutes / 30));
+        if (eventDamage > 0 && !succeeded && hp <= Math.max(12, Math.floor(pet.maxHp * 0.2)) && index < targetEvents - 1 && randomInt(100) < 62) {
+            earlyEnd = true;
+            break;
+        }
+        if (energySpent >= energy && index < targetEvents - 1 && randomInt(100) < 48) {
+            earlyEnd = true;
+            break;
+        }
+        if (!succeeded && chosen.difficulty >= 2 && index < targetEvents - 1 && randomInt(100) < 13 + chosen.difficulty * 5) {
+            earlyEnd = true;
+            break;
+        }
+    }
+    totalMinutes += randomInt(30);
+    energy = Math.max(0, energy - Math.min(energy, energySpent));
+    hunger = Math.max(0, hunger - Math.min(hunger, Math.min(30, 9 + Math.floor(totalMinutes / 22) + hungerSpent)));
+    const damage = Math.max(0, pet.hp - hp);
+    const outOfEvents = events.length < targetEvents;
+    const outcome = earlyEnd || outOfEvents
+        ? events.length === 1 && failedChecks === 1 && !coins && !foundItems.length ? 'fallida' : 'incompleta'
+        : riskyFailures >= 2 || damage >= Math.ceil(pet.maxHp * 0.3) ? 'peligrosa'
+            : failedChecks === events.length && !socialMoments && !madeDiscovery ? 'fallida'
+                : madeDiscovery || coins > 0 || foundItems.length > 0 ? 'afortunada' : socialMoments > 0 ? 'social' : 'tranquila';
+    const xpResult = applyXp(pet, xpGenerated, true, at);
+    const levelHp = xpResult.pet.maxHp - pet.maxHp;
+    hp = Math.min(xpResult.pet.maxHp, hp + levelHp);
+    const cooldownHaste = Math.min(60 * 60, pet.expeditionEffects.haste);
+    const updatedMemory = { ...memory, trips: memory.trips + 1, zoneVisits: { ...memory.zoneVisits, [zone.id]: familiarVisits + 1 },
+        lastZoneId: zone.id, lastOutcome: outcome, recentEvents: [...memory.recentEvents, ...newRecent].slice(-12),
+        knownFriends: [...new Set(memory.knownFriends)].slice(-30), knownHazards: [...new Set(memory.knownHazards)].slice(-30), discoveries: [...new Set(memory.discoveries)].slice(-50) };
+    if (familiarVisits > 0)
+        memoryNotes.push(`Ya conoce ${zone.name}; esa experiencia le ayudó a orientarse.`);
+    const updated = { ...xpResult.pet, hp, energy, hunger, affection, needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
+        expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: updatedMemory };
+    const connectors = ['Un poco después', 'Al seguir el sendero', 'Más adelante', 'De camino', 'Poco a poco'];
+    const summary = events.map((event, index) => `${index ? `${pick(connectors)}. ` : ''}${event.detail}`).join(' ');
+    const itemIds = foundItems.map((found) => found.id);
+    const item = foundItems[0];
+    const finalState = { hp: updated.hp, maxHp: updated.maxHp, energy: updated.energy, maxEnergy: updated.maxEnergy, hunger: updated.hunger, affection: updated.affection };
+    const message = `${zone.emoji} ${pet.name} regresó de **${zone.name}** tras ${totalMinutes} min.${coins ? ` Recuperó ${coins} monedas.` : ''}${xpResult.gained ? ` Ganó ${xpResult.gained} XP.` : ''}${item ? ` Hallazgo: ${item.emoji} **${item.name}**.` : ''}${xpResult.levels ? ` ¡Subió ${xpResult.levels} nivel(es)!` : ''}`;
+    return { pet: updated, zone, coins, xp: xpResult.gained, damage, item, bossItem, ...(boss ? { boss } : {}), levelUps: xpResult.levels,
+        events, summary, outcome, durationMinutes: totalMinutes, itemIds, memoryNotes: [...new Set(memoryNotes)].slice(0, 5), finalState, message };
+}
 export async function exploreRpg(guildId, userId, zoneId, reference) {
     guildId = GLOBAL_SCOPE_ID;
     const zone = rpgZones.find((candidate) => candidate.id === zoneId);
@@ -834,68 +1136,7 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
             return { ok: false, reason: 'low_energy' };
         if (pet.hunger < 15)
             return { ok: false, reason: 'low_hunger' };
-        const story = zoneStories[zone.id];
-        const affinity = pet.element !== 'Neutral' && zoneAffinity[zone.id].includes(pet.element) ? 7 : 0;
-        const roleBonus = pet.specialization === 'Explorador' ? 7 : pet.specialization === 'Atacante' ? 4 : 0;
-        const petRarity = rarityRank[pet.rarity];
-        const bondBonus = pet.affection >= 75 ? 5 : pet.affection < 25 ? -8 : 0;
-        const hungerPenalty = pet.hunger < 35 ? 12 : pet.hunger < 60 ? 5 : 0;
-        const effectiveDanger = Math.max(5, Math.min(85, zone.danger - Math.floor(pet.agility / 5) - affinity - roleBonus - pet.expeditionEffects.safety - petRarity * 2 - bondBonus + hungerPenalty));
-        const success = randomInt(100) >= effectiveDanger;
-        let coins = success ? Math.floor((zone.reward[0] + randomInt(zone.reward[1] - zone.reward[0] + 1)) * RPG_COIN_REWARD_SCALE) : 0;
-        const xpRaw = success ? 32 + randomInt(34) : 14 + randomInt(18);
-        let xp = (pet.specialization === 'Místico' ? Math.floor(xpRaw * 1.15) : xpRaw) + pet.expeditionEffects.bonusXp;
-        const baseDamage = success ? randomInt(6) : 9 + randomInt(19);
-        let damage = Math.max(0, baseDamage - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
-        const bondLoot = pet.affection >= 75 ? 4 : pet.affection < 25 ? -5 : 0;
-        const dropChance = Math.max(5, Math.min(80, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0) + petRarity * 3 + bondLoot - (pet.hunger < 35 ? 8 : 0)));
-        const dropped = success && randomInt(100) < dropChance ? rollExpeditionDrop(zone) : undefined;
-        const chosenDecision = pick(story.decisions[pet.specialization]);
-        const threat = pick(story.threats);
-        let boss;
-        let bossItem;
-        if (success && randomInt(100) < zone.boss.spawnChance) {
-            const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + petRarity * 2
-                + (pet.specialization === 'Atacante' ? 5 : pet.specialization === 'Guardián' ? 3 : 0) + randomInt(12);
-            const bossTarget = zone.boss.power + randomInt(12);
-            const won = bossPower >= bossTarget;
-            boss = { name: zone.boss.name, won, rewardCoins: 0, rewardXp: 0 };
-            if (won) {
-                const bonusCoins = Math.floor((zone.boss.reward[0] + randomInt(zone.boss.reward[1] - zone.boss.reward[0] + 1)) * RPG_COIN_REWARD_SCALE);
-                const bonusXp = zone.boss.xp[0] + randomInt(zone.boss.xp[1] - zone.boss.xp[0] + 1);
-                coins += bonusCoins;
-                xp += bonusXp;
-                boss.rewardCoins = bonusCoins;
-                boss.rewardXp = bonusXp;
-                if (randomInt(100) < zone.boss.dropChance)
-                    bossItem = pick(zone.boss.drops.map((id) => rpgItems.find((item) => item.id === id)).filter(Boolean));
-            }
-            else {
-                damage += Math.max(6, 14 + randomInt(15) - Math.floor(pet.defense / 4));
-                xp += 12;
-            }
-        }
-        const leveled = applyXp(pet, xp, true, at);
-        xp = leveled.gained;
-        const events = [
-            { emoji: zone.emoji, title: `Llegada a ${zone.name}`, detail: pick(story.arrival) },
-            { emoji: '🧠', title: 'Decisión de la mascota', detail: pick(decisionsBySpecialization[pet.specialization]).replace('{decision}', chosenDecision).replace('{name}', pet.name) },
-            { emoji: success ? '⚔️' : '⚠️', title: success ? 'Superó el encuentro' : 'Un contratiempo', detail: success ? `${pet.name} encontró a ${threat} y lo resolvió con su especialidad ${pet.specialization.toLowerCase()}.` : `${threat} sorprendió a ${pet.name}; usó ${pet.element.toLowerCase()} para retirarse, pero recibió ${damage} de daño.` },
-            { emoji: dropped ? dropped.emoji : success ? '🪙' : '🔎', title: dropped ? 'Hallazgo' : success ? 'Recompensa' : 'Búsqueda', detail: dropped ? `Exploró ${pick(story.safeFinds)} y encontró **${dropped.name}** (${dropped.rarity}).` : success ? `${pick(story.safeFinds)}: recuperó **${coins} monedas**.` : 'Revisó el área después del incidente; no encontró objetos esta vez.' },
-        ];
-        if (boss)
-            events.push({ emoji: zone.boss.emoji, title: boss.won ? `Jefe derrotado: ${boss.name}` : `Jefe avistado: ${boss.name}`, detail: boss.won
-                    ? `Ganó el combate y recibió **${boss.rewardCoins} monedas**; la XP total se muestra al volver${bossItem ? `; encontró **${bossItem.name}** (${bossItem.rarity})` : `; no cayó botín especial (${zone.boss.dropChance}% de probabilidad)`}.`
-                    : `No logró vencerlo; recibió daño adicional y volvió con 12 XP de supervivencia.` });
-        events.push({ emoji: '🏕️', title: 'Regreso al gremio', detail: `${pet.name} vuelve con ${xp} XP${damage ? ` y ${damage} PV de daño` : ' ilesa'}${coins ? `, ${coins} monedas` : ''}${boss ? `; ${boss.won ? 'derrotó' : 'se enfrentó a'} al jefe ${boss.name}` : ''}.` });
-        const recoveredHp = pet.specialization === 'Apoyo' && success ? 5 : 0;
-        const hungerCost = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
-        const cooldownHaste = Math.min(60 * 60, pet.expeditionEffects.haste);
-        const updated = { ...leveled.pet, hp: Math.max(1, Math.min(leveled.pet.maxHp, leveled.pet.hp - damage + recoveredHp)), energy: pet.energy - 20,
-            hunger: pet.hunger - hungerCost, affection: Math.min(100, pet.affection + (success ? 2 : 1)), needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
-            expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 } };
-        return { ok: true, pet: updated, zone, coins, xp, damage, item: dropped, bossItem, ...(boss ? { boss } : {}), levelUps: leveled.levels, events,
-            message: `${zone.emoji} ${success ? 'Expedición completada' : 'Expedición difícil'} en **${zone.name}**. ${boss ? `${zone.boss.emoji} ${boss.won ? `Derrotó a ${boss.name}` : `Perdió contra ${boss.name}`}. ` : ''}${dropped ? `Hallazgo: ${dropped.emoji} **${dropped.name}**. ` : ''}${bossItem ? `Botín de jefe: ${bossItem.emoji} **${bossItem.name}**. ` : ''}${coins ? `Botín: **${coins} monedas**. ` : ''}${pet.expeditionEffects.bonusXp ? `Bono de comida: +${pet.expeditionEffects.bonusXp} XP. ` : ''}${cooldownHaste ? `Descanso posterior reducido ${Math.floor(cooldownHaste / 60)} min. ` : ''}${leveled.levels ? `¡Subió ${leveled.levels} nivel(es)!` : ''}` };
+        return { ok: true, ...simulateExpedition(pet, zone, at) };
     };
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
@@ -908,10 +1149,11 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
             await savePetMysql(connection, guildId, userId, result.pet, at);
             if (result.coins)
                 await changeBalanceMysql(connection, guildId, userId, result.coins, 'rpg_explore', `${reference}:coins`, at);
-            for (const item of [result.item, result.bossItem])
-                if (item)
-                    await connection.execute('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, item.id]);
-            await connection.execute('INSERT INTO rpg_expedition_logs (id,guild_id,user_id,zone_id,events_json,coins,xp,item_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)', [reference, guildId, userId, zone.id, JSON.stringify(result.events), result.coins, result.xp, result.bossItem?.id ?? result.item?.id ?? null, at]);
+            for (const itemId of result.itemIds)
+                await connection.execute('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId]);
+            const payload = { v: 2, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage,
+                itemIds: result.itemIds, memoryNotes: result.memoryNotes, finalState: result.finalState, events: result.events };
+            await connection.execute('INSERT INTO rpg_expedition_logs (id,guild_id,user_id,zone_id,events_json,coins,xp,item_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)', [reference, guildId, userId, zone.id, JSON.stringify(payload), result.coins, result.xp, result.item?.id ?? null, at]);
             await updateQuestMysql(connection, guildId, userId, 'explore', at);
             return result;
         });
@@ -925,11 +1167,12 @@ export async function exploreRpg(guildId, userId, zoneId, reference) {
         savePetSqlite(guildId, userId, result.pet, at);
         if (result.coins)
             changeBalanceSqlite(guildId, userId, result.coins, 'rpg_explore', `${reference}:coins`, at);
-        for (const item of [result.item, result.bossItem])
-            if (item)
-                db.prepare('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, item.id);
+        for (const itemId of result.itemIds)
+            db.prepare('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId);
+        const payload = { v: 2, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage,
+            itemIds: result.itemIds, memoryNotes: result.memoryNotes, finalState: result.finalState, events: result.events };
         db.prepare('INSERT INTO rpg_expedition_logs (id,guild_id,user_id,zone_id,events_json,coins,xp,item_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-            .run(reference, guildId, userId, zone.id, JSON.stringify(result.events), result.coins, result.xp, result.bossItem?.id ?? result.item?.id ?? null, at);
+            .run(reference, guildId, userId, zone.id, JSON.stringify(payload), result.coins, result.xp, result.item?.id ?? null, at);
         updateQuestSqlite(guildId, userId, 'explore', at);
         return result;
     });
@@ -980,15 +1223,32 @@ function expeditionLogFromRow(row) {
     if (!row)
         return undefined;
     let events = [];
+    let payload = {};
     try {
-        events = JSON.parse(String(row.events));
+        const parsed = JSON.parse(String(row.events));
+        if (Array.isArray(parsed))
+            events = parsed;
+        else if (parsed && typeof parsed === 'object') {
+            payload = parsed;
+            events = Array.isArray(payload.events) ? payload.events : [];
+        }
     }
     catch {
         events = [];
     }
     const zone = rpgZones.find((candidate) => candidate.id === String(row.zoneId));
+    const itemId = row.itemId == null ? null : String(row.itemId);
+    const legacySummary = events.map((event) => event.detail).join(' ');
+    const validOutcomes = ['tranquila', 'social', 'afortunada', 'peligrosa', 'incompleta', 'fallida'];
+    const outcome = validOutcomes.includes(payload.outcome) ? payload.outcome : events.some((event) => event.title.includes('contratiempo') || event.title.includes('Jefe avistado')) ? 'peligrosa'
+        : Number(row.coins) > 0 || itemId ? 'afortunada' : 'tranquila';
+    const finalState = payload.finalState && typeof payload.finalState === 'object' ? payload.finalState : undefined;
     return { id: String(row.id), zoneId: String(row.zoneId), zoneName: zone?.name ?? String(row.zoneId), events,
-        coins: Number(row.coins), xp: Number(row.xp), itemId: row.itemId == null ? null : String(row.itemId), createdAt: Number(row.createdAt) };
+        summary: typeof payload.summary === 'string' ? payload.summary : legacySummary || 'La bitácora de esta salida conserva sus apuntes, aunque la narración antigua era breve.',
+        outcome, durationMinutes: Number(payload.durationMinutes) || 0, coins: Number(row.coins), xp: Number(row.xp), damage: Number(payload.damage) || 0,
+        itemId, itemIds: Array.isArray(payload.itemIds) ? payload.itemIds.filter((id) => typeof id === 'string') : itemId ? [itemId] : [],
+        memoryNotes: Array.isArray(payload.memoryNotes) ? payload.memoryNotes.filter((note) => typeof note === 'string') : [],
+        ...(finalState ? { finalState } : {}), createdAt: Number(row.createdAt) };
 }
 export async function battleRpg(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
@@ -1038,9 +1298,8 @@ export async function battleRpg(guildId, userId, reference) {
 }
 export async function trainRpgPet(guildId, userId, stat, reference) {
     guildId = GLOBAL_SCOPE_ID;
-    const cost = 180;
     const at = now();
-    const levelPet = (pet) => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - 15, hunger: Math.max(0, pet.hunger - 6), needsUpdatedAt: at, lastTrainAt: at });
+    const levelPet = (pet) => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - RPG_TRAIN_ENERGY_COST, hunger: Math.max(0, pet.hunger - RPG_TRAIN_HUNGER_COST), needsUpdatedAt: at, lastTrainAt: at });
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const pet = await mysqlPet(connection, guildId, userId, true);
@@ -1049,11 +1308,11 @@ export async function trainRpgPet(guildId, userId, stat, reference) {
             const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at;
             if (remaining > 0)
                 return { ok: false, reason: 'cooldown', secondsRemaining: remaining };
-            if (pet.energy < 15)
+            if (pet.energy < RPG_TRAIN_ENERGY_COST)
                 return { ok: false, reason: 'low_energy' };
-            if (pet.hunger < 8)
+            if (pet.hunger < RPG_TRAIN_MIN_HUNGER)
                 return { ok: false, reason: 'low_hunger' };
-            const payment = await changeBalanceMysql(connection, guildId, userId, -cost, 'rpg_training', reference, at);
+            const payment = await changeBalanceMysql(connection, guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at);
             if (!payment.ok)
                 return { ok: false, reason: 'funds' };
             const updated = levelPet(pet);
@@ -1063,9 +1322,9 @@ export async function trainRpgPet(guildId, userId, stat, reference) {
         });
     const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet)
         return { ok: false, reason: 'no_pet' }; const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0)
-        return { ok: false, reason: 'cooldown', secondsRemaining: remaining }; if (pet.energy < 15)
-        return { ok: false, reason: 'low_energy' }; if (pet.hunger < 8)
-        return { ok: false, reason: 'low_hunger' }; const payment = changeBalanceSqlite(guildId, userId, -cost, 'rpg_training', reference, at); if (!payment.ok)
+        return { ok: false, reason: 'cooldown', secondsRemaining: remaining }; if (pet.energy < RPG_TRAIN_ENERGY_COST)
+        return { ok: false, reason: 'low_energy' }; if (pet.hunger < RPG_TRAIN_MIN_HUNGER)
+        return { ok: false, reason: 'low_hunger' }; const payment = changeBalanceSqlite(guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok)
         return { ok: false, reason: 'funds' }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true, pet: updated, balance: payment.balance }; });
     return run.immediate();
 }

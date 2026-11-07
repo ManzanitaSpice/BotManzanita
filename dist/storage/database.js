@@ -192,6 +192,7 @@ db.exec(`
     daily_xp_date TEXT NOT NULL DEFAULT '',
     equipment_json TEXT NOT NULL DEFAULT '{}',
     expedition_effects_json TEXT NOT NULL DEFAULT '{}',
+    expedition_memory_json TEXT NOT NULL DEFAULT '{}',
     known_moves_json TEXT NOT NULL DEFAULT '[]',
     equipped_moves_json TEXT NOT NULL DEFAULT '[]',
     move_points INTEGER NOT NULL DEFAULT 0,
@@ -277,7 +278,7 @@ if (playlistTrackIndexes.some((index) => index.unique === 1 && index.origin === 
     });
     migratePlaylistTracks.immediate();
 }
-for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'"], ['specialization', "TEXT NOT NULL DEFAULT 'Explorador'"], ['hunger', 'INTEGER NOT NULL DEFAULT 80'], ['affection', 'INTEGER NOT NULL DEFAULT 60'], ['needs_updated_at', 'INTEGER NOT NULL DEFAULT 0'], ['last_care_at', 'INTEGER'], ['last_battle_at', 'INTEGER'], ['last_train_at', 'INTEGER'], ['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'"], ['known_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['move_points', 'INTEGER NOT NULL DEFAULT 0'], ['free_name_used', 'INTEGER NOT NULL DEFAULT 0']]) {
+for (const [column, definition] of [['element', "TEXT NOT NULL DEFAULT 'Neutral'"], ['specialization', "TEXT NOT NULL DEFAULT 'Explorador'"], ['hunger', 'INTEGER NOT NULL DEFAULT 80'], ['affection', 'INTEGER NOT NULL DEFAULT 60'], ['needs_updated_at', 'INTEGER NOT NULL DEFAULT 0'], ['last_care_at', 'INTEGER'], ['last_battle_at', 'INTEGER'], ['last_train_at', 'INTEGER'], ['daily_xp', 'INTEGER NOT NULL DEFAULT 0'], ['daily_xp_date', "TEXT NOT NULL DEFAULT ''"], ['expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'"], ['expedition_memory_json', "TEXT NOT NULL DEFAULT '{}'"], ['known_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'"], ['move_points', 'INTEGER NOT NULL DEFAULT 0'], ['free_name_used', 'INTEGER NOT NULL DEFAULT 0']]) {
     try {
         db.exec(`ALTER TABLE rpg_pets ADD COLUMN ${column} ${definition}`);
     }

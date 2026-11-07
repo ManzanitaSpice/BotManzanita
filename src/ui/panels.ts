@@ -17,7 +17,7 @@ import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js'
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BlackjackView } from '../services/economy.js';
-import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_COIN_REWARD_SCALE, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
+import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
@@ -221,21 +221,23 @@ export async function rpgExplorePanel(guildId: string, userId: string, username:
       : pet.energy < 20 ? '⚡ Necesita al menos 20 de energía.'
         : pet.hunger < 15 ? '🍖 Necesita comer antes de salir.'
           : '🟢 Lista para salir.';
-  const consumption = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
+  const visits = pet.expeditionMemory.zoneVisits[zone.id] ?? 0;
+  const familiarity = visits ? `🧠 Ya conoce este lugar: ${visits} ${visits === 1 ? 'visita' : 'visitas'} que pueden ayudarle a orientarse.` : '✨ Su primera visita a esta zona: cada experiencia dejará recuerdos.';
+  const eventRange = zone.danger >= 50 ? '2–4 acontecimientos' : '2–5 acontecimientos';
   const petCard = await renderPetCard(pet, zone.background, xpNext);
   const container = new ContainerBuilder().setAccentColor(0x14b8a6)
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name} · ${zone.name}`),
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🧭 EXPLORACIÓN\nLa salida se resuelve al instante; después, tu mascota descansa 4 h.`))
+      `# 🧭 Una salida al mundo\nCada viaje toma su propio rumbo: puede ser tranquilo, social, afortunado o terminar antes de tiempo. La energía, el ánimo, las habilidades y los recuerdos de ${pet.name} influyen en sus decisiones.`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## ${zone.emoji} ${zone.name}\n**${zone.difficulty}** · nivel ${zone.minLevel}+\n⚠️ Peligro base ${zone.danger}% · 🎁 botín regional ${zone.lootChance}%\n🪙 Recompensa base ${money.format(Math.floor(zone.reward[0] * RPG_COIN_REWARD_SCALE))}–${money.format(Math.floor(zone.reward[1] * RPG_COIN_REWARD_SCALE))} monedas\n👑 ${zone.boss.emoji} ${zone.boss.name} · aparece ${zone.boss.spawnChance}% · premio ${money.format(Math.floor(zone.boss.reward[0] * RPG_COIN_REWARD_SCALE))}–${money.format(Math.floor(zone.boss.reward[1] * RPG_COIN_REWARD_SCALE))} monedas\n\n${status}\n⚡ Coste: 20 de energía · 🍖 consume hasta ${consumption} de saciedad · 📘 XP RPG hoy ${pet.dailyXp}/${RPG_DAILY_XP_CAP}`))
+      `## ${zone.emoji} ${zone.name}\n**${zone.difficulty}** · nivel ${zone.minLevel}+ · peligro del entorno ${zone.danger}/100\n🧭 Se esperan ${eventRange}; no hay combates ni hallazgos garantizados. El tiempo, el cansancio y los contratiempos pueden cambiar el recorrido.\n⚡ Necesita 20 de energía · 🍓 saciedad actual ${pet.hunger}/100\n${familiarity}\n\n${status}\n📘 XP RPG hoy ${pet.dailyXp}/${RPG_DAILY_XP_CAP} · al volver, descansa hasta 4 h (menos si lleva un atajo).`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('rpg:exploration:zone').setPlaceholder('Elegir zona').addOptions(rpgZones.map((candidate) => ({
         label: `${candidate.name} · Nv. ${candidate.minLevel}+`, value: candidate.id, emoji: candidate.emoji,
-        description: `${candidate.difficulty} · peligro ${candidate.danger}% · botín ${candidate.lootChance}%`, default: candidate.id === zone.id,
+        description: `${candidate.difficulty} · entorno ${candidate.danger}/100`, default: candidate.id === zone.id,
       }))),
     ))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -270,21 +272,32 @@ export async function expeditionLogPanel(guildId: string, userId: string, reques
   }
 
   const recordNumber = snapshot.total - page * pageSize;
-  const hadSetback = log.events.some((event) => event.title === 'Un contratiempo' || event.title.startsWith('Jefe avistado'));
-  const outcome = hadSetback ? '⚠️ Expedición con contratiempos' : '✅ Expedición completada';
-  const itemName = log.itemId ? rpgItems.find((item) => item.id === log.itemId)?.name ?? log.itemId : undefined;
+  const outcomeLabels: Record<ExpeditionOutcome, { emoji: string; title: string }> = {
+    tranquila: { emoji: '🌿', title: 'Un paseo tranquilo' }, social: { emoji: '💬', title: 'Un encuentro que dejó huella' },
+    afortunada: { emoji: '✨', title: 'La suerte salió al camino' }, peligrosa: { emoji: '🌩️', title: 'Una aventura intensa' },
+    incompleta: { emoji: '🏕️', title: 'Volvió antes de lo previsto' }, fallida: { emoji: '🌫️', title: 'Hoy el camino no se dejó leer' },
+  };
+  const result = outcomeLabels[log.outcome];
+  const itemCounts = new Map<string, number>();
+  for (const id of log.itemIds) itemCounts.set(id, (itemCounts.get(id) ?? 0) + 1);
+  const itemRewards = [...itemCounts].map(([id, count]) => {
+    const item = rpgItems.find((candidate) => candidate.id === id);
+    return `${item?.emoji ?? '🎒'} **${item?.name ?? id}**${count > 1 ? ` ×${count}` : ''}`;
+  });
+  const rewards = [log.coins ? `🪙 **${money.format(log.coins)} monedas**` : '', log.xp ? `📘 **${log.xp} XP**` : '', ...itemRewards].filter(Boolean);
+  const state = log.finalState
+    ? `❤️ ${log.finalState.hp}/${log.finalState.maxHp} PV　·　⚡ ${log.finalState.energy}/${log.finalState.maxEnergy} energía　·　🍓 ${log.finalState.hunger}/100 saciedad　·　💞 ${log.finalState.affection}/100 cariño`
+    : log.damage ? `❤️ Recibió ${log.damage} PV de daño` : '❤️ Volvió sin daño registrado';
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-    `# 📜 BITÁCORA DE EXPLORACIÓN\n**${outcome}** · ${recordNumber} de ${snapshot.total}\n🗺️ ${log.zoneName} · <t:${log.createdAt}:F>`))
+    `# 📜 Bitácora de aventuras\n**${result.emoji} ${result.title}** · ${log.zoneName}\n<t:${log.createdAt}:F>${log.durationMinutes ? ` · ${log.durationMinutes < 60 ? `${log.durationMinutes} min` : `${Math.floor(log.durationMinutes / 60)} h ${log.durationMinutes % 60} min`}` : ''} · aventura ${recordNumber}/${snapshot.total}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 🎁 Recompensas\n🪙 **${money.format(log.coins)} monedas**　·　📘 **${log.xp} XP**${itemName ? `\n📦 Hallazgo: **${itemName}**` : '\n🔎 Sin objeto especial en esta salida.'}`))
+      `## 🍃 Lo que ocurrió\n${log.summary || 'El camino transcurrió en silencio y la mascota regresó con sus propias impresiones.'}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('## 🧭 Recorrido'));
-  for (const [index, event] of log.events.entries()) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**${String(index + 1).padStart(2, '0')}　${event.emoji} ${event.title}**\n${event.detail}`));
-    if (index < log.events.length - 1) container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
-  }
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## ✨ Recompensas\n${rewards.length ? rewards.join('　·　') : 'Sin monedas ni objetos esta vez.'}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🐾 De vuelta\n${state}${log.memoryNotes.length ? `\n🧠 Para la próxima: ${log.memoryNotes.join(' · ')}` : ''}`));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`rpg:logs:previous:${Math.max(0, page - 1)}`).setLabel('Más recientes').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
     new ButtonBuilder().setCustomId(`rpg:logs:next:${Math.min(pageCount - 1, page + 1)}`).setLabel('Anteriores').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),

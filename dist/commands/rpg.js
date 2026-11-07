@@ -9,8 +9,8 @@ export const rpgCommand = {
         .addSubcommand((sub) => sub.setName('mochila').setDescription('Consulta y usa tus objetos RPG'))
         .addSubcommand((sub) => sub.setName('alimentar').setDescription('Alimenta a tu mascota con comida de la mochila')
         .addStringOption((option) => option.setName('alimento').setDescription('Comida disponible').setAutocomplete(true)))
-        .addSubcommand((sub) => sub.setName('cuidar').setDescription('Pasa tiempo con tu mascota para aumentar el vínculo'))
-        .addSubcommand((sub) => sub.setName('ataques').setDescription('Aprende técnicas y prepara la build de combate'))
+        .addSubcommand((sub) => sub.setName('cuidar').setDescription('Acaricia a tu mascota para aumentar su cariño'))
+        .addSubcommand((sub) => sub.setName('ataques').setDescription('Aprende y elige técnicas para los duelos'))
         .addSubcommand((sub) => sub.setName('nombrar').setDescription('Usa el nombre gratuito de tu mascota una sola vez')
         .addStringOption((option) => option.setName('nombre').setDescription('Nombre nuevo (2–24 caracteres)').setRequired(true).setMinLength(2).setMaxLength(24)))
         .addSubcommand((sub) => sub.setName('adoptar').setDescription('Adopta una mascota aleatoria')
@@ -19,10 +19,10 @@ export const rpgCommand = {
         .addSubcommand((sub) => sub.setName('explorar').setDescription('Explora: dificultad, botín regional y posibles jefes')
         .addStringOption((option) => option.setName('zona').setDescription('Zona para explorar; si se omite, abre el panel de selección').setRequired(false).addChoices(...rpgZones.map((zone) => ({ name: `${zone.emoji} ${zone.name} · Nv. ${zone.minLevel}+`, value: zone.id })))))
         .addSubcommand((sub) => sub.setName('bitacora').setDescription('Consulta el historial de tus expediciones'))
-        .addSubcommand((sub) => sub.setName('combatir').setDescription('Enfrenta enemigos PvE y gana experiencia'))
+        .addSubcommand((sub) => sub.setName('combatir').setDescription('Enfrenta enemigos y gana experiencia'))
         .addSubcommand((sub) => sub.setName('retar').setDescription('Reta a otra persona a un duelo RPG por turnos')
         .addUserOption((option) => option.setName('oponente').setDescription('Persona a quien quieres retar').setRequired(true)))
-        .addSubcommand((sub) => sub.setName('entrenar').setDescription('Mejora un atributo por 180 monedas y 15 de energía')
+        .addSubcommand((sub) => sub.setName('entrenar').setDescription('Mejora un atributo por 180 monedas, 15 de energía y 6 de saciedad')
         .addStringOption((option) => option.setName('atributo').setDescription('Atributo que quieres mejorar').setRequired(true)
         .addChoices({ name: '⚔️ Fuerza', value: 'strength' }, { name: '🛡️ Defensa', value: 'defense' }, { name: '💨 Agilidad', value: 'agility' })))
         .addSubcommand((sub) => sub.setName('comprar').setDescription('Compra un artículo RPG con monedas de tu billetera')
@@ -99,10 +99,10 @@ export const rpgCommand = {
         if (action === 'cuidar') {
             const result = await careForRpgPet(guildId, userId);
             if (!result.ok) {
-                await interaction.reply({ content: result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El vínculo ya está al máximo.' : `Podrás volver a cuidarla en ${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos.`, flags: MessageFlags.Ephemeral });
+                await interaction.reply({ content: result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'max_affection' ? 'El cariño de tu mascota ya está al máximo.' : `Podrás volver a acariciarla en ${Math.ceil((result.secondsRemaining ?? 0) / 60)} minutos.`, flags: MessageFlags.Ephemeral });
                 return;
             }
-            await interaction.reply(rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su vínculo aumentó **+${result.affectionGained}**.`));
+            await interaction.reply(rpgCareResultPanel(result.pet, `Acariciaste a ${result.pet.name}. Su cariño aumentó **+${result.affectionGained}**.`));
             return;
         }
         if (action === 'ataques') {
@@ -159,7 +159,7 @@ export const rpgCommand = {
             const stat = interaction.options.getString('atributo', true);
             const result = await trainRpgPet(guildId, userId, stat, interaction.id);
             const message = result.ok ? `🏋️ Entrenamiento completado. ${stat === 'strength' ? 'Fuerza' : stat === 'defense' ? 'Defensa' : 'Agilidad'} ahora es **${result.pet[stat]}**. Saldo: **${result.balance} monedas**.`
-                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 3600)} h antes de entrenar otra vez.` : result.reason === 'low_energy' ? 'Necesita 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Dale de comer antes de entrenar.' : 'No tienes las 180 monedas necesarias.';
+                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 3600)} h antes de entrenar otra vez.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : 'No tienes las 180 monedas necesarias.';
             await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             return;
         }

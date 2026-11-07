@@ -161,6 +161,7 @@ export async function initializeEconomyDatabase(): Promise<void> {
       daily_xp_date VARCHAR(10) NOT NULL DEFAULT '',
       equipment_json TEXT NOT NULL,
       expedition_effects_json TEXT NOT NULL,
+      expedition_memory_json TEXT NOT NULL DEFAULT '{}',
       known_moves_json TEXT NOT NULL,
       equipped_moves_json TEXT NOT NULL,
       move_points INT NOT NULL DEFAULT 0,
@@ -182,6 +183,7 @@ export async function initializeEconomyDatabase(): Promise<void> {
   await ensureColumn('rpg_pets', 'daily_xp', 'INT NOT NULL DEFAULT 0');
   await ensureColumn('rpg_pets', 'daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''");
   await ensureColumn('rpg_pets', 'expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'");
+  await ensureColumn('rpg_pets', 'expedition_memory_json', "TEXT NOT NULL DEFAULT '{}'");
   await ensureColumn('rpg_pets', 'known_moves_json', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn('rpg_pets', 'equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn('rpg_pets', 'move_points', 'INT NOT NULL DEFAULT 0');

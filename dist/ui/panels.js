@@ -2,7 +2,7 @@ import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Contai
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
-import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_CARE_COOLDOWN, RPG_COIN_REWARD_SCALE, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, rpgItems, rpgZones } from '../services/rpg.js';
+import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgPet, getRpgQuests, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileCard } from './profile-cards.js';
@@ -138,7 +138,9 @@ export async function rpgPanel(guildId, userId, username, foodPage = 0) {
     const nextCareAt = (pet.lastCareAt ?? 0) + RPG_CARE_COOLDOWN;
     const currentTime = Math.floor(Date.now() / 1000);
     const careReady = pet.affection < 100 && (!pet.lastCareAt || nextCareAt <= currentTime);
-    const careStatus = pet.affection >= 100 ? 'Ya tiene todo el cariño que necesita.' : !careReady ? `Unas caricias más estarán disponibles <t:${nextCareAt}:R>.` : 'Unas caricias le ayudarán a sentirse más querida.';
+    const careStatus = pet.affection >= 100 ? 'Ya tiene todo el cariño que necesita.'
+        : !careReady ? `Unas caricias más estarán disponibles <t:${nextCareAt}:R>.`
+            : 'Unas caricias le ayudarán a sentirse más querida.';
     const petCard = await renderPetCard(pet, rpgZones[0].background, xpNext);
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`Retrato de ${pet.name}, su ficha de compañera.`)))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🫶 Cuidado de compañera\n${careStatus}${foods.length ? '\n🍓 La comida de su elemento le da un impulso extra.' : '\n🍓 Se quedó sin bocadillos. Consigue comida en Aventura o Tienda.'}`));
@@ -164,16 +166,18 @@ export async function rpgExplorePanel(guildId, userId, username, requestedZoneId
             : pet.energy < 20 ? '⚡ Necesita al menos 20 de energía.'
                 : pet.hunger < 15 ? '🍖 Necesita comer antes de salir.'
                     : '🟢 Lista para salir.';
-    const consumption = Math.min(pet.hunger, 20 + Math.floor(zone.minLevel / 2));
+    const visits = pet.expeditionMemory.zoneVisits[zone.id] ?? 0;
+    const familiarity = visits ? `🧠 Ya conoce este lugar: ${visits} ${visits === 1 ? 'visita' : 'visitas'} que pueden ayudarle a orientarse.` : '✨ Su primera visita a esta zona: cada experiencia dejará recuerdos.';
+    const eventRange = zone.danger >= 50 ? '2–4 acontecimientos' : '2–5 acontecimientos';
     const petCard = await renderPetCard(pet, zone.background, xpNext);
     const container = new ContainerBuilder().setAccentColor(0x14b8a6)
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://rpg-pet-card.png').setDescription(`${pet.name} · ${zone.name}`)))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🧭 EXPLORACIÓN\nElige la zona y revisa sus riesgos antes de partir. La expedición se resuelve al instante; después, tu mascota descansa 4 horas.`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🧭 Una salida al mundo\nCada viaje toma su propio rumbo: puede ser tranquilo, social, afortunado o terminar antes de tiempo. La energía, el ánimo, las habilidades y los recuerdos de ${pet.name} influyen en sus decisiones.`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${zone.emoji} ${zone.name}\n**${zone.difficulty}** · nivel ${zone.minLevel}+\n⚠️ Peligro base ${zone.danger}% · 🎁 botín regional ${zone.lootChance}%\n🪙 Recompensa base ${money.format(Math.floor(zone.reward[0] * RPG_COIN_REWARD_SCALE))}–${money.format(Math.floor(zone.reward[1] * RPG_COIN_REWARD_SCALE))} monedas\n👑 ${zone.boss.emoji} ${zone.boss.name} · aparece ${zone.boss.spawnChance}% · premio ${money.format(Math.floor(zone.boss.reward[0] * RPG_COIN_REWARD_SCALE))}–${money.format(Math.floor(zone.boss.reward[1] * RPG_COIN_REWARD_SCALE))} monedas\n\n${status}\n⚡ Coste: 20 energía · 🍖 consume hasta ${consumption} de saciedad · 📘 XP diaria ${pet.dailyXp}/${RPG_DAILY_XP_CAP}`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${zone.emoji} ${zone.name}\n**${zone.difficulty}** · nivel ${zone.minLevel}+ · peligro del entorno ${zone.danger}/100\n🧭 Se esperan ${eventRange}; no hay combates ni hallazgos garantizados. El tiempo, el cansancio y los contratiempos pueden cambiar el recorrido.\n⚡ Necesita 20 de energía · 🍓 saciedad actual ${pet.hunger}/100\n${familiarity}\n\n${status}\n📘 XP RPG hoy ${pet.dailyXp}/${RPG_DAILY_XP_CAP} · al volver, descansa hasta 4 h (menos si lleva un atajo).`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:exploration:zone').setPlaceholder('Elegir zona').addOptions(rpgZones.map((candidate) => ({
         label: `${candidate.name} · Nv. ${candidate.minLevel}+`, value: candidate.id, emoji: candidate.emoji,
-        description: `${candidate.difficulty} · peligro ${candidate.danger}% · botín ${candidate.lootChance}%`, default: candidate.id === zone.id,
+        description: `${candidate.difficulty} · entorno ${candidate.danger}/100`, default: candidate.id === zone.id,
     })))))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:explore:${zone.id}`).setLabel('Iniciar expedición').setEmoji('🧭').setStyle(ButtonStyle.Success)
         .setDisabled(!exploreReady || levelLocked || pet.energy < 20 || pet.hunger < 15), new ButtonBuilder().setCustomId('rpg:logs:0').setLabel('Bitácora').setEmoji('📜').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rpg:profile').setLabel('Ficha').setEmoji('🐾').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú').setEmoji('📋').setStyle(ButtonStyle.Secondary)));
@@ -191,24 +195,35 @@ export async function expeditionLogPanel(guildId, userId, requestedPage = 0) {
     const log = snapshot.logs[0];
     const container = new ContainerBuilder().setAccentColor(0x0ea5a4);
     if (!log) {
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📜 BITÁCORA DE EXPLORACIÓN\n\nTodavía no hay expediciones registradas. Elige una zona, prepara a tu mascota y parte cuando esté lista.'))
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📜 BITÁCORA DE EXPLORACIÓN\n\nAún no hay expediciones.'))
             .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:exploration:open').setLabel('Elegir zona').setEmoji('🧭').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('rpg:profile').setLabel('Ficha').setEmoji('🐾').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('📋').setStyle(ButtonStyle.Secondary)));
         return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
     }
     const recordNumber = snapshot.total - page * pageSize;
-    const hadSetback = log.events.some((event) => event.title === 'Un contratiempo' || event.title.startsWith('Jefe avistado'));
-    const outcome = hadSetback ? '⚠️ Expedición con contratiempos' : '✅ Expedición completada';
-    const itemName = log.itemId ? rpgItems.find((item) => item.id === log.itemId)?.name ?? log.itemId : undefined;
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📜 BITÁCORA DE EXPLORACIÓN\n**${outcome}** · ${recordNumber} de ${snapshot.total}\n🗺️ ${log.zoneName} · <t:${log.createdAt}:F>`))
+    const outcomeLabels = {
+        tranquila: { emoji: '🌿', title: 'Un paseo tranquilo' }, social: { emoji: '💬', title: 'Un encuentro que dejó huella' },
+        afortunada: { emoji: '✨', title: 'La suerte salió al camino' }, peligrosa: { emoji: '🌩️', title: 'Una aventura intensa' },
+        incompleta: { emoji: '🏕️', title: 'Volvió antes de lo previsto' }, fallida: { emoji: '🌫️', title: 'Hoy el camino no se dejó leer' },
+    };
+    const result = outcomeLabels[log.outcome];
+    const itemCounts = new Map();
+    for (const id of log.itemIds)
+        itemCounts.set(id, (itemCounts.get(id) ?? 0) + 1);
+    const itemRewards = [...itemCounts].map(([id, count]) => {
+        const item = rpgItems.find((candidate) => candidate.id === id);
+        return `${item?.emoji ?? '🎒'} **${item?.name ?? id}**${count > 1 ? ` ×${count}` : ''}`;
+    });
+    const rewards = [log.coins ? `🪙 **${money.format(log.coins)} monedas**` : '', log.xp ? `📘 **${log.xp} XP**` : '', ...itemRewards].filter(Boolean);
+    const state = log.finalState
+        ? `❤️ ${log.finalState.hp}/${log.finalState.maxHp} PV　·　⚡ ${log.finalState.energy}/${log.finalState.maxEnergy} energía　·　🍓 ${log.finalState.hunger}/100 saciedad　·　💞 ${log.finalState.affection}/100 cariño`
+        : log.damage ? `❤️ Recibió ${log.damage} PV de daño` : '❤️ Volvió sin daño registrado';
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📜 Bitácora de aventuras\n**${result.emoji} ${result.title}** · ${log.zoneName}\n<t:${log.createdAt}:F>${log.durationMinutes ? ` · ${log.durationMinutes < 60 ? `${log.durationMinutes} min` : `${Math.floor(log.durationMinutes / 60)} h ${log.durationMinutes % 60} min`}` : ''} · aventura ${recordNumber}/${snapshot.total}`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 Recompensas\n🪙 **${money.format(log.coins)} monedas**　·　📘 **${log.xp} XP**${itemName ? `\n📦 Hallazgo: **${itemName}**` : '\n🔎 Sin objeto especial en esta salida.'}`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🍃 Lo que ocurrió\n${log.summary || 'El camino transcurrió en silencio y la mascota regresó con sus propias impresiones.'}`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent('## 🧭 Recorrido'));
-    for (const [index, event] of log.events.entries()) {
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${String(index + 1).padStart(2, '0')}　${event.emoji} ${event.title}**\n${event.detail}`));
-        if (index < log.events.length - 1)
-            container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
-    }
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✨ Recompensas\n${rewards.length ? rewards.join('　·　') : 'Sin monedas ni objetos esta vez.'}`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🐾 De vuelta\n${state}${log.memoryNotes.length ? `\n🧠 Para la próxima: ${log.memoryNotes.join(' · ')}` : ''}`));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`rpg:logs:previous:${Math.max(0, page - 1)}`).setLabel('Más recientes').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`rpg:logs:next:${Math.min(pageCount - 1, page + 1)}`).setLabel('Anteriores').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount), new ButtonBuilder().setCustomId('rpg:exploration:open').setLabel('Nueva expedición').setEmoji('🧭').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('rpg:profile').setLabel('Ficha').setEmoji('🐾').setStyle(ButtonStyle.Primary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
@@ -222,10 +237,27 @@ export async function rpgMenuPanel(guildId, userId) {
 }
 export async function rpgManagePanel(guildId, userId) {
     const pet = await getRpgPet(guildId, userId);
+    const currentTime = Math.floor(Date.now() / 1000);
+    const nextTrainAt = pet?.lastTrainAt ? pet.lastTrainAt + RPG_TRAIN_COOLDOWN : 0;
+    const trainingStatus = !pet ? ''
+        : pet.lastTrainAt && nextTrainAt > currentTime ? `⏳ Próximo entrenamiento <t:${nextTrainAt}:R>.`
+            : pet.energy < RPG_TRAIN_ENERGY_COST ? `⚡ Necesita ${RPG_TRAIN_ENERGY_COST} de energía.`
+                : pet.hunger < RPG_TRAIN_MIN_HUNGER ? `🍖 Necesita ${RPG_TRAIN_MIN_HUNGER} de saciedad.`
+                    : '✅ Sin espera activa.';
     const container = new ContainerBuilder().setAccentColor(0x64748b)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚙️ GESTIÓN DE MASCOTA\n${pet ? `**${pet.name}** · fuerza ${pet.strength} · ${pet.freeNameUsed ? 'cambio de nombre usado' : 'un cambio de nombre gratis disponible'}` : 'Primero adopta una mascota.'}\n\nEntrena para mejorar sus atributos o usa el cambio gratuito de nombre.`));
-    if (pet)
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:manage').setPlaceholder('Elegir acción').addOptions({ label: 'Entrenar fuerza', value: 'train', emoji: '🏋️', description: 'Cuesta monedas y energía' }, { label: pet.freeNameUsed ? 'Cambio gratuito usado' : 'Nombrar mascota', value: 'name', emoji: '🏷️', description: pet.freeNameUsed ? 'Ya cambiaste el nombre gratis' : 'Renombra a tu compañera una vez' })));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚙️ MEJORAS DE MASCOTA\n${pet
+        ? `**${pet.name}**\nFuerza ${pet.strength} · Defensa ${pet.defense} · Agilidad ${pet.agility}\n${trainingStatus}\n🏋️ +1 al atributo · ${RPG_TRAIN_COIN_COST} monedas · ${RPG_TRAIN_ENERGY_COST} de energía · ${RPG_TRAIN_HUNGER_COST} de saciedad (mín. ${RPG_TRAIN_MIN_HUNGER}) · cada ${RPG_TRAIN_COOLDOWN / 3600} h.${pet.freeNameUsed ? '\nEl cambio gratis de nombre ya se usó.' : ''}`
+        : 'Primero adopta una mascota.'}`));
+    if (pet) {
+        const options = [
+            { label: 'Subir fuerza', value: 'train:strength', emoji: '⚔️', description: 'Potencia los ataques' },
+            { label: 'Subir defensa', value: 'train:defense', emoji: '🛡️', description: 'Reduce el daño recibido' },
+            { label: 'Subir agilidad', value: 'train:agility', emoji: '💨', description: 'Reduce el peligro en expediciones' },
+        ];
+        if (!pet.freeNameUsed)
+            options.push({ label: 'Cambiar nombre', value: 'name', emoji: '🏷️', description: 'Gratis · una vez' });
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:manage').setPlaceholder('Elegir mejora').addOptions(options)));
+    }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
@@ -239,9 +271,17 @@ export async function rpgPvPHelpPanel(guildId) {
 }
 export async function rpgCombatPanel(guildId, userId) {
     const pet = await getRpgPet(guildId, userId);
+    const currentTime = Math.floor(Date.now() / 1000);
+    const nextBattleAt = pet?.lastBattleAt ? pet.lastBattleAt + RPG_BATTLE_COOLDOWN : 0;
+    const battleCoolingDown = Boolean(pet?.lastBattleAt && nextBattleAt > currentTime);
+    const battleStatus = !pet ? 'Primero adopta una mascota.'
+        : pet.hp <= 0 ? '❤️ Está debilitada; recupérala antes de combatir.'
+            : battleCoolingDown ? `⏳ Próximo combate <t:${nextBattleAt}:R>.`
+                : pet.energy < 10 ? '⚡ Necesita al menos 10 de energía.'
+                    : '🟢 Lista para combatir.';
     const container = new ContainerBuilder().setAccentColor(0xef4444)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ COMBATE RPG${pet ? ` · ${pet.name} Nv. ${pet.level}` : ''}\n${pet ? `❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad` : 'Primero adopta una mascota para participar en combate.'}\n\nCombate PvE consume energía y puede reducir PV. Tu build determina las técnicas disponibles en PvP.`))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:battle').setLabel('Combatir PvE').setEmoji('⚔️').setStyle(ButtonStyle.Danger).setDisabled(!pet || pet.hp <= 0 || pet.energy < 10), new ButtonBuilder().setCustomId('rpg:build').setLabel('Preparar build').setEmoji('📘').setStyle(ButtonStyle.Primary).setDisabled(!pet), new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ COMBATE RPG${pet ? ` · ${pet.name}, nivel ${pet.level}` : ''}\n${pet ? `❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad` : 'Primero adopta una mascota para participar en combate.'}\n${pet ? battleStatus : ''}\n\nCombatir contra un enemigo consume al menos 10 de energía y puede reducir vida y saciedad. Espera ${RPG_BATTLE_COOLDOWN / 3600} h entre combates contra enemigos. Elige técnicas para los duelos.`))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:battle').setLabel('Combatir').setEmoji('⚔️').setStyle(ButtonStyle.Danger).setDisabled(!pet || pet.hp <= 0 || pet.energy < 10 || battleCoolingDown), new ButtonBuilder().setCustomId('rpg:build').setLabel('Elegir técnicas').setEmoji('📘').setStyle(ButtonStyle.Primary).setDisabled(!pet), new ButtonBuilder().setCustomId('rpg:menu:home').setLabel('Menú RPG').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function rpgRankingPanel(guildId) {
@@ -283,7 +323,7 @@ export async function rpgFeedPanel(guildId, userId, foodPage = 0) {
 }
 export function rpgCareResultPanel(pet, message) {
     const container = new ContainerBuilder().setAccentColor(0xec79b7)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🫶 UN MOMENTO JUNTOS\n${message}\n\n**${pet.name}** · vínculo **${pet.affection}/100**\n🍖 Saciedad ${statBar(pet.hunger, 100, 12)} **${pet.hunger}/100**`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🐾 ACCIÓN COMPLETADA\n${message}\n\n🫶 Cariño **${pet.affection}/100**\n🍖 Saciedad ${statBar(pet.hunger, 100, 12)} **${pet.hunger}/100**`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
@@ -316,17 +356,17 @@ export async function rpgBuildPanel(guildId, userId) {
     const pet = await getRpgPet(guildId, userId);
     const container = new ContainerBuilder().setAccentColor(0x7c3aed);
     if (!pet)
-        return { components: [container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📘 BUILD DE COMBATE\nPrimero elige un huevo en `/rpg panel`.'))], flags: ['IsComponentsV2', 'Ephemeral'] };
+        return { components: [container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 📘 TÉCNICAS DE COMBATE\nPrimero adopta una mascota con `/rpg panel`.'))], flags: ['IsComponentsV2', 'Ephemeral'] };
     const moves = pet.knownMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move));
     const learnable = getLearnableRpgMoves(pet);
-    const equippedNames = pet.equippedMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move)).map((move) => `**${move.name}** · ${move.element} · poder ${move.power} · precisión ${move.accuracy}% · ⚡${move.energy}`).join('\n') || 'Sin ataques equipados';
-    const knownNames = moves.map((move) => `${move.element === 'Neutral' ? '⚪' : '✨'} **${move.name}** · Nv. ${move.minLevel} · ${move.description}`).join('\n') || 'Todavía no conoce ataques.';
+    const equippedNames = pet.equippedMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move)).map((move) => `**${move.name}** · ${move.element} · poder ${move.power} · precisión ${move.accuracy}% · ⚡${move.energy}`).join('\n') || 'Sin técnicas elegidas';
+    const knownNames = moves.map((move) => `${move.element === 'Neutral' ? '⚪' : '✨'} **${move.name}** · Nv. ${move.minLevel} · ${move.description}`).join('\n') || 'Todavía no conoce técnicas.';
     const learnNames = learnable.map((move) => `▫️ **${move.name}** · Nv. ${move.minLevel} · poder ${move.power} · precisión ${move.accuracy}% · ⚡${move.energy}\n${move.description}`).join('\n') || 'No hay técnicas nuevas disponibles para su nivel, elemento y especialidad.';
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📘 BUILD · ${pet.name}\nNv. ${pet.level} · ${pet.element} ${pet.specialization} · **${pet.movePoints} pts** · **${pet.equippedMoves.length}/4 equipados**\n\n## ⚔️ Equipados\n${equippedNames}\n\n## 📚 Conocidos\n${knownNames}\n\n## ✨ Desbloqueados\n${learnNames}`));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📘 TÉCNICAS · ${pet.name}\nNivel ${pet.level} · ${pet.element} ${pet.specialization} · **${pet.movePoints} puntos** · **${pet.equippedMoves.length}/4 elegidas**\n\n## ⚔️ En uso\n${equippedNames}\n\n## 📚 Conocidas\n${knownNames}\n\n## ✨ Disponibles para aprender\n${learnNames}`));
     if (learnable.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:move:learn').setPlaceholder('Aprender técnica · cuesta 1 punto').addOptions(learnable.map((move) => ({ label: `${move.name} · Nv. ${move.minLevel}`, value: move.id, emoji: move.element === 'Neutral' ? '📘' : '✨', description: `${move.element} · poder ${move.power} · ⚡${move.energy}` })))));
     if (moves.length)
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:move:build').setPlaceholder('Selecciona las técnicas equipadas (hasta 4)').setMinValues(1).setMaxValues(Math.min(4, moves.length)).addOptions(moves.map((move) => ({ label: move.name, value: move.id, emoji: move.element === 'Neutral' ? '⚪' : '✨', description: `${move.element} · poder ${move.power} · ${move.effect}`, default: pet.equippedMoves.includes(move.id) })))));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:move:build').setPlaceholder('Elige hasta 4 técnicas para los duelos').setMinValues(1).setMaxValues(Math.min(4, moves.length)).addOptions(moves.map((move) => ({ label: move.name, value: move.id, emoji: move.element === 'Neutral' ? '⚪' : '✨', description: `${move.element} · poder ${move.power} · ${move.effect}`, default: pet.equippedMoves.includes(move.id) })))));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
@@ -339,7 +379,7 @@ export function expeditionPanel(events, summary, hp, maxHp, energy, maxEnergy, h
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(journal))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏁 Regreso\n${summary}\n\n❤️ **${hp}/${maxHp} PV**  ·  ⚡ **${energy}/${maxEnergy} energía**\n🍖 Saciedad ${statBar(hunger, 100, 8)} **${hunger}/100**  ·  🫶 vínculo **${affection}/100**`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏁 Regreso\n${summary}\n\n❤️ **${hp}/${maxHp} PV**  ·  ⚡ **${energy}/${maxEnergy} energía**\n🍖 Saciedad ${statBar(hunger, 100, 8)} **${hunger}/100**  ·  🫶 cariño **${affection}/100**`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:panel').setLabel('Volver a mi mascota').setEmoji('🐾').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
@@ -375,7 +415,9 @@ export async function rpgShopPanel(guildId, userId, requestedPage = 0, requested
     return storePanel(guildId, userId, requestedCategory === 'all' ? 'rpg:all' : `rpg:${requestedCategory}`, requestedPage);
 }
 export async function inventoryPanel(guildId, userId, requestedPage = 0, requestedFilter = 'all') {
-    const [economyInventory, rpgInventory, profileInventory] = await Promise.all([getInventory(guildId, userId), getRpgInventory(guildId, userId), getProfileInventory(guildId, userId)]);
+    const [economyInventory, rpgInventory, profileInventory] = await Promise.all([
+        getInventory(guildId, userId), getRpgInventory(guildId, userId), getProfileInventory(guildId, userId),
+    ]);
     const legacyNames = new Map([['marco_neon', 'Marco Neón'], ['tema_nocturno', 'Tema Nocturno'], ['insignia_dj', 'Insignia DJ']]);
     const economyRows = economyInventory.map((entry) => {
         const item = storeItems.find((candidate) => candidate.id === entry.itemId);
