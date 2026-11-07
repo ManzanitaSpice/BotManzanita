@@ -1,5 +1,6 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { db } from '../storage/database.js';
+import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, withEconomyTransaction } from '../storage/economy-database.js';
 import { getAccountBalances } from './economy.js';
 import { getRpgInventory, getRpgPet } from './rpg.js';
@@ -13,7 +14,7 @@ export async function adjustAdminCurrency(guildId, targetId, currency, amount, a
     const at = timestamp();
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
-            await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)', [guildId, targetId, at, at]);
+            await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, targetId, ECONOMY_STARTING_BALANCE, at, at]);
             const [rows] = await connection.execute(`SELECT ${column} AS balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE`, [guildId, targetId]);
             const balance = Number(rows[0]?.balance ?? 0);
             if (amount < 0 && balance < -amount)
@@ -24,7 +25,7 @@ export async function adjustAdminCurrency(guildId, targetId, currency, amount, a
             return { ok: true, balance: balance + amount, ledgerId: Number(insert.insertId) };
         });
     const run = db.transaction(() => {
-        db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)').run(guildId, targetId, at, at);
+        db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)').run(guildId, targetId, ECONOMY_STARTING_BALANCE, at, at);
         const row = db.prepare(`SELECT ${column} AS balance FROM economy_accounts WHERE guild_id=? AND user_id=?`).get(guildId, targetId);
         const balance = Number(row.balance);
         if (amount < 0 && balance < -amount)
@@ -145,11 +146,11 @@ export async function setAdminRobberyShield(guildId, userId, hours) {
     const at = timestamp();
     if (economyPool)
         await withEconomyTransaction(async (connection) => {
-            await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)', [guildId, userId, at, at]);
+            await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
             await connection.execute('UPDATE economy_accounts SET rob_protected_until=?,updated_at=? WHERE guild_id=? AND user_id=?', [until, at, guildId, userId]);
         });
     else
-        db.prepare('INSERT INTO economy_accounts (guild_id,user_id,rob_protected_until,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET rob_protected_until=excluded.rob_protected_until,updated_at=excluded.updated_at').run(guildId, userId, until, at, at);
+        db.prepare('INSERT INTO economy_accounts (guild_id,user_id,balance,rob_protected_until,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET rob_protected_until=excluded.rob_protected_until,updated_at=excluded.updated_at').run(guildId, userId, ECONOMY_STARTING_BALANCE, until, at, at);
     return until;
 }
 export async function inspectAdminUser(guildId, userId) {

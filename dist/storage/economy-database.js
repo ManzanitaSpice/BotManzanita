@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { config } from '../config.js';
+import { ECONOMY_STARTING_BALANCE } from './economy-defaults.js';
 export const economyPool = config.economyDatabase.driver === 'mysql'
     ? mysql.createPool({
         host: config.economyDatabase.host,
@@ -26,7 +27,7 @@ export async function initializeEconomyDatabase() {
     CREATE TABLE IF NOT EXISTS economy_accounts (
       guild_id VARCHAR(32) NOT NULL,
       user_id VARCHAR(32) NOT NULL,
-      balance BIGINT NOT NULL DEFAULT 0,
+      balance BIGINT NOT NULL DEFAULT ${ECONOMY_STARTING_BALANCE},
       bank_balance BIGINT NOT NULL DEFAULT 0,
       last_daily_at BIGINT NULL,
       last_work_at BIGINT NULL,

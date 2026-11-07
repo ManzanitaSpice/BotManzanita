@@ -1,0 +1,1 @@
+export const ECONOMY_STARTING_BALANCE = 100;

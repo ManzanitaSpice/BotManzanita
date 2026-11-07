@@ -2,6 +2,7 @@ import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomInt } from 'node:crypto';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../storage/database.js';
+import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
 
 export type PetRarity = 'Común' | 'Poco común' | 'Raro' | 'Épico' | 'Legendario';
@@ -399,7 +400,7 @@ function savePetSqlite(guildId: string, userId: string, pet: RpgPet, updated = n
     pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects),JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId);
 }
 async function changeBalanceMysql(connection: PoolConnection, guildId: string, userId: string, amount: number, reason: string, ref: string, at = now()) {
-  await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)', [guildId, userId, at, at]);
+  await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
   const [rows] = await connection.execute<RowDataPacket[]>('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
   const balance = Number(rows[0]?.balance ?? 0);
   if (amount < 0 && balance < -amount) return { ok: false as const, balance };
@@ -408,7 +409,7 @@ async function changeBalanceMysql(connection: PoolConnection, guildId: string, u
   return { ok: true as const, balance: balance + amount };
 }
 function changeBalanceSqlite(guildId: string, userId: string, amount: number, reason: string, ref: string, at = now()) {
-  db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)').run(guildId, userId, at, at);
+  db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE, at, at);
   const account = db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId) as { balance: number };
   if (amount < 0 && account.balance < -amount) return { ok: false as const, balance: account.balance };
   db.prepare('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?').run(amount, at, guildId, userId);

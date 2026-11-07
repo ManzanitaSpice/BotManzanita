@@ -2,6 +2,7 @@ import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomBytes, randomInt } from 'node:crypto';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../storage/database.js';
+import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, insertItemLedger, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
 
 export const DAILY_AMOUNT = 75;
@@ -160,8 +161,8 @@ function formatMessage(template: string, values: Record<string, string | number>
 
 function sqliteEnsureAccount(guildId: string, userId: string): AccountRow {
   const now = nowSeconds();
-  db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id, user_id, created_at, updated_at) VALUES (?, ?, ?, ?)')
-    .run(guildId, userId, now, now);
+  db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id, user_id, balance, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+    .run(guildId, userId, ECONOMY_STARTING_BALANCE, now, now);
   const row = db.prepare(`SELECT balance, bank_balance AS bankBalance, premium_balance AS premiumBalance,
       last_daily_at AS lastDailyAt, last_work_at AS lastWorkAt,
       last_fish_at AS lastFishAt, last_rob_at AS lastRobAt, last_crime_at AS lastCrimeAt,
@@ -183,8 +184,8 @@ async function mysqlRows<T extends RowDataPacket[]>(
 async function mysqlEnsureAccount(connection: PoolConnection, guildId: string, userId: string, lock = false): Promise<AccountRow> {
   const now = nowSeconds();
   await connection.execute(
-    'INSERT IGNORE INTO economy_accounts (guild_id, user_id, created_at, updated_at) VALUES (?, ?, ?, ?)',
-    [guildId, userId, now, now],
+    'INSERT IGNORE INTO economy_accounts (guild_id, user_id, balance, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    [guildId, userId, ECONOMY_STARTING_BALANCE, now, now],
   );
   const rows = await mysqlRows<MysqlAccountRow[]>(connection,
     `SELECT balance, bank_balance AS bankBalance, premium_balance AS premiumBalance,

@@ -1,6 +1,7 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
+import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, withEconomyTransaction } from '../storage/economy-database.js';
 import { migratePlayerDataToGlobalScope } from '../storage/global-migration.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
@@ -206,7 +207,7 @@ export async function buyProfileItem(guildId, userId, itemId, reference) {
     const ledgerReference = `profile-shop:${reference}`;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
-            await connection.execute('INSERT IGNORE INTO economy_accounts(guild_id,user_id,created_at,updated_at) VALUES(?,?,?,?)', [guildId, userId, at, at]);
+            await connection.execute('INSERT IGNORE INTO economy_accounts(guild_id,user_id,balance,created_at,updated_at) VALUES(?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
             const [owned] = await connection.execute('SELECT quantity FROM user_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE', [guildId, userId, itemId]);
             if (owned.length)
                 return { ok: false, reason: 'already_owned', balance: 0 };
@@ -220,7 +221,7 @@ export async function buyProfileItem(guildId, userId, itemId, reference) {
             return { ok: true, balance: balance - item.price };
         });
     const transaction = db.transaction(() => {
-        db.prepare('INSERT OR IGNORE INTO economy_accounts(guild_id,user_id) VALUES(?,?)').run(guildId, userId);
+        db.prepare('INSERT OR IGNORE INTO economy_accounts(guild_id,user_id,balance) VALUES(?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE);
         if (db.prepare('SELECT 1 FROM user_inventory WHERE guild_id=? AND user_id=? AND item_id=?').get(guildId, userId, itemId))
             return { ok: false, reason: 'already_owned', balance: 0 };
         const balance = Number(db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId).balance);

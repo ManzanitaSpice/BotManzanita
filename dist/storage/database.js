@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { config } from '../config.js';
+import { ECONOMY_STARTING_BALANCE } from './economy-defaults.js';
 const filename = resolve(config.databasePath);
 mkdirSync(dirname(filename), { recursive: true });
 export const db = new Database(filename);
@@ -11,7 +12,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS economy_accounts (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    balance INTEGER NOT NULL DEFAULT ${ECONOMY_STARTING_BALANCE} CHECK (balance >= 0),
     bank_balance INTEGER NOT NULL DEFAULT 0 CHECK (bank_balance >= 0),
     last_daily_at INTEGER,
     last_work_at INTEGER,

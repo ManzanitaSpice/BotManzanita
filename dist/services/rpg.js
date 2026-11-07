@@ -1,6 +1,7 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
 import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
+import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
 const coreRpgItems = [
     { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 100, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
@@ -416,7 +417,7 @@ function savePetSqlite(guildId, userId, pet, updated = now()) {
     hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy, pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId);
 }
 async function changeBalanceMysql(connection, guildId, userId, amount, reason, ref, at = now()) {
-    await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)', [guildId, userId, at, at]);
+    await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
     const [rows] = await connection.execute('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
     const balance = Number(rows[0]?.balance ?? 0);
     if (amount < 0 && balance < -amount)
@@ -427,7 +428,7 @@ async function changeBalanceMysql(connection, guildId, userId, amount, reason, r
     return { ok: true, balance: balance + amount };
 }
 function changeBalanceSqlite(guildId, userId, amount, reason, ref, at = now()) {
-    db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,created_at,updated_at) VALUES (?,?,?,?)').run(guildId, userId, at, at);
+    db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE, at, at);
     const account = db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId);
     if (amount < 0 && account.balance < -amount)
         return { ok: false, balance: account.balance };
