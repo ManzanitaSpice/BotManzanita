@@ -23,6 +23,12 @@ function rpgItemMenu(entries, requestedPage = 0, noun = 'artículos') {
         options.push({ label: `Ver más ${noun}`, value: `__page:${page + 1}`, emoji: '➡️', description: `Página ${page + 2} de ${pageCount}` });
     return { page, pageCount, pageSize, options };
 }
+function foodMenuPlaceholder(typeCount, page, pageCount) {
+    const countLabel = `${typeCount} ${typeCount === 1 ? 'tipo' : 'tipos'}`;
+    return pageCount === 1
+        ? `🍓 Elige comida · ${countLabel}`
+        : `🍓 Comida · ${countLabel} · pág. ${page + 1}/${pageCount}`;
+}
 export function listPanel(title, subtitle, entries, accent = colors.economy, emptyMessage = 'Todavía no hay elementos para mostrar.', ephemeral = true) {
     const rows = entries.length ? entries.map((entry) => `›  ${entry}`).join('\n') : `_ ${emptyMessage} _`;
     const container = new ContainerBuilder().setAccentColor(accent)
@@ -138,7 +144,7 @@ export async function rpgPanel(guildId, userId, username, foodPage = 0) {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🫶 Cuidado de compañera\n${careStatus}${foods.length ? '\n🍓 La comida de su elemento le da un impulso extra.' : '\n🍓 Se quedó sin bocadillos. Consigue comida en Aventura o Tienda.'}`));
     if (foods.length) {
         const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:profile:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options)));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:profile:${menu.page}`).setPlaceholder(foodMenuPlaceholder(foods.length, menu.page, menu.pageCount)).addOptions(menu.options)));
     }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rpg:care').setLabel('Acariciar').setEmoji('🫶').setStyle(ButtonStyle.Secondary).setDisabled(!careReady)));
     return { components: [container], files: [petCard], flags: ['IsComponentsV2', 'Ephemeral'] };
@@ -271,7 +277,7 @@ export async function rpgFeedPanel(guildId, userId, foodPage = 0) {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🍓 Dar de comer${pet ? ` · ${pet.name}` : ''}\n${pet ? `Saciedad **${pet.hunger}/100**　·　Cariño **${pet.affection}/100**\n\n${foods.length ? `Elige un bocadillo. Los de afinidad ${pet.element} son más eficaces.` : 'No quedan bocadillos. Encuéntralos en Aventura o en la Tienda.'}` : 'Primero adopta una mascota.'}`));
     if (foods.length) {
         const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:feed:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options)));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:feed:${menu.page}`).setPlaceholder(foodMenuPlaceholder(foods.length, menu.page, menu.pageCount)).addOptions(menu.options)));
     }
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }

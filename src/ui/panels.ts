@@ -45,6 +45,13 @@ function rpgItemMenu(entries: RpgMenuItem[], requestedPage = 0, noun = 'artícul
   return { page, pageCount, pageSize, options };
 }
 
+function foodMenuPlaceholder(typeCount: number, page: number, pageCount: number) {
+  const countLabel = `${typeCount} ${typeCount === 1 ? 'tipo' : 'tipos'}`;
+  return pageCount === 1
+    ? `🍓 Elige comida · ${countLabel}`
+    : `🍓 Comida · ${countLabel} · pág. ${page + 1}/${pageCount}`;
+}
+
 export function listPanel(title: string, subtitle: string, entries: string[], accent = colors.economy, emptyMessage = 'Todavía no hay elementos para mostrar.', ephemeral = true) {
   const rows = entries.length ? entries.map((entry) => `›  ${entry}`).join('\n') : `_ ${emptyMessage} _`;
   const container = new ContainerBuilder().setAccentColor(accent)
@@ -191,7 +198,7 @@ export async function rpgPanel(guildId: string, userId: string, username: string
   if (foods.length) {
     const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
     container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:profile:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options),
+      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:profile:${menu.page}`).setPlaceholder(foodMenuPlaceholder(foods.length, menu.page, menu.pageCount)).addOptions(menu.options),
     ));
   }
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -412,7 +419,7 @@ export async function rpgFeedPanel(guildId: string, userId: string, foodPage = 0
   if (foods.length) {
     const menu = rpgItemMenu(foods, foodPage, 'bocadillos');
     container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:feed:${menu.page}`).setPlaceholder(`🍓 Elige un bocadillo · ${menu.page + 1}/${menu.pageCount}`).addOptions(menu.options),
+      new StringSelectMenuBuilder().setCustomId(`rpg:feed:select:feed:${menu.page}`).setPlaceholder(foodMenuPlaceholder(foods.length, menu.page, menu.pageCount)).addOptions(menu.options),
     ));
   }
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
