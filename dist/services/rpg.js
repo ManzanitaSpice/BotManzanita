@@ -757,14 +757,14 @@ export async function adoptRpgPet(guildId, userId, name, element) {
     const at = now();
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
-            const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,0,?,?,?)', [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
+            const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)', [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
             if (result.affectedRows === 0)
                 return { ok: false, reason: 'already_has_pet' };
             return { ok: true, pet };
         });
     const adopt = db.transaction(() => {
-        const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
+        const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
         return result.changes ? { ok: true, pet } : { ok: false, reason: 'already_has_pet' };
     });
     return adopt.immediate();
@@ -789,14 +789,14 @@ export async function adminGrantRpgPet(guildId, userId, speciesName, name = '') 
     const at = now();
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
-            const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,0,?,?,?)', [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
+            const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)', [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
             if (result.affectedRows === 0)
                 return { ok: false, reason: 'already_has_pet' };
             return { ok: true, pet };
         });
     const adopt = db.transaction(() => {
-        const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
+        const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
         return result.changes ? { ok: true, pet } : { ok: false, reason: 'already_has_pet' };
     });
     return adopt.immediate();

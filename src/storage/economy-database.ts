@@ -161,7 +161,7 @@ export async function initializeEconomyDatabase(): Promise<void> {
       daily_xp_date VARCHAR(10) NOT NULL DEFAULT '',
       equipment_json TEXT NOT NULL,
       expedition_effects_json TEXT NOT NULL,
-      expedition_memory_json TEXT NOT NULL DEFAULT '{}',
+      expedition_memory_json TEXT NOT NULL,
       known_moves_json TEXT NOT NULL,
       equipped_moves_json TEXT NOT NULL,
       move_points INT NOT NULL DEFAULT 0,
@@ -182,10 +182,10 @@ export async function initializeEconomyDatabase(): Promise<void> {
   await ensureColumn('rpg_pets', 'last_train_at', 'BIGINT NULL');
   await ensureColumn('rpg_pets', 'daily_xp', 'INT NOT NULL DEFAULT 0');
   await ensureColumn('rpg_pets', 'daily_xp_date', "VARCHAR(10) NOT NULL DEFAULT ''");
-  await ensureColumn('rpg_pets', 'expedition_effects_json', "TEXT NOT NULL DEFAULT '{}'");
-  await ensureColumn('rpg_pets', 'expedition_memory_json', "TEXT NOT NULL DEFAULT '{}'");
-  await ensureColumn('rpg_pets', 'known_moves_json', "TEXT NOT NULL DEFAULT '[]'");
-  await ensureColumn('rpg_pets', 'equipped_moves_json', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureTextColumn('rpg_pets', 'expedition_effects_json', '{}');
+  await ensureTextColumn('rpg_pets', 'expedition_memory_json', '{}');
+  await ensureTextColumn('rpg_pets', 'known_moves_json', '[]');
+  await ensureTextColumn('rpg_pets', 'equipped_moves_json', '[]');
   await ensureColumn('rpg_pets', 'move_points', 'INT NOT NULL DEFAULT 0');
   await ensureColumn('rpg_pets', 'free_name_used', 'TINYINT(1) NOT NULL DEFAULT 0');
   await economyPool.query('UPDATE rpg_pets SET needs_updated_at=UNIX_TIMESTAMP() WHERE needs_updated_at=0');
@@ -250,6 +250,19 @@ async function ensureColumn(table: string, column: string, definition: string): 
     [config.economyDatabase.name, table, column],
   );
   if (!rows.length) await economyPool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+}
+
+async function ensureTextColumn(table: string, column: string, initialValue: string): Promise<void> {
+  if (!economyPool) return;
+  const [rows] = await economyPool.execute<RowDataPacket[]>(
+    'SELECT IS_NULLABLE FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ? LIMIT 1',
+    [config.economyDatabase.name, table, column],
+  );
+  if (!rows.length) await economyPool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` TEXT NULL`);
+  if (!rows.length || rows[0]!.IS_NULLABLE === 'YES') {
+    await economyPool.execute(`UPDATE \`${table}\` SET \`${column}\` = ? WHERE \`${column}\` IS NULL`, [initialValue]);
+    await economyPool.query(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` TEXT NOT NULL`);
+  }
 }
 
 export async function withEconomyTransaction<T>(operation: (connection: PoolConnection) => Promise<T>): Promise<T> {
