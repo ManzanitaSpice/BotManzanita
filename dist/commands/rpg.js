@@ -148,7 +148,7 @@ export const rpgCommand = {
             if (!result.ok) {
                 const message = result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.'
                     : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 60)} min antes de otro combate.`
-                        : result.reason === 'low_energy' ? 'Te falta energía para combatir. Usa un artículo de recuperación.' : 'Tu mascota quedó debilitada. Usa polvo de renacer en `/rpg usar`.';
+                        : result.reason === 'low_energy' ? 'Te falta energía para combatir. Usa un artículo de recuperación.' : result.reason === 'invalid_move' ? 'No tiene una técnica equipada disponible.' : 'Tu mascota quedó debilitada. Usa polvo de renacer en `/rpg usar`.';
                 await interaction.reply({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral });
                 return;
             }
@@ -158,8 +158,8 @@ export const rpgCommand = {
         if (action === 'entrenar') {
             const stat = interaction.options.getString('atributo', true);
             const result = await trainRpgPet(guildId, userId, stat, interaction.id);
-            const message = result.ok ? `🏋️ Entrenamiento completado. ${stat === 'strength' ? 'Fuerza' : stat === 'defense' ? 'Defensa' : 'Agilidad'} ahora es **${result.pet[stat]}**. Saldo: **${result.balance} monedas**.`
-                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 3600)} h antes de entrenar otra vez.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : 'No tienes las 180 monedas necesarias.';
+            const message = result.ok ? `🏋️ Entrenamiento completado. ${stat === 'strength' ? 'Fuerza' : stat === 'defense' ? 'Defensa' : 'Agilidad'} ahora es **${result.pet[stat]}**. Gastó ${result.xpSpent} XP · saldo: **${result.balance} monedas**.`
+                : result.reason === 'no_pet' ? 'Primero elige un huevo desde `/rpg panel`.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${Math.ceil((result.secondsRemaining ?? 0) / 3600)} h antes de entrenar otra vez.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : result.reason === 'low_xp' ? `Necesita ${result.requiredXp} XP disponible para esa mejora.` : result.reason === 'level_required' ? `Esa mejora requiere nivel ${result.requiredLevel}.` : result.reason === 'stat_cap' ? `Ese atributo alcanzó su límite actual (${result.statCap}); sube de nivel primero.` : 'No tienes las 180 monedas necesarias.';
             await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             return;
         }

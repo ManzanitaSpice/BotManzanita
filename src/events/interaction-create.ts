@@ -10,7 +10,7 @@ import {
 } from 'discord.js';
 import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
 import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, selectJob, storeItems, useShopItem } from '../services/economy.js';
-import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgPet, useRpgItem, type PetElement, type RpgPvpAction } from '../services/rpg.js';
+import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgMove, trainRpgPet, useRpgItem, type PetElement, type RpgPvpAction } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack, type MusicEffect } from '../services/music.js';
 import { getFavorite, getFavorites, removeFavorite } from '../services/music-library.js';
@@ -20,7 +20,7 @@ import { catalogPanel } from '../ui/catalog.js';
 import { profileCardPanel, profileCustomizePanel, profileInventoryPanel, profileProgressPanel, profileShopPanel } from '../ui/profile.js';
 import { buyProfileItem, equipProfileItem, updateProfileField, unequipProfileType } from '../services/profile.js';
 import { profileShopItems } from '../data/profile-shop.js';
-import { findStoreProduct, purchaseStoreProduct, type StoreKind } from '../services/store.js';
+import { findStoreProduct, purchaseStoreProduct, type StoreCurrency, type StoreKind } from '../services/store.js';
 
 export function registerInteractionHandler(client: Client) {
   client.on('interactionCreate', async (interaction: Interaction) => {
@@ -168,29 +168,33 @@ export function registerInteractionHandler(client: Client) {
           return;
         }
         if (interaction.customId.startsWith('shop:buy:') && interaction.isButton()) {
-          const [, , kindValue, itemId = '', categoryValue = 'all', pageValue = '0'] = interaction.customId.split(':');
-          if ((kindValue !== 'profile' && kindValue !== 'economy' && kindValue !== 'rpg') || !itemId) {
+          const [, , kindValue, itemId = '', categoryValue = 'all', pageValue = '0', currencyValue = 'coins'] = interaction.customId.split(':');
+          if ((kindValue !== 'profile' && kindValue !== 'economy' && kindValue !== 'rpg') || !itemId || (currencyValue !== 'coins' && currencyValue !== 'gems')) {
             await interaction.reply({ content: 'Ese producto ya no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           const kind: StoreKind = kindValue;
+          const currency: StoreCurrency = currencyValue;
           const item = findStoreProduct(kind, itemId);
           if (!item) {
             await interaction.reply({ content: 'Ese producto ya no está disponible.', flags: MessageFlags.Ephemeral });
             return;
           }
           await interaction.deferUpdate();
-          const result = await purchaseStoreProduct(interaction.guildId, interaction.user.id, kind, itemId, interaction.id);
+          const result = await purchaseStoreProduct(interaction.guildId, interaction.user.id, kind, itemId, interaction.id, currency);
           if (!result.ok) {
-            const message = result.reason === 'insufficient_funds' ? `No tienes monedas suficientes para **${item.name}**.`
-              : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.` : 'Ese producto ya no está disponible.';
+            const currencyName = currency === 'gems' ? 'gemas' : 'monedas';
+            const message = result.reason === 'insufficient_funds' ? `No tienes ${currencyName} suficientes para **${item.name}**.`
+              : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.`
+                : result.reason === 'currency_unavailable' ? 'Ese producto no se puede comprar con gemas.' : 'Ese producto ya no está disponible.';
             await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
             return;
           }
           let category = 'all';
           try { category = decodeURIComponent(categoryValue); } catch { category = 'all'; }
+          const currencyName = result.currency === 'gems' ? 'gemas' : 'monedas';
           await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId,
-            `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} monedas.`, kind)));
+            `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} ${currencyName}.`, kind)));
           return;
         }
         if (interaction.customId.startsWith('shop:equip:') && interaction.isButton()) {
@@ -257,12 +261,27 @@ export function registerInteractionHandler(client: Client) {
             const result = await trainRpgPet(guildId, interaction.user.id, stat, interaction.id);
             await interaction.update(componentUpdate(await rpgManagePanel(guildId, interaction.user.id)));
             const statLabel = ({ strength: 'Fuerza', defense: 'Defensa', agility: 'Agilidad' } as const)[stat];
-            const message = result.ok ? `🏋️ ${statLabel} subió a **${result.pet[stat]}** · saciedad ${result.pet.hunger}/100.`
+            const message = result.ok ? `🏋️ ${statLabel} subió a **${result.pet[stat]}** · gastó ${result.xpSpent} XP y 15 de energía · saciedad ${result.pet.hunger}/100.`
               : result.reason === 'no_pet' ? 'Primero adopta una mascota.'
                 : result.reason === 'cooldown' ? `Podrás entrenar de nuevo en ${formatCooldown(result.secondsRemaining ?? 0)}.`
                   : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía.'
                     : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.'
-                      : 'Necesitas 180 monedas.';
+                      : result.reason === 'low_xp' ? `Necesita ${result.requiredXp} XP disponible para esa mejora.`
+                        : result.reason === 'level_required' ? `Esa mejora requiere nivel ${result.requiredLevel}.`
+                          : result.reason === 'stat_cap' ? `Ese atributo ya alcanzó el límite actual (${result.statCap}); sube de nivel para ampliarlo.`
+                            : 'Necesitas 180 monedas.';
+            await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }); return;
+          }
+          if (action?.startsWith('skill:')) {
+            const moveId = action.slice('skill:'.length);
+            const result = await trainRpgMove(guildId, interaction.user.id, moveId);
+            await interaction.update(componentUpdate(await rpgManagePanel(guildId, interaction.user.id)));
+            const message = result.ok ? `✨ **${result.move.name}** subió al nivel ${result.pet.moveProgress[moveId]?.level ?? 1}. Gastó ${result.xpSpent} XP.`
+              : result.reason === 'no_pet' ? 'Primero adopta una mascota.'
+                : result.reason === 'not_known' ? 'Esa técnica todavía no está aprendida.'
+                  : result.reason === 'max_level' ? 'Esa técnica ya alcanzó el nivel máximo.'
+                    : result.reason === 'level_required' ? `Necesitas nivel ${result.requiredLevel} para mejorar esa técnica.`
+                      : result.reason === 'low_xp' ? `Necesitas ${result.requiredXp} XP disponible para mejorarla.` : 'Esa técnica ya no está disponible.';
             await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }); return;
           }
         }
@@ -426,7 +445,7 @@ export function registerInteractionHandler(client: Client) {
         if (interaction.customId === 'rpg:move:build' && interaction.isStringSelectMenu()) {
           const result = await equipRpgMoves(guildId, interaction.user.id, interaction.values);
           await interaction.update(componentUpdate(await rpgBuildPanel(guildId, interaction.user.id)));
-          await interaction.followUp({ content: result.ok ? `⚔️ Build equipada con ${result.pet.equippedMoves.length} técnica(s).` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : 'Elige entre una y cuatro técnicas que ya conozca tu mascota.', flags: MessageFlags.Ephemeral });
+          await interaction.followUp({ content: result.ok ? `⚔️ Quedaron equipadas ${result.pet.equippedMoves.length} técnicas para combate y expediciones.` : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : 'Equipa las cuatro técnicas disponibles (o todas las que conozca si aún son menos).', flags: MessageFlags.Ephemeral });
           return;
         }
         if (interaction.customId === 'rpg:egg:element' && interaction.isStringSelectMenu()) {
@@ -478,18 +497,29 @@ export function registerInteractionHandler(client: Client) {
           await interaction.update(componentUpdate(await expeditionLogPanel(guildId, interaction.user.id)));
           return;
         }
+        if (interaction.customId === 'rpg:battle:move' && interaction.isStringSelectMenu()) {
+          const result = await battleRpg(guildId, interaction.user.id, interaction.id, interaction.values[0]);
+          const message = result.ok ? `${result.message}\n❤️ ${result.pet.hp}/${result.pet.maxHp} PV · ⚡ ${result.pet.energy}/${result.pet.maxEnergy} energía.`
+            : result.reason === 'no_pet' ? 'Primero adopta una mascota.'
+              : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.`
+                : result.reason === 'low_energy' ? 'No tiene energía suficiente para esa técnica.'
+                  : result.reason === 'invalid_move' ? 'Esa técnica ya no está equipada. Elige otra de tus cuatro técnicas.' : 'Está debilitada; usa polvo de renacer.';
+          await interaction.update(componentUpdate(await rpgCombatPanel(guildId, interaction.user.id)));
+          await interaction.followUp({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral });
+          return;
+        }
         if (interaction.customId === 'rpg:battle' && interaction.isButton()) {
           const result = await battleRpg(guildId, interaction.user.id, interaction.id);
           const message = result.ok ? `${result.message}\n❤️ ${result.pet.hp}/${result.pet.maxHp} PV · ⚡ ${result.pet.energy}/${result.pet.maxEnergy} energía.`
-            : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita más energía.' : 'Está debilitada; usa polvo de renacer.';
-          await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
+            : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita más energía.' : result.reason === 'invalid_move' ? 'No tiene una técnica equipada disponible.' : 'Está debilitada; usa polvo de renacer.';
+          await interaction.update(componentUpdate(await rpgCombatPanel(guildId, interaction.user.id)));
           await interaction.followUp({ content: `⚔️ ${message}`, flags: MessageFlags.Ephemeral });
           return;
         }
         if (interaction.customId === 'rpg:train' && interaction.isButton()) {
           const result = await trainRpgPet(guildId, interaction.user.id, 'strength', interaction.id);
-          const message = result.ok ? `🏋️ Fuerza mejorada a **${result.pet.strength}**. Saldo: **${result.balance} monedas**.`
-            : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : 'Necesitas 180 monedas.';
+          const message = result.ok ? `🏋️ Fuerza mejorada a **${result.pet.strength}**. Gastó ${result.xpSpent} XP. Saldo: **${result.balance} monedas**.`
+            : result.reason === 'no_pet' ? 'Primero adopta una mascota.' : result.reason === 'cooldown' ? `Tu mascota necesita descansar ${formatCooldown(result.secondsRemaining ?? 0)}.` : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía para entrenar.' : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.' : result.reason === 'low_xp' ? `Necesita ${result.requiredXp} XP para esa mejora.` : result.reason === 'level_required' ? `Esa mejora requiere nivel ${result.requiredLevel}.` : result.reason === 'stat_cap' ? `Ese atributo llegó a su límite actual (${result.statCap}). Sube de nivel primero.` : 'Necesitas 180 monedas.';
           await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
           await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
           return;

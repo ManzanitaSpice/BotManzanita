@@ -140,7 +140,7 @@ export async function renderPetCard(
   }
   context.fillStyle = '#f8fafc'; context.fillText(pet.name, 76, 150);
   const sameNameAsSpecies = pet.name.trim().toLocaleLowerCase('es') === pet.species.trim().toLocaleLowerCase('es');
-  const subtitle = sameNameAsSpecies ? `${pet.rarity}  ·  Nivel ${pet.level}` : `${pet.species}  ·  ${pet.rarity}  ·  Nivel ${pet.level}`;
+  const subtitle = sameNameAsSpecies ? `${pet.rarity}  ·  Nivel ${pet.level}` : `Especie · ${pet.species}  ·  ${pet.rarity}  ·  Nivel ${pet.level}`;
   let subtitleSize = 21;
   context.font = `600 ${subtitleSize}px sans-serif`;
   while (context.measureText(subtitle).width > 510 && subtitleSize > 15) {

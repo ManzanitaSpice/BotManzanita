@@ -20,7 +20,7 @@ export type RpgPet = {
   energy: number; maxEnergy: number; hunger: number; affection: number; needsUpdatedAt: number; lastCareAt: number | null;
   lastExploreAt: number | null; lastBattleAt: number | null; lastTrainAt: number | null; dailyXp: number; dailyXpDate: string;
   equipment: Record<string, string>; expeditionEffects: { safety: number; luck: number; haste: number; bonusXp: number }; expeditionMemory: ExpeditionMemory;
-  knownMoves: string[]; equippedMoves: string[]; movePoints: number; freeNameUsed: boolean;
+  knownMoves: string[]; equippedMoves: string[]; moveProgress: Record<string, { level: number; xp: number }>; movePoints: number; freeNameUsed: boolean;
 };
 type PetData = {
   name: string; species: string; rarity: PetRarity; element: PetElement | 'Neutral'; specialization: PetSpecialization; level: number; xp: number;
@@ -32,7 +32,7 @@ type PetData = {
 };
 type PetRow = RowDataPacket & PetData;
 export type RpgMoveEffect = 'damage' | 'drain' | 'heal' | 'guard' | 'weaken';
-export type RpgMove = { id: string; name: string; element: PetElement | 'Neutral'; minLevel: number; power: number; accuracy: number; energy: number; effect: RpgMoveEffect; description: string; specialization?: PetSpecialization };
+export type RpgMove = { id: string; name: string; element: PetElement | 'Neutral'; minLevel: number; power: number; accuracy: number; energy: number; effect: RpgMoveEffect; description: string; expeditionFocus: 'presion' | 'proteccion' | 'recuperacion' | 'busqueda' | 'vinculo'; specialization?: PetSpecialization };
 type LootWeights = Array<[PetRarity, number]>;
 type ZoneBoss = { name: string; emoji: string; spawnChance: number; power: number; reward: [number, number]; xp: [number, number]; dropChance: number; drops: string[] };
 type Zone = { id: string; name: string; emoji: string; background: string; difficulty: string; minLevel: number; danger: number; reward: [number, number]; lootChance: number; lootWeights: LootWeights; drops: string[]; boss: ZoneBoss };
@@ -41,6 +41,7 @@ export type ExpeditionLog = {
   id: string; zoneId: string; zoneName: string; events: ExpeditionEvent[]; summary: string; outcome: ExpeditionOutcome;
   durationMinutes: number; coins: number; xp: number; damage: number; itemId: string | null; itemIds: string[];
   memoryNotes: string[]; finalState?: ExpeditionFinalState; createdAt: number;
+  damageReceived?: number; petName?: string; petSpecies?: string; boss?: { name: string; won: boolean };
 };
 
 type RpgItemEffect = 'heal' | 'energy' | 'snack' | 'full_energy' | 'revive' | 'xp' | 'equip_strength' | 'equip_defense' | 'equip_agility' | 'equip_all' | 'stat_strength' | 'stat_defense' | 'stat_agility' | 'expedition_safety' | 'expedition_luck' | 'expedition_haste' | 'battle_haste';
@@ -420,39 +421,156 @@ export function getPetSpeciesMetadata(name: string): PetSpecies | undefined {
   return species.find((candidate) => candidate.name === name);
 }
 export function getSpeciesCatalog(): ReadonlyArray<PetSpecies> { return species; }
-export const rpgMoves: RpgMove[] = [
-  { id: 'quick_tackle', name: 'Placaje', element: 'Neutral', minLevel: 1, power: 10, accuracy: 100, energy: 0, effect: 'damage', description: 'Ataque fiable, sin coste de energía.' },
-  { id: 'flame_flick', name: 'Chispa ígnea', element: 'Fuego', minLevel: 1, power: 12, accuracy: 100, energy: 0, effect: 'damage', description: 'Golpe de fuego preciso.' },
-  { id: 'ember_burst', name: 'Estallido de brasas', element: 'Fuego', minLevel: 5, power: 22, accuracy: 88, energy: 17, effect: 'weaken', description: 'Daño alto y debilita el próximo golpe rival.' },
-  { id: 'bubble_shot', name: 'Burbuja veloz', element: 'Agua', minLevel: 1, power: 11, accuracy: 100, energy: 0, effect: 'damage', description: 'Ataque de agua rápido y preciso.' },
-  { id: 'tidal_drain', name: 'Drenaje de marea', element: 'Agua', minLevel: 5, power: 18, accuracy: 92, energy: 15, effect: 'drain', description: 'Daña y recupera PV según el golpe.' },
-  { id: 'thorn_whip', name: 'Látigo de espinas', element: 'Naturaleza', minLevel: 1, power: 12, accuracy: 96, energy: 0, effect: 'damage', description: 'Ataque vegetal equilibrado.' },
-  { id: 'bloom_mend', name: 'Brote sanador', element: 'Naturaleza', minLevel: 5, power: 24, accuracy: 100, energy: 19, effect: 'heal', description: 'Recupera PV en vez de atacar.' },
-  { id: 'gust_cut', name: 'Corte de vendaval', element: 'Viento', minLevel: 1, power: 11, accuracy: 100, energy: 0, effect: 'damage', description: 'Ataque veloz de viento.' },
-  { id: 'tailwind_guard', name: 'Guardia de cola', element: 'Viento', minLevel: 5, power: 0, accuracy: 100, energy: 14, effect: 'guard', description: 'Reduce mucho el próximo daño recibido.' },
-  { id: 'snow_shard', name: 'Esquirla de nieve', element: 'Hielo', minLevel: 1, power: 13, accuracy: 94, energy: 0, effect: 'damage', description: 'Golpe de hielo de potencia media.' },
-  { id: 'frost_break', name: 'Ruptura glacial', element: 'Hielo', minLevel: 5, power: 20, accuracy: 88, energy: 16, effect: 'weaken', description: 'Daña y reduce la fuerza del siguiente ataque rival.' },
-  { id: 'gleam_pulse', name: 'Pulso brillante', element: 'Luz', minLevel: 1, power: 11, accuracy: 100, energy: 0, effect: 'damage', description: 'Ataque luminoso fiable.' },
-  { id: 'renewing_ray', name: 'Rayo renovador', element: 'Luz', minLevel: 5, power: 23, accuracy: 100, energy: 18, effect: 'heal', description: 'Recupera PV con energía luminosa.' },
-  { id: 'night_claw', name: 'Garra nocturna', element: 'Sombra', minLevel: 1, power: 13, accuracy: 92, energy: 0, effect: 'damage', description: 'Golpe de sombra con probabilidad crítica alta.' },
-  { id: 'umbral_drain', name: 'Drenaje umbrío', element: 'Sombra', minLevel: 5, power: 18, accuracy: 92, energy: 15, effect: 'drain', description: 'Roba vitalidad al rival.' },
-  { id: 'pebble_bash', name: 'Golpe de guijarro', element: 'Tierra', minLevel: 1, power: 13, accuracy: 94, energy: 0, effect: 'damage', description: 'Ataque de tierra contundente.' },
-  { id: 'stone_wall', name: 'Muro de piedra', element: 'Tierra', minLevel: 5, power: 0, accuracy: 100, energy: 14, effect: 'guard', description: 'Levanta una defensa reforzada.' },
-  { id: 'spark_bolt', name: 'Chispa eléctrica', element: 'Rayo', minLevel: 1, power: 12, accuracy: 98, energy: 0, effect: 'damage', description: 'Descarga eléctrica rápida.' },
-  { id: 'thunder_lance', name: 'Lanza de trueno', element: 'Rayo', minLevel: 5, power: 25, accuracy: 82, energy: 19, effect: 'damage', description: 'Gran potencia, pero puede fallar.' },
-  { id: 'stardust', name: 'Polvo estelar', element: 'Astral', minLevel: 1, power: 12, accuracy: 98, energy: 0, effect: 'damage', description: 'Proyectil astral estable.' },
-  { id: 'comet_well', name: 'Pozo de cometa', element: 'Astral', minLevel: 5, power: 20, accuracy: 90, energy: 17, effect: 'drain', description: 'Drena energía vital con fuerza astral.' },
-  { id: 'reckless_charge', name: 'Carga temeraria', element: 'Neutral', minLevel: 4, power: 27, accuracy: 84, energy: 19, effect: 'damage', description: 'Ataque muy potente y arriesgado.', specialization: 'Atacante' },
-  { id: 'iron_counter', name: 'Contraataque férreo', element: 'Neutral', minLevel: 4, power: 17, accuracy: 96, energy: 15, effect: 'damage', description: 'Golpea y prepara una guardia.', specialization: 'Guardián' },
-  { id: 'precision_feint', name: 'Finta precisa', element: 'Neutral', minLevel: 4, power: 19, accuracy: 100, energy: 14, effect: 'damage', description: 'Ataque preciso con crítico mejorado.', specialization: 'Explorador' },
-  { id: 'arcane_focus', name: 'Enfoque arcano', element: 'Neutral', minLevel: 4, power: 23, accuracy: 90, energy: 18, effect: 'weaken', description: 'Daña y debilita el siguiente golpe rival.', specialization: 'Místico' },
-  { id: 'mending_song', name: 'Canto reparador', element: 'Neutral', minLevel: 4, power: 29, accuracy: 100, energy: 21, effect: 'heal', description: 'Una gran curación sin atacar.', specialization: 'Apoyo' },
+const defineMove = (element: PetElement | 'Neutral', id: string, name: string, minLevel: number, power: number, accuracy: number, energy: number,
+  effect: RpgMoveEffect, expeditionFocus: RpgMove['expeditionFocus'], description: string, specialization?: PetSpecialization): RpgMove =>
+  ({ id, name, element, minLevel, power, accuracy, energy, effect, expeditionFocus, description, ...(specialization ? { specialization } : {}) });
+const elementalMoves: RpgMove[] = [
+  defineMove('Fuego','flame_flick','Chispa ígnea',1,12,100,0,'damage','presion','Golpe de fuego preciso y veloz.'),
+  defineMove('Fuego','ember_burst','Estallido de brasas',5,22,88,17,'weaken','presion','Quema y debilita el siguiente golpe rival.'),
+  defineMove('Fuego','cinder_guard','Velo de ceniza',3,0,100,11,'guard','proteccion','Una cortina caliente amortigua el daño.'),
+  defineMove('Fuego','foxfire_drain','Llama zorruna',7,17,94,14,'drain','presion','Una llama azul roba parte de la vitalidad.'),
+  defineMove('Fuego','ash_step','Paso de ceniza',9,19,100,14,'damage','proteccion','Esquiva entre chispas y contraataca.'),
+  defineMove('Fuego','hearth_pulse','Pulso de fogata',11,18,100,16,'heal','recuperacion','El calor sereno cierra heridas.'),
+  defineMove('Fuego','phoenix_feint','Finta del fénix',13,24,91,18,'weaken','presion','Renace en una llamarada que quiebra el ímpetu rival.'),
+  defineMove('Fuego','sunflare','Fulgor del mediodía',15,28,86,21,'damage','presion','Un arco solar golpea con gran potencia.'),
+  defineMove('Fuego','ember_bloom','Jardín de rescoldos',17,22,100,20,'heal','recuperacion','Brasas diminutas devuelven fuerzas.'),
+  defineMove('Fuego','last_spark','Último rescoldo',19,34,80,24,'damage','presion','Concentra todo el calor en un golpe decisivo.'),
+  defineMove('Agua','bubble_shot','Burbuja veloz',1,11,100,0,'damage','presion','Ataque acuático rápido y preciso.'),
+  defineMove('Agua','tidal_drain','Drenaje de marea',5,18,92,15,'drain','recuperacion','Daña y recupera PV con el vaivén de la marea.'),
+  defineMove('Agua','foam_screen','Pantalla de espuma',3,0,100,11,'guard','proteccion','La espuma desvía el siguiente impacto.'),
+  defineMove('Agua','undertow','Corriente traicionera',7,17,95,13,'weaken','presion','Una corriente baja desestabiliza al rival.'),
+  defineMove('Agua','rain_mend','Lluvia mansa',9,19,100,15,'heal','recuperacion','Una lluvia fresca restaura energía y heridas.'),
+  defineMove('Agua','splash_dash','Salto de rompiente',11,20,97,15,'damage','proteccion','Se impulsa en una ola y golpea al aterrizar.'),
+  defineMove('Agua','mirror_pool','Espejo de laguna',13,0,100,16,'guard','proteccion','Un reflejo líquido confunde y protege.'),
+  defineMove('Agua','deep_current','Corriente abisal',15,26,88,20,'drain','recuperacion','La presión del fondo roba vitalidad.'),
+  defineMove('Agua','spring_tide','Marea de primavera',17,25,100,21,'heal','recuperacion','Una fuente cálida sana a quien la invoca.'),
+  defineMove('Agua','tsunami_arc','Arco de tsunami',19,33,82,24,'damage','presion','Una ola enorme barre el campo de batalla.'),
+  defineMove('Naturaleza','thorn_whip','Látigo de espinas',1,12,96,0,'damage','presion','Ataque vegetal equilibrado.'),
+  defineMove('Naturaleza','bloom_mend','Brote sanador',5,24,100,19,'heal','recuperacion','Recupera PV con savia luminosa.'),
+  defineMove('Naturaleza','root_snare','Raíces enlazantes',3,15,96,12,'weaken','proteccion','Raíces frenan al rival y su próximo ataque.'),
+  defineMove('Naturaleza','moss_shell','Caparazón de musgo',7,0,100,13,'guard','proteccion','Musgo y corteza absorben parte del golpe.'),
+  defineMove('Naturaleza','pollen_drain','Polen vital',9,17,94,14,'drain','recuperacion','El polen extrae fuerza y la devuelve.'),
+  defineMove('Naturaleza','seed_barrage','Ráfaga de semillas',11,21,96,16,'damage','presion','Semillas duras vuelan como una lluvia de dardos.'),
+  defineMove('Naturaleza','verdant_song','Canto del claro',13,22,100,18,'heal','vinculo','Una melodía vegetal calma y cura.'),
+  defineMove('Naturaleza','bramble_crown','Corona de zarzas',15,27,88,20,'weaken','presion','Zarzas cierran el paso y rompen la guardia.'),
+  defineMove('Naturaleza','ancient_grove','Resguardo del bosque',17,0,100,20,'guard','proteccion','Espíritus del bosque alzan una defensa firme.'),
+  defineMove('Naturaleza','worldroot','Raíz del mundo',19,32,84,24,'drain','recuperacion','Una raíz ancestral absorbe la fuerza enemiga.'),
+  defineMove('Viento','gust_cut','Corte de vendaval',1,11,100,0,'damage','presion','Ataque veloz de viento.'),
+  defineMove('Viento','tailwind_guard','Guardia de cola',5,0,100,14,'guard','proteccion','Una ráfaga desvía el siguiente golpe.'),
+  defineMove('Viento','feather_step','Paso de pluma',3,15,100,11,'damage','proteccion','Un giro ligero convierte la esquiva en ataque.'),
+  defineMove('Viento','whistling_draft','Silbido cortante',7,18,96,14,'weaken','presion','Un silbido agudo desordena al rival.'),
+  defineMove('Viento','cloud_lullaby','Arrullo de nube',9,18,100,15,'heal','recuperacion','Una nube fresca le devuelve el aliento.'),
+  defineMove('Viento','spiral_dive','Picado en espiral',11,22,93,16,'damage','presion','Desciende en espiral con un golpe certero.'),
+  defineMove('Viento','updraft','Corriente ascendente',13,0,100,16,'guard','proteccion','Una corriente eleva y aparta del peligro.'),
+  defineMove('Viento','sky_lance','Lanza del cielo',15,27,88,20,'damage','presion','Comprime el aire en una lanza afilada.'),
+  defineMove('Viento','breeze_mend','Brisa reparadora',17,25,100,20,'heal','recuperacion','Una brisa tibia cierra heridas.'),
+  defineMove('Viento','tempest_wing','Alas de tempestad',19,34,82,24,'weaken','presion','Un vendaval golpea y deja al rival sin equilibrio.'),
+  defineMove('Hielo','snow_shard','Esquirla de nieve',1,13,94,0,'damage','presion','Golpe de hielo de potencia media.'),
+  defineMove('Hielo','frost_break','Ruptura glacial',5,20,88,16,'weaken','proteccion','Daña y reduce la fuerza del siguiente ataque rival.'),
+  defineMove('Hielo','rime_guard','Escarcha protectora',3,0,100,11,'guard','proteccion','Una capa de hielo amortigua el impacto.'),
+  defineMove('Hielo','blue_flurry','Ventisca azul',7,19,92,14,'damage','presion','Copos afilados atacan en rápida sucesión.'),
+  defineMove('Hielo','glacier_mend','Reposo glaciar',9,20,100,16,'heal','recuperacion','El frío sereno detiene el dolor y restaura PV.'),
+  defineMove('Hielo','ice_mirror','Espejo de hielo',11,0,100,16,'guard','proteccion','Un espejo helado desvía el golpe hacia un lado.'),
+  defineMove('Hielo','permafrost_bite','Mordida de permafrost',13,25,91,18,'drain','presion','El hielo muerde y absorbe calor vital.'),
+  defineMove('Hielo','whiteout','Ceguera blanca',15,27,86,20,'weaken','presion','Una nube de nieve oculta al rival y lo desarma.'),
+  defineMove('Hielo','aurora_snow','Nieve de aurora',17,25,100,21,'heal','vinculo','Copos brillantes alivian el cansancio.'),
+  defineMove('Hielo','zero_point','Punto cero',19,35,80,24,'damage','presion','Libera un pulso de frío absoluto.'),
+  defineMove('Luz','gleam_pulse','Pulso brillante',1,11,100,0,'damage','presion','Ataque luminoso fiable.'),
+  defineMove('Luz','renewing_ray','Rayo renovador',5,23,100,18,'heal','recuperacion','Recupera PV con energía luminosa.'),
+  defineMove('Luz','halo_guard','Halo protector',3,0,100,11,'guard','proteccion','Un halo desvía la energía del impacto.'),
+  defineMove('Luz','dawn_lance','Lanza del alba',7,18,98,14,'damage','presion','Un rayo de amanecer atraviesa la sombra.'),
+  defineMove('Luz','kindle_soul','Lumbre del ánimo',9,19,100,15,'heal','vinculo','Una luz amable devuelve el valor.'),
+  defineMove('Luz','prism_break','Prisma quebrado',11,22,94,16,'weaken','presion','Destellos distraen y debilitan al rival.'),
+  defineMove('Luz','sunlit_aegis','Égida solar',13,0,100,16,'guard','proteccion','Una barrera cálida protege de la embestida.'),
+  defineMove('Luz','mercy_burst','Destello compasivo',15,25,100,20,'heal','recuperacion','Una ráfaga luminosa restaura una gran cantidad de PV.'),
+  defineMove('Luz','judgement_star','Estrella justiciera',17,29,88,21,'damage','presion','Una estrella cae con precisión fulminante.'),
+  defineMove('Luz','daybreak','Primer amanecer',19,33,90,24,'weaken','presion','El alba ciega al rival y corta su impulso.'),
+  defineMove('Sombra','night_claw','Garra nocturna',1,13,92,0,'damage','presion','Golpe de sombra con probabilidad crítica alta.'),
+  defineMove('Sombra','umbral_drain','Drenaje umbrío',5,18,92,15,'drain','recuperacion','Roba vitalidad al rival.'),
+  defineMove('Sombra','dusk_cloak','Manto del ocaso',3,0,100,11,'guard','proteccion','Una capa oscura difumina el golpe.'),
+  defineMove('Sombra','whisper_hex','Susurro maldito',7,18,95,14,'weaken','presion','Un susurro inquietante quiebra la concentración.'),
+  defineMove('Sombra','moonless_pounce','Salto sin luna',9,21,93,15,'damage','proteccion','Aparece a la espalda antes de que miren.'),
+  defineMove('Sombra','shade_mend','Descanso en penumbra',11,20,100,16,'heal','recuperacion','La penumbra reconforta y cura.'),
+  defineMove('Sombra','phantom_bite','Mordida fantasma',13,25,90,18,'drain','recuperacion','Un mordisco espectral roba fuerza vital.'),
+  defineMove('Sombra','eclipse_snare','Trampa de eclipse',15,27,88,20,'weaken','proteccion','La sombra inmoviliza y debilita al enemigo.'),
+  defineMove('Sombra','blackout_guard','Velo abisal',17,0,100,20,'guard','proteccion','La oscuridad absorbe el siguiente ataque.'),
+  defineMove('Sombra','umbra_surge','Oleada umbría',19,34,84,24,'damage','presion','Una ola de noche golpea desde todos lados.'),
+  defineMove('Tierra','pebble_bash','Golpe de guijarro',1,13,94,0,'damage','presion','Ataque de tierra contundente.'),
+  defineMove('Tierra','stone_wall','Muro de piedra',5,0,100,14,'guard','proteccion','Levanta una defensa reforzada.'),
+  defineMove('Tierra','rooted_stance','Postura arraigada',3,15,100,11,'guard','proteccion','Afirmarse al suelo reduce el impacto y contraataca.'),
+  defineMove('Tierra','quarry_crash','Derrumbe de cantera',7,19,91,14,'damage','presion','Fragmentos pesados se desploman sobre el rival.'),
+  defineMove('Tierra','clay_mend','Arcilla balsámica',9,19,100,15,'heal','recuperacion','Arcilla mineral sella heridas.'),
+  defineMove('Tierra','fault_line','Falla sísmica',11,23,89,17,'weaken','presion','Una sacudida abre grietas bajo los pies enemigos.'),
+  defineMove('Tierra','geode_shell','Cáscara de geoda',13,0,100,16,'guard','proteccion','Una coraza cristalina recibe el golpe.'),
+  defineMove('Tierra','ore_drain','Veta absorbente',15,25,91,19,'drain','recuperacion','Extrae energía de los minerales cercanos.'),
+  defineMove('Tierra','mountain_mend','Aliento de montaña',17,25,100,20,'heal','recuperacion','La calma de la montaña restaura las fuerzas.'),
+  defineMove('Tierra','continental_break','Ruptura continental',19,35,80,24,'damage','presion','Un golpe tectónico abre el campo de batalla.'),
+  defineMove('Rayo','spark_bolt','Chispa eléctrica',1,12,98,0,'damage','presion','Descarga eléctrica rápida.'),
+  defineMove('Rayo','thunder_lance','Lanza de trueno',5,25,82,19,'damage','presion','Gran potencia, pero puede fallar.'),
+  defineMove('Rayo','static_guard','Campo estático',3,0,100,11,'guard','proteccion','La electricidad forma un escudo vibrante.'),
+  defineMove('Rayo','arc_snare','Lazo de arco',7,18,95,14,'weaken','proteccion','Un arco eléctrico entumece al rival.'),
+  defineMove('Rayo','pulse_drain','Pulso conductor',9,18,93,15,'drain','recuperacion','Absorbe corriente y la convierte en vigor.'),
+  defineMove('Rayo','flash_step','Destello veloz',11,21,100,16,'damage','proteccion','Un salto instantáneo termina en un impacto.'),
+  defineMove('Rayo','storm_mend','Lluvia de centellas',13,22,100,18,'heal','recuperacion','Centellas tibias revitalizan a la mascota.'),
+  defineMove('Rayo','thunderclap','Trueno súbito',15,28,88,20,'weaken','presion','Un estallido ensordecedor desordena al rival.'),
+  defineMove('Rayo','chain_lightning','Relámpago en cadena',17,30,86,22,'damage','presion','La descarga salta de un extremo al otro.'),
+  defineMove('Rayo','stormheart','Corazón de tormenta',19,35,84,24,'drain','recuperacion','La tormenta devuelve la energía que consume.'),
+  defineMove('Astral','stardust','Polvo estelar',1,12,98,0,'damage','busqueda','Proyectil astral estable.'),
+  defineMove('Astral','comet_well','Pozo de cometa',5,20,90,17,'drain','recuperacion','Drena energía vital con fuerza astral.'),
+  defineMove('Astral','orbit_guard','Órbita protectora',3,0,100,11,'guard','proteccion','Pequeños astros bloquean el impacto.'),
+  defineMove('Astral','nebula_mend','Nébula serena',7,18,100,14,'heal','recuperacion','Una nebulosa restaura PV y calma el ánimo.'),
+  defineMove('Astral','fate_thread','Hilo del destino',9,18,100,14,'weaken','busqueda','Revela el siguiente movimiento del rival.'),
+  defineMove('Astral','meteor_skip','Salto meteórico',11,22,94,16,'damage','proteccion','Una estela engaña al rival antes del golpe.'),
+  defineMove('Astral','constellation_call','Llamado de constelación',13,21,100,17,'heal','vinculo','Una constelación conocida devuelve esperanza.'),
+  defineMove('Astral','quasar_burst','Estallido de cuásar',15,28,88,20,'damage','presion','Condensa una estrella en un impacto breve.'),
+  defineMove('Astral','starlit_map','Mapa celeste',17,0,100,19,'guard','busqueda','Las estrellas señalan una ruta segura.'),
+  defineMove('Astral','cosmic_reprise','Reprise cósmica',19,34,86,24,'drain','recuperacion','La energía de las estrellas vuelve a su origen.'),
 ];
+export const rpgMoves: RpgMove[] = [
+  defineMove('Neutral','quick_tackle','Placaje',1,10,100,0,'damage','presion','Ataque fiable, sin coste de energía.'),
+  ...elementalMoves,
+  defineMove('Neutral','reckless_charge','Carga temeraria',4,27,84,19,'damage','presion','Ataque muy potente y arriesgado.','Atacante'),
+  defineMove('Neutral','iron_counter','Contraataque férreo',4,17,96,15,'guard','proteccion','Golpea y prepara una guardia.','Guardián'),
+  defineMove('Neutral','precision_feint','Finta precisa',4,19,100,14,'damage','busqueda','Ataque preciso con crítico mejorado.','Explorador'),
+  defineMove('Neutral','arcane_focus','Enfoque arcano',4,23,90,18,'weaken','presion','Daña y debilita el siguiente golpe rival.','Místico'),
+  defineMove('Neutral','mending_song','Canto reparador',4,29,100,21,'heal','vinculo','Una gran curación sin atacar.','Apoyo'),
+];
+if (elementalMoves.length !== 100) throw new Error(`El catálogo elemental debe contener 100 técnicas; contiene ${elementalMoves.length}.`);
 const starterMoveByElement: Record<PetElement, string> = {
   Fuego: 'flame_flick', Agua: 'bubble_shot', Naturaleza: 'thorn_whip', Viento: 'gust_cut', Hielo: 'snow_shard',
   Luz: 'gleam_pulse', Sombra: 'night_claw', Tierra: 'pebble_bash', Rayo: 'spark_bolt', Astral: 'stardust',
 };
 export function getRpgMove(moveId: string): RpgMove | undefined { return rpgMoves.find((move) => move.id === moveId); }
+const MOVE_XP_PER_LEVEL = 80;
+const MOVE_LEVEL_CAP = 10;
+export function getRpgMoveProgress(pet: RpgPet, moveId: string): { level: number; xp: number; nextXp: number } {
+  const progress = pet.moveProgress?.[moveId];
+  const level = Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(progress?.level ?? 1)));
+  return { level, xp: Math.max(0, Math.floor(progress?.xp ?? 0)), nextXp: level >= MOVE_LEVEL_CAP ? 0 : MOVE_XP_PER_LEVEL + (level - 1) * 20 };
+}
+function advanceMoveProgress(progressMap: Record<string, { level: number; xp: number }>, moveId: string, amount: number): { progressMap: Record<string, { level: number; xp: number }>; levels: number; level: number } {
+  const updatedMap = { ...progressMap };
+  const current = updatedMap[moveId] ?? { level: 1, xp: 0 };
+  let level = Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(current.level))); let xp = Math.max(0, Math.floor(current.xp)); let levels = 0;
+  xp += Math.max(0, Math.floor(amount));
+  while (level < MOVE_LEVEL_CAP && xp >= MOVE_XP_PER_LEVEL + (level - 1) * 20) {
+    xp -= MOVE_XP_PER_LEVEL + (level - 1) * 20; level++; levels++;
+  }
+  if (level >= MOVE_LEVEL_CAP) xp = 0;
+  updatedMap[moveId] = { level, xp };
+  return { progressMap: updatedMap, levels, level };
+}
+function getRpgMoveLevel(progressMap: Record<string, { level: number; xp: number }> | undefined, moveId: string): number {
+  return Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(progressMap?.[moveId]?.level ?? 1)));
+}
+export function getRpgMovePower(pet: RpgPet, move: RpgMove): number {
+  return move.power + Math.max(0, getRpgMoveProgress(pet, move.id).level - 1) * 2;
+}
+function gainRpgMoveXp(pet: RpgPet, moveId: string, amount: number): { pet: RpgPet; levels: number; level: number } {
+  if (!pet.equippedMoves.includes(moveId)) return { pet, levels: 0, level: getRpgMoveProgress(pet, moveId).level };
+  const advanced = advanceMoveProgress(pet.moveProgress, moveId, amount);
+  return { pet: { ...pet, moveProgress: advanced.progressMap }, levels: advanced.levels, level: advanced.level };
+}
 export function getLearnableRpgMoves(pet: RpgPet): RpgMove[] {
   return rpgMoves.filter((move) => !pet.knownMoves.includes(move.id) && move.minLevel <= pet.level
     && (move.element === 'Neutral' || move.element === pet.element || (move.specialization && move.specialization === pet.specialization)));
@@ -464,7 +582,8 @@ export async function learnRpgMove(guildId: string, userId: string, moveId: stri
     if (pet.knownMoves.includes(moveId)) return { ok: false as const, reason: 'already_known' as const };
     if (!getLearnableRpgMoves(pet).some((candidate) => candidate.id === moveId)) return { ok: false as const, reason: 'locked' as const };
     if (pet.movePoints < 1) return { ok: false as const, reason: 'no_points' as const };
-    const updated = { ...pet, knownMoves: [...pet.knownMoves, moveId], equippedMoves: pet.equippedMoves.length < 4 ? [...pet.equippedMoves, moveId] : pet.equippedMoves, movePoints: pet.movePoints - 1 };
+    const updated = { ...pet, knownMoves: [...pet.knownMoves, moveId], equippedMoves: pet.equippedMoves.length < 4 ? [...pet.equippedMoves, moveId] : pet.equippedMoves,
+      moveProgress: { ...pet.moveProgress, [moveId]: { level: 1, xp: 0 } }, movePoints: pet.movePoints - 1 };
     return { ok: true as const, pet: updated, move };
   };
   const at = now();
@@ -476,12 +595,39 @@ export async function equipRpgMoves(guildId: string, userId: string, moveIds: st
   guildId = GLOBAL_SCOPE_ID;
   const equip = (pet: RpgPet) => {
     const unique = [...new Set(moveIds)];
-    if (unique.length < 1 || unique.length > 4 || unique.some((id) => !pet.knownMoves.includes(id))) return { ok: false as const, reason: 'invalid_build' as const };
+    if (unique.length !== Math.min(4, pet.knownMoves.length) || unique.length > 4 || unique.some((id) => !pet.knownMoves.includes(id))) return { ok: false as const, reason: 'invalid_build' as const };
     return { ok: true as const, pet: { ...pet, equippedMoves: unique } };
   };
   const at = now();
   if (economyPool) return withEconomyTransaction(async (connection) => { const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const result = equip(pet); if (result.ok) await savePetMysql(connection, guildId, userId, result.pet, at); return result; });
   const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const result = equip(pet); if (result.ok) savePetSqlite(guildId, userId, result.pet, at); return result; });
+  return run.immediate();
+}
+export async function trainRpgMove(guildId: string, userId: string, moveId: string): Promise<
+  { ok: true; pet: RpgPet; move: RpgMove; xpSpent: number }
+  | { ok: false; reason: 'no_pet' | 'unknown_move' | 'not_known' | 'max_level' | 'level_required' | 'low_xp'; requiredLevel?: number; requiredXp?: number }
+> {
+  guildId = GLOBAL_SCOPE_ID;
+  const move = getRpgMove(moveId); if (!move) return { ok: false, reason: 'unknown_move' };
+  const improve = (pet: RpgPet) => {
+    if (!pet.knownMoves.includes(moveId)) return { ok: false as const, reason: 'not_known' as const };
+    const requirements = getRpgMoveTrainingRequirements(pet, moveId);
+    if (requirements.atCap) return { ok: false as const, reason: 'max_level' as const };
+    if (pet.level < requirements.requiredLevel) return { ok: false as const, reason: 'level_required' as const, requiredLevel: requirements.requiredLevel };
+    if (pet.xp < requirements.requiredXp) return { ok: false as const, reason: 'low_xp' as const, requiredXp: requirements.requiredXp };
+    const moveProgress = getRpgMoveProgress(pet, moveId);
+    return { ok: true as const, pet: { ...pet, xp: pet.xp - requirements.requiredXp,
+      moveProgress: { ...pet.moveProgress, [moveId]: { level: requirements.level + 1, xp: moveProgress.xp } } }, xpSpent: requirements.requiredXp, move };
+  };
+  const at = now();
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const result = improve(pet); if (result.ok) await savePetMysql(connection, guildId, userId, result.pet, at); return result;
+  });
+  const run = db.transaction(() => {
+    const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const result = improve(pet); if (result.ok) savePetSqlite(guildId, userId, result.pet, at); return result;
+  });
   return run.immediate();
 }
 const rarityWeights: Array<[PetRarity, number, number]> = [
@@ -511,9 +657,30 @@ export const RPG_TRAIN_COIN_COST = 180;
 export const RPG_TRAIN_ENERGY_COST = 15;
 export const RPG_TRAIN_HUNGER_COST = 6;
 export const RPG_TRAIN_MIN_HUNGER = 8;
+export const RPG_TRAIN_XP_BASE = 30;
+export const RPG_TRAIN_XP_PER_POINT = 12;
+export const RPG_MOVE_TRAIN_XP_BASE = 50;
+export const RPG_MOVE_TRAIN_XP_PER_LEVEL = 30;
 export const RPG_CARE_COOLDOWN = 6 * 60 * 60;
 export const RPG_COIN_REWARD_SCALE = 0.5;
 const EXPLORE_COOLDOWN = RPG_EXPLORE_COOLDOWN;
+export type RpgTrainableStat = 'strength' | 'defense' | 'agility';
+export function getRpgTrainingRequirements(pet: RpgPet, stat: RpgTrainableStat) {
+  const statIndex = stat === 'strength' ? 0 : stat === 'defense' ? 1 : 2;
+  const baseStat = species.find((entry) => entry.name === pet.species)?.base[statIndex] ?? pet[stat];
+  const growth = Math.max(0, pet[stat] - baseStat);
+  const requiredLevel = Math.max(1, Math.ceil((growth + 1) / 3));
+  const requiredXp = RPG_TRAIN_XP_BASE + growth * RPG_TRAIN_XP_PER_POINT;
+  const statCap = baseStat + pet.level * 3;
+  return { stat, baseStat, growth, requiredLevel, requiredXp, statCap, canTrain: pet.level >= requiredLevel && pet[stat] < statCap && pet.xp >= requiredXp };
+}
+export function getRpgMoveTrainingRequirements(pet: RpgPet, moveId: string) {
+  const progress = getRpgMoveProgress(pet, moveId);
+  const requiredLevel = progress.level + 1;
+  const requiredXp = RPG_MOVE_TRAIN_XP_BASE + progress.level * RPG_MOVE_TRAIN_XP_PER_LEVEL;
+  return { level: progress.level, requiredLevel, requiredXp, atCap: progress.level >= MOVE_LEVEL_CAP,
+    canTrain: progress.level < MOVE_LEVEL_CAP && pet.level >= requiredLevel && pet.xp >= requiredXp };
+}
 const quests = [
   { id: 'explore', title: 'Cartógrafo', description: 'Completa 1 exploración', target: 1, reward: 40 },
   { id: 'battle', title: 'Guardián', description: 'Gana 1 combate contra un enemigo', target: 1, reward: 50 },
@@ -543,6 +710,26 @@ function parseMoveList(value: string | undefined): string[] {
   try { const parsed = JSON.parse(value ?? '[]') as unknown; return Array.isArray(parsed) ? [...new Set(parsed.filter((id): id is string => typeof id === 'string' && Boolean(getRpgMove(id))))] : []; }
   catch { return []; }
 }
+function parseKnownMoveData(value: string | undefined): { known: string[]; progress: Record<string, { level: number; xp: number }> } {
+  try {
+    const parsed = JSON.parse(value ?? '[]') as unknown;
+    if (Array.isArray(parsed)) return { known: parsed.filter((id): id is string => typeof id === 'string' && Boolean(getRpgMove(id))), progress: {} };
+    if (!parsed || typeof parsed !== 'object') return { known: [], progress: {} };
+    const record = parsed as { known?: unknown; progress?: unknown };
+    const known = Array.isArray(record.known) ? record.known.filter((id): id is string => typeof id === 'string' && Boolean(getRpgMove(id))) : [];
+    const rawProgress = record.progress && typeof record.progress === 'object' ? record.progress as Record<string, unknown> : {};
+    const progress: Record<string, { level: number; xp: number }> = {};
+    for (const [id, raw] of Object.entries(rawProgress)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const entry = raw as { level?: unknown; xp?: unknown };
+      progress[id] = { level: Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(Number(entry.level) || 1))), xp: Math.max(0, Math.floor(Number(entry.xp) || 0)) };
+    }
+    return { known, progress };
+  } catch { return { known: [], progress: {} }; }
+}
+function serializeKnownMoveData(pet: RpgPet): string {
+  return JSON.stringify({ known: pet.knownMoves, progress: pet.moveProgress });
+}
 function petFromRow(row: PetData | undefined): RpgPet | undefined {
   if (!row) return undefined;
   let equipment: Record<string, string> = {};
@@ -553,8 +740,8 @@ function petFromRow(row: PetData | undefined): RpgPet | undefined {
   const lineage = species.find((candidate) => candidate.name === row.species);
   const element = row.element === 'Neutral' && lineage ? lineage.element : row.element;
   const specialization = row.specialization === 'Explorador' && lineage ? lineage.specialization : row.specialization;
-  const knownMoves = parseMoveList(row.knownMoves);
-  const resolvedKnownMoves = knownMoves.length ? knownMoves : starterMoves(element);
+  const moveData = parseKnownMoveData(row.knownMoves);
+  const resolvedKnownMoves = moveData.known.length ? moveData.known : starterMoves(element);
   const equippedMoves = parseMoveList(row.equippedMoves).filter((id) => resolvedKnownMoves.includes(id)).slice(0, 4);
   const level = Number(row.level);
   const maxEnergy = Number(row.maxEnergy);
@@ -574,7 +761,8 @@ function petFromRow(row: PetData | undefined): RpgPet | undefined {
     lastExploreAt: row.lastExploreAt == null ? null : Number(row.lastExploreAt),
     lastBattleAt: row.lastBattleAt == null ? null : Number(row.lastBattleAt), lastTrainAt: row.lastTrainAt == null ? null : Number(row.lastTrainAt),
     dailyXp: String(row.dailyXpDate ?? '') === utcDate() ? Number(row.dailyXp ?? 0) : 0, dailyXpDate: utcDate(), equipment, expeditionEffects, expeditionMemory,
-    knownMoves: resolvedKnownMoves, equippedMoves: equippedMoves.length ? equippedMoves : resolvedKnownMoves.slice(0, 4), movePoints: Number(row.movePoints ?? Math.max(0, level - 1)), freeNameUsed: Boolean(row.freeNameUsed) };
+    knownMoves: resolvedKnownMoves, equippedMoves: equippedMoves.length ? equippedMoves : resolvedKnownMoves.slice(0, 4), moveProgress: moveData.progress,
+    movePoints: Number(row.movePoints ?? Math.max(0, level - 1)), freeNameUsed: Boolean(row.freeNameUsed) };
 }
 function sqlitePet(guildId: string, userId: string): RpgPet | undefined {
   const row = db.prepare(`SELECT name, species, rarity, element, specialization, level, xp, strength, defense, agility, hp, max_hp AS maxHp,
@@ -619,13 +807,13 @@ async function savePetMysql(connection: PoolConnection, guildId: string, userId:
   await connection.execute(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
     hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`,
   [pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
-    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId]);
+    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId]);
 }
 function savePetSqlite(guildId: string, userId: string, pet: RpgPet, updated = now()) {
   db.prepare(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
     hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(
     pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy,
-    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects),JSON.stringify(pet.expeditionMemory),JSON.stringify(pet.knownMoves),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId);
+    pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt,pet.lastBattleAt,pet.lastTrainAt,pet.dailyXp,pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects),JSON.stringify(pet.expeditionMemory),serializeKnownMoveData(pet),JSON.stringify(pet.equippedMoves),pet.movePoints,Number(pet.freeNameUsed),updated, guildId, userId);
 }
 async function changeBalanceMysql(connection: PoolConnection, guildId: string, userId: string, amount: number, reason: string, ref: string, at = now()) {
   await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
@@ -717,17 +905,17 @@ export async function adoptRpgPet(guildId: string, userId: string, name: string,
   const pet: RpgPet = { name: normalizedName || chosen.name, species: chosen.name, rarity: rarity.rarity, element: chosen.element, specialization: chosen.specialization, level: 1, xp: 0,
     strength: stats[0]!, defense: stats[1]!, agility: stats[2]!, hp: 70 + rarity.bonus * 2, maxHp: 70 + rarity.bonus * 2,
   energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(), equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: emptyExpeditionMemory(),
-    knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), movePoints: 0, freeNameUsed: Boolean(normalizedName) };
+    knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), moveProgress: {}, movePoints: 0, freeNameUsed: Boolean(normalizedName) };
   const at = now();
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)',
-      [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
+      [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
     if ((result as { affectedRows: number }).affectedRows === 0) return { ok: false as const, reason: 'already_has_pet' as const };
     return { ok: true as const, pet };
   });
   const adopt = db.transaction(() => {
     const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
+      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
     return result.changes ? { ok: true as const, pet } : { ok: false as const, reason: 'already_has_pet' as const };
   });
   return adopt.immediate();
@@ -748,18 +936,18 @@ export async function adminGrantRpgPet(guildId: string, userId: string, speciesN
     specialization: lineage.specialization, level: 1, xp: 0, strength: stats[0]!, defense: stats[1]!, agility: stats[2]!,
     hp: 70 + bonus * 2, maxHp: 70 + bonus * 2, energy: 100, maxEnergy: 100, hunger: 80, affection: 60, needsUpdatedAt: now(), lastCareAt: null, lastExploreAt: null, lastBattleAt: null, lastTrainAt: null, dailyXp: 0, dailyXpDate: utcDate(),
     equipment: {}, expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: emptyExpeditionMemory(), knownMoves: starterMoves(lineage.element),
-    equippedMoves: starterMoves(lineage.element), movePoints: 0, freeNameUsed: Boolean(normalizedName),
+    equippedMoves: starterMoves(lineage.element), moveProgress: {}, movePoints: 0, freeNameUsed: Boolean(normalizedName),
   };
   const at = now();
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)',
-      [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
+      [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
     if ((result as { affectedRows: number }).affectedRows === 0) return { ok: false as const, reason: 'already_has_pet' as const };
     return { ok: true as const, pet };
   });
   const adopt = db.transaction(() => {
     const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), JSON.stringify(pet.knownMoves), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
+      VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
     return result.changes ? { ok: true as const, pet } : { ok: false as const, reason: 'already_has_pet' as const };
   });
   return adopt.immediate();
@@ -813,13 +1001,66 @@ export async function adminRemoveRpgPet(guildId: string, userId: string): Promis
 }
 
 type ExpeditionSimulation = {
-  pet: RpgPet; zone: Zone; coins: number; xp: number; damage: number; item: RpgItem | undefined; bossItem: RpgItem | undefined;
+  pet: RpgPet; zone: Zone; coins: number; xp: number; damage: number; damageReceived: number; item: RpgItem | undefined; bossItem: RpgItem | undefined;
   boss?: { name: string; won: boolean }; levelUps: number; events: ExpeditionEvent[]; summary: string; outcome: ExpeditionOutcome;
   durationMinutes: number; itemIds: string[]; memoryNotes: string[]; finalState: ExpeditionFinalState; message: string;
 };
 const rollBetween = (range: [number, number]) => range[0] + randomInt(range[1] - range[0] + 1);
 const replacePetName = (line: string, petName: string) => line.replaceAll('{name}', petName);
 const remembered = (memory: string[], value: string) => memory.includes(value);
+function focusForExpedition(kind: ExpeditionSceneKind): RpgMove['expeditionFocus'] {
+  if (kind === 'riesgo') return 'proteccion';
+  if (kind === 'encuentro') return 'presion';
+  if (kind === 'hallazgo') return 'busqueda';
+  if (kind === 'social') return 'vinculo';
+  return 'recuperacion';
+}
+function expeditionTransition(previous: ExpeditionEvent | undefined, petName: string): string {
+  if (!previous) return '';
+  if (previous.kind === 'social' && previous.success) return `Tras despedirse con una sonrisa de ${previous.title.toLowerCase()}, ${petName} vuelve a internarse entre los senderos.`;
+  if (previous.kind === 'hallazgo' && previous.success) return `Con lo encontrado en ${previous.title.toLowerCase()} bien guardado, ${petName} sigue adelante sin perder de vista el camino.`;
+  if (previous.kind === 'descanso' || previous.kind === 'serena') return `Con el respiro de ${previous.title.toLowerCase()}, ${petName} recupera el paso y escucha lo que trae el viento.`;
+  if (previous.kind === 'riesgo' && !previous.success) return `Aún con el corazón acelerado por ${previous.title.toLowerCase()}, ${petName} avanza con más cuidado.`;
+  if (previous.kind === 'encuentro') return previous.success
+    ? `Dejando atrás ${previous.title.toLowerCase()}, ${petName} no baja la guardia: el bosque sigue lleno de sorpresas.`
+    : `Después del susto en ${previous.title.toLowerCase()}, ${petName} toma una ruta más discreta.`;
+  return previous.success
+    ? `El sendero se abre después de ${previous.title.toLowerCase()} y ${petName} continúa la exploración.`
+    : `Sacudiéndose el polvo de ${previous.title.toLowerCase()}, ${petName} busca un paso más seguro.`;
+}
+function expeditionSkillDialogue(petName: string, move: RpgMove, kind: ExpeditionSceneKind, succeeded: boolean): string {
+  const lines: Record<RpgMove['effect'], [string, string]> = {
+    damage: [`«${move.name}, abre una ruta. ¡Ahora!»`, `*${petName} libera ${move.name} en un arco preciso; la amenaza retrocede y deja un hueco para cruzar.*`],
+    drain: [`«${move.name}, toma solo lo necesario…»`, `*${move.name} absorbe parte del vigor que anima el obstáculo y se lo devuelve a ${petName} como fuerzas para continuar.*`],
+    heal: [`«${move.name}, cierra las heridas y acompáñame.»`, `*Un pulso de ${move.name} alivia el cansancio de ${petName}; la respiración se calma y el paso recupera firmeza.*`],
+    guard: [`«${move.name}, primero protege el paso.»`, `*${petName} despliega ${move.name} como un escudo; el golpe se desvía y aparece una salida segura.*`],
+    weaken: [`«${move.name}, quítale el impulso.»`, `*${move.name} desorienta la amenaza y le roba fuerza al siguiente golpe, abriendo un instante para reaccionar.*`],
+  };
+  const [quote, action] = lines[move.effect];
+  const close = succeeded
+    ? kind === 'hallazgo' ? ' Con el camino despejado, puede revisar el lugar sin perder de vista el entorno.' : ' La técnica le da el margen que necesitaba para seguir.'
+    : kind === 'riesgo' ? ' El contratiempo alcanza a rozarle, pero la técnica amortigua el golpe y le permite continuar.'
+      : ` El obstáculo resiste; la técnica no basta para superarlo y ${petName} debe cambiar de estrategia.`;
+  return `**🐾 ${petName}:** ${quote}\n${action}${close}`;
+}
+function bossDialogue(zone: Zone, petName: string, won: boolean, move?: RpgMove, damage = 0): { boss: string; pet: string; action: string } {
+  const voices: Record<string, [string, string]> = {
+    bosque: ['«Este sendero tiene guardián. ¿Vienes a dañarlo?»', '«Solo buscamos pasar; también cuidaremos el bosque.»'],
+    cumbres: ['«Nadie cruza mi ventisca sin demostrar firmeza.»', '«No hace falta pelear. ¡Voy a apartarme del hielo!»'],
+    ruinas: ['«La última página no se abre para cualquiera.»', '«Entonces leeré el margen y encontraré otra salida.»'],
+    dunas: ['«Soy el horizonte que persigues. No podrás atraparme.»', '«No persigo espejismos: solo quiero volver con mi equipo.»'],
+    astral: ['«Una chispa mortal no altera el curso de las estrellas.»', '«Quizá no, pero todavía puedo elegir mi rumbo.»'],
+  };
+  const [boss, pet] = voices[zone.id] ?? ['«¡GRAAAH!»', '«¡No busco problemas!»'];
+  const response = won
+    ? move ? `«${move.name}, ¡abre una brecha! No queremos lastimarte.»` : pet
+    : move ? `«${move.name}, cúbreme mientras busco la salida.»` : `«No quiero pelear. Voy a rodearte.»`;
+  const action = won
+    ? `*${move ? `Con ${move.name}, ` : ''}${petName} evita una embestida y encuentra una abertura. ${zone.boss.name} retrocede, dejando libre el sendero.*`
+    : damage ? `*${zone.boss.name} embiste. ${petName} recibe ${damage} PV de daño, se zafa y se retira antes de que vuelva a atacar.*`
+      : `*${move ? `${petName} se protege con ${move.name} y ` : `${petName} `}esquiva la embestida y se retira sin recibir daño.*`;
+  return { boss, pet: response, action };
+}
 function sceneMood(pet: RpgPet): 'agotada' | 'hambrienta' | 'precavida' | 'herida' | 'animada' | 'curiosa' {
   if (pet.hp < pet.maxHp * 0.35) return 'herida';
   if (pet.energy < 35) return 'agotada';
@@ -854,7 +1095,9 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
   const memory = parseExpeditionMemory(JSON.stringify(pet.expeditionMemory)); const scenes = expeditionScenes[zone.id]!;
   const familiarVisits = memory.zoneVisits[zone.id] ?? 0; const targetEvents = 2 + randomInt(zone.danger >= 50 ? 3 : 4);
   const events: ExpeditionEvent[] = []; const memoryNotes: string[] = []; const foundItems: RpgItem[] = [];
+  let moveProgress = { ...pet.moveProgress }; const moveUseCounts: Record<string, number> = {};
   let coins = 0; let xpGenerated = pet.expeditionEffects.bonusXp; let totalMinutes = 12 + randomInt(24); let energySpent = 2 + randomInt(4);
+  let damageReceived = 0;
   let hungerSpent = 0; let hp = pet.hp; let energy = pet.energy; let hunger = pet.hunger; let affection = pet.affection;
   let failedChecks = 0; let riskyFailures = 0; let socialMoments = 0; let madeDiscovery = false; let earlyEnd = false;
   let boss: { name: string; won: boolean } | undefined; let bossItem: RpgItem | undefined; const newRecent: string[] = [];
@@ -867,7 +1110,20 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
     const knownDiscovery = Boolean(chosen.discovery && remembered(memory.discoveries, `${zone.id}:${chosen.discovery}`));
     const knownFriend = Boolean(chosen.friend && remembered(memory.knownFriends, `${zone.id}:${chosen.friend}`));
     const action = pick(chosen.choices[pet.specialization] ?? sceneChoices[pet.specialization]);
+    const sceneFocus = focusForExpedition(chosen.kind);
+    const expeditionMove = pet.equippedMoves.map(getRpgMove).filter((move): move is RpgMove => Boolean(move && energy - energySpent >= 1))
+      .sort((a, b) => {
+        const aLevel = getRpgMoveProgress({ ...pet, moveProgress }, a.id).level; const bLevel = getRpgMoveProgress({ ...pet, moveProgress }, b.id).level;
+        const aScore = (a.expeditionFocus === sceneFocus ? 8 : 0) + aLevel * 0.1 - (moveUseCounts[a.id] ?? 0) * 3;
+        const bScore = (b.expeditionFocus === sceneFocus ? 8 : 0) + bLevel * 0.1 - (moveUseCounts[b.id] ?? 0) * 3;
+        return bScore - aScore;
+      })[0];
+    const expeditionMoveProgress = expeditionMove ? getRpgMoveProgress({ ...pet, moveProgress }, expeditionMove.id) : undefined;
+    const moveFocusMatches = Boolean(expeditionMove && expeditionMove.expeditionFocus === sceneFocus);
+    const skillBonus = expeditionMove ? (moveFocusMatches ? 7 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 2) : 0;
+    if (expeditionMove) moveUseCounts[expeditionMove.id] = (moveUseCounts[expeditionMove.id] ?? 0) + 1;
     const openings = chosen.friend && knownFriend ? chosen.opening.slice(1) : chosen.opening.slice(0, chosen.opening.length > 1 ? 1 : undefined);
+    const transition = expeditionTransition(events.at(-1), pet.name);
     let opening = replacePetName(pick(openings.length ? openings : chosen.opening), pet.name);
     if (familiarVisits > 0 && index === 0 && randomInt(100) < 40) opening = `Esta ruta ya le resulta familiar a ${pet.name}. ${opening}`;
     if (knownHazard && chosen.hazard) opening = `Al reconocer ${chosen.hazard.replaceAll('-', ' ')}, ${pet.name} se prepara antes de acercarse. ${opening}`;
@@ -879,17 +1135,18 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
     const hungerPenalty = hunger < 35 ? 8 : hunger < 55 ? 4 : 0;
     const affectionBonus = affection >= 75 ? 3 : affection < 25 ? -5 : 0;
     const healthPenalty = hp < pet.maxHp * 0.3 ? 10 : hp < pet.maxHp * 0.55 ? 5 : 0;
-    const chance = Math.max(18, Math.min(92, 62 + (stat - 8) * 2 + pet.level * 1.2 + affinity + roleFit + moodBonus + affectionBonus + familiarityBonus
+    const chance = Math.max(18, Math.min(94, 62 + (stat - 8) * 2 + pet.level * 1.2 + affinity + roleFit + moodBonus + affectionBonus + familiarityBonus + skillBonus
       + (knownHazard ? 8 : 0) + pet.expeditionEffects.safety - chosen.difficulty * 11 - zone.danger * 0.28 - hungerPenalty - healthPenalty));
     let succeeded = randomInt(100) < chance; let eventCoins = 0; let eventXp = rollBetween(chosen.xp); let eventDamage = 0; let eventItem: RpgItem | undefined;
-    let eventTitle = chosen.title; let emoji = chosen.emoji; let resultLine = replacePetName(pick(succeeded ? chosen.success : chosen.setback), pet.name);
+    let eventTitle = chosen.title; let emoji = chosen.emoji; let resultLine = replacePetName(pick(succeeded ? chosen.success : chosen.setback), pet.name); let bossAppeared = false;
     if (chosen.kind === 'encuentro' && !boss && randomInt(100) < zone.boss.spawnChance) {
-      const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2
+      bossAppeared = true;
+      const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + Math.floor(skillBonus / 2)
         + (pet.specialization === 'Atacante' ? 5 : pet.specialization === 'Guardián' ? 3 : 0) + randomInt(12);
       succeeded = bossPower >= zone.boss.power + randomInt(12); boss = { name: zone.boss.name, won: succeeded }; emoji = zone.boss.emoji;
-      eventTitle = succeeded ? `Se cruzó con ${zone.boss.name}` : `Se apartó de ${zone.boss.name}`;
-      resultLine = succeeded ? `Tras un breve forcejeo, ${zone.boss.name} se retira y deja libre el paso.`
-        : `${zone.boss.name} cerró el paso. ${pet.name} eligió retirarse antes de que la situación empeorara.`;
+      eventTitle = `Encuentro con ${zone.boss.name}`;
+      resultLine = succeeded ? `Tras un breve forcejeo, ${zone.boss.name} retrocede y deja libre el paso.`
+        : `${zone.boss.name} cierra el paso y obliga a ${pet.name} a retirarse.`;
       if (succeeded) {
         eventCoins += Math.floor(rollBetween(zone.boss.reward) * RPG_COIN_REWARD_SCALE); eventXp += rollBetween(zone.boss.xp);
         if (randomInt(100) < zone.boss.dropChance) bossItem = pick(zone.boss.drops.map((id) => rpgItems.find((item) => item.id === id)!).filter(Boolean));
@@ -902,13 +1159,31 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
       const zoneBase = rollBetween(zone.reward);
       eventCoins += Math.max(1, Math.floor(zoneBase * RPG_COIN_REWARD_SCALE * (chosen.kind === 'social' ? 0.28 : 0.55)));
     }
-    const dropChance = Math.max(5, Math.min(78, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0)
+    const dropChance = Math.max(5, Math.min(82, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0)
+      + (succeeded && expeditionMove?.expeditionFocus === 'busqueda' ? 12 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 0)
       + rarityRank[pet.rarity] * 2 + (affection >= 75 ? 4 : affection < 25 ? -5 : 0) - (hunger < 35 ? 8 : 0) - (knownDiscovery ? 18 : 0)));
     if (succeeded && chosen.item && foundItems.length === 0 && randomInt(100) < dropChance) eventItem = rollExpeditionDrop(zone);
     if (eventItem) foundItems.push(eventItem);
     if (bossItem && foundItems.length < 2) foundItems.push(bossItem);
     if (succeeded && chosen.recover) hp = Math.min(pet.maxHp, hp + chosen.recover);
-    if (eventDamage > 0) hp = Math.max(1, hp - eventDamage);
+    const skillHealing = succeeded && expeditionMove && (expeditionMove.effect === 'heal' || expeditionMove.effect === 'drain')
+      ? Math.min(pet.maxHp - hp, 2 + Math.floor(getRpgMovePower({ ...pet, moveProgress }, expeditionMove) * 0.12) + (expeditionMoveProgress?.level ?? 1)) : 0;
+    if (skillHealing > 0) hp += skillHealing;
+    if (succeeded && expeditionMove?.expeditionFocus === 'recuperacion') energySpent = Math.max(0, energySpent - 1);
+    if (succeeded && expeditionMove?.expeditionFocus === 'vinculo') hungerSpent = Math.max(0, hungerSpent - 1);
+    if (succeeded && moveFocusMatches && eventCoins > 0 && expeditionMove?.expeditionFocus === 'busqueda') eventCoins = Math.ceil(eventCoins * 1.12);
+    let skillMitigation = 0;
+    if (!succeeded && eventDamage > 0 && expeditionMove) {
+      skillMitigation = expeditionMove.effect === 'guard' ? 4 + (expeditionMoveProgress?.level ?? 1) * 2
+        : expeditionMove.effect === 'weaken' ? 2 + (expeditionMoveProgress?.level ?? 1) : expeditionMove.expeditionFocus === 'proteccion' ? 2 : 0;
+      eventDamage = Math.max(0, eventDamage - skillMitigation);
+    }
+    let actualEventDamage = 0;
+    if (eventDamage > 0) {
+      actualEventDamage = Math.min(eventDamage, Math.max(0, hp - 1));
+      hp = Math.max(1, hp - eventDamage);
+      damageReceived += actualEventDamage;
+    }
     if (succeeded && (chosen.kind === 'social' || chosen.kind === 'serena' || chosen.kind === 'descanso')) affection = Math.min(100, affection + (chosen.kind === 'social' ? 2 : 1));
     else if (!succeeded && chosen.kind === 'riesgo') affection = Math.max(0, affection - 1);
     if (succeeded && chosen.discovery && !knownDiscovery) {
@@ -927,26 +1202,33 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
       const key = `${zone.id}:${chosen.hazard}`;
       if (!remembered(memory.knownHazards, key)) { memory.knownHazards.push(key); if (!succeeded) memoryNotes.push(`Aprendió a reconocer ${chosen.hazard.replaceAll('-', ' ')}.`); }
     }
-    const lineHasPetSubject = resultLine.startsWith(`${pet.name} `);
-    const lineWithoutPet = lineHasPetSubject ? resultLine.slice(pet.name.length + 1) : resultLine;
-    let detail = !resultLine.includes('—') && randomInt(100) < 35
-      ? `${opening} ${resultLine}`
-      : `${opening} ${pet.name} ${action}; ${lineWithoutPet.charAt(0).toLowerCase()}${lineWithoutPet.slice(1)}`;
-    if (chosen.item && succeeded && !eventItem && !boss) detail += ' El lugar deja una pista, aunque no aparece ningún objeto de aventura que pueda llevarse.';
+    const moveGrowth = expeditionMove ? gainRpgMoveXp({ ...pet, moveProgress }, expeditionMove.id, 8) : undefined;
+    if (moveGrowth) moveProgress = moveGrowth.pet.moveProgress;
+    const skillStory = expeditionMove ? expeditionSkillDialogue(pet.name, expeditionMove, chosen.kind, succeeded) : '';
+    const bossStory = bossAppeared && boss ? bossDialogue(zone, pet.name, boss.won, expeditionMove, actualEventDamage) : undefined;
+    let detail = bossAppeared
+      ? `${transition ? `*${transition}*\n\n` : ''}*Un estruendo corta el recorrido: ${zone.boss.emoji} **${zone.boss.name}** aparece y le cierra el paso.*\n\n**${zone.boss.emoji} ${zone.boss.name}:** ${bossStory!.boss}\n\n**🐾 ${pet.name}:** ${bossStory!.pet}\n\n${bossStory!.action}`
+      : `${transition ? `*${transition}*\n\n` : ''}*${opening}*\n\n*${pet.name} ${action}.*\n${resultLine}${skillStory ? `\n\n${skillStory}` : ''}`;
+    if (expeditionMove) detail += `\n\n✨ **Técnica equipada:** ${expeditionMove.name} · Nv. ${expeditionMoveProgress?.level ?? 1} · +8 XP.`;
+    if (skillHealing > 0) detail += `\n\n💚 **Recuperación:** ${pet.name} recupera **${skillHealing} PV** gracias a la técnica.`;
+    if (skillMitigation > 0) detail += `\n\n🛡️ **Protección:** ${expeditionMove?.name} reduce el contratiempo en ${skillMitigation} puntos.`;
+    if (moveGrowth?.levels) detail += `\n\n🎓 **Mejora:** ${expeditionMove!.name} alcanza el nivel ${moveGrowth.level}.`;
+    if (actualEventDamage > 0 && !bossAppeared) detail += `\n\n💥 **Contratiempo:** recibe **${actualEventDamage} PV de daño** antes de poder continuar.`;
+    if (chosen.item && succeeded && !eventItem && !bossAppeared) detail += '\n\n🔎 Revisa el lugar, pero no encuentra ningún objeto que pueda llevarse.';
     if (eventCoins) {
       coins += eventCoins;
-      if (chosen.coins && succeeded && chosen.coinDetail) detail += ` ${chosen.coinDetail}`;
-      else if (boss?.won) detail += ' Cuando el sendero queda libre, encuentra unas monedas entre las huellas.';
+      if (chosen.coins && succeeded && chosen.coinDetail) detail += `\n\n🪙 ${chosen.coinDetail} **(+${eventCoins.toLocaleString('es-MX')} monedas).**`;
+      else if (bossAppeared && boss?.won) detail += `\n\n🪙 Al revisar el sendero, encuentra **+${eventCoins.toLocaleString('es-MX')} monedas** entre las huellas.`;
     }
-    if (eventItem) detail += ' Entre las cosas del lugar, encuentra algo útil y lo guarda para el viaje.';
-    if (bossItem) detail += ' El encuentro deja un objeto aprovechable que no piensa soltar.';
-    if (chosen.friend && knownFriend && succeeded) detail += ' Se reconocen con una sonrisa; ya se habían encontrado antes.';
-    if (chosen.discovery && knownDiscovery && succeeded) detail += ' El lugar le resulta familiar por su visita anterior.';
-    events.push({ emoji, title: eventTitle, detail, kind: chosen.kind, success: succeeded, important: Boolean(chosen.friend || chosen.discovery || eventItem || boss || eventDamage) });
+    if (eventItem) detail += `\n\n🎒 Guarda ${eventItem.emoji} **${eventItem.name}** en la mochila.`;
+    if (bossItem) detail += `\n\n🎒 El encuentro deja ${bossItem.emoji} **${bossItem.name}**, que guarda para el viaje.`;
+    if (chosen.friend && knownFriend && succeeded) detail += '\n\nSe reconocen con una sonrisa: ya se habían encontrado antes.';
+    if (chosen.discovery && knownDiscovery && succeeded) detail += '\n\nEl lugar le resulta familiar por su visita anterior.';
+    events.push({ emoji, title: eventTitle, detail, kind: chosen.kind, success: succeeded, important: Boolean(chosen.friend || chosen.discovery || eventItem || bossAppeared || eventDamage) });
     newRecent.push(`${zone.id}:${chosen.id}`);
     const eventMinutes = rollBetween(chosen.duration); totalMinutes += eventMinutes;
     eventXp = Math.floor(eventXp * (pet.specialization === 'Místico' ? 1.12 : 1)); xpGenerated += eventXp;
-    energySpent += 2 + Math.floor(eventMinutes / 22); hungerSpent += Math.max(1, Math.floor(eventMinutes / 30));
+    energySpent += 2 + Math.floor(eventMinutes / 22) + (expeditionMove ? 1 : 0); hungerSpent += Math.max(1, Math.floor(eventMinutes / 30));
     if (eventDamage > 0 && !succeeded && hp <= Math.max(12, Math.floor(pet.maxHp * 0.2)) && index < targetEvents - 1 && randomInt(100) < 62) { earlyEnd = true; break; }
     if (energySpent >= energy && index < targetEvents - 1 && randomInt(100) < 48) { earlyEnd = true; break; }
     if (!succeeded && chosen.difficulty >= 2 && index < targetEvents - 1 && randomInt(100) < 13 + chosen.difficulty * 5) { earlyEnd = true; break; }
@@ -967,14 +1249,13 @@ function simulateExpedition(pet: RpgPet, zone: Zone, at: number): ExpeditionSimu
     lastZoneId: zone.id, lastOutcome: outcome, recentEvents: [...memory.recentEvents, ...newRecent].slice(-12),
     knownFriends: [...new Set(memory.knownFriends)].slice(-30), knownHazards: [...new Set(memory.knownHazards)].slice(-30), discoveries: [...new Set(memory.discoveries)].slice(-50) };
   if (familiarVisits > 0) memoryNotes.push(`Ya conoce ${zone.name}; esa experiencia le ayudó a orientarse.`);
-  const updated: RpgPet = { ...xpResult.pet, hp, energy, hunger, affection, needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
+  const updated: RpgPet = { ...xpResult.pet, hp, energy, hunger, affection, moveProgress, needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
     expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: updatedMemory };
-  const connectors = ['Un poco después', 'Al seguir el sendero', 'Más adelante', 'De camino', 'Poco a poco'];
-  const summary = events.map((event, index) => `${index ? `${pick(connectors)}. ` : ''}${event.detail}`).join(' ');
+  const summary = events.map((event) => event.detail).join('\n\n');
   const itemIds = foundItems.map((found) => found.id); const item = foundItems[0];
   const finalState = { hp: updated.hp, maxHp: updated.maxHp, energy: updated.energy, maxEnergy: updated.maxEnergy, hunger: updated.hunger, affection: updated.affection };
   const message = `${zone.emoji} ${pet.name} regresó de **${zone.name}** tras ${totalMinutes} min.${coins ? ` Recuperó ${coins} monedas.` : ''}${xpResult.gained ? ` Ganó ${xpResult.gained} XP.` : ''}${item ? ` Hallazgo: ${item.emoji} **${item.name}**.` : ''}${xpResult.levels ? ` ¡Subió ${xpResult.levels} nivel(es)!` : ''}`;
-  return { pet: updated, zone, coins, xp: xpResult.gained, damage, item, bossItem, ...(boss ? { boss } : {}), levelUps: xpResult.levels,
+  return { pet: updated, zone, coins, xp: xpResult.gained, damage, damageReceived, item, bossItem, ...(boss ? { boss } : {}), levelUps: xpResult.levels,
     events, summary, outcome, durationMinutes: totalMinutes, itemIds, memoryNotes: [...new Set(memoryNotes)].slice(0, 5), finalState, message };
 }
 
@@ -1002,7 +1283,8 @@ export async function exploreRpg(guildId: string, userId: string, zoneId: string
     await savePetMysql(connection, guildId, userId, result.pet, at);
     if (result.coins) await changeBalanceMysql(connection, guildId, userId, result.coins, 'rpg_explore', `${reference}:coins`, at);
     for (const itemId of result.itemIds) await connection.execute('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId]);
-    const payload = { v: 2, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage,
+    const payload = { v: 3, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage, damageReceived: result.damageReceived,
+      petName: result.pet.name, petSpecies: result.pet.species, boss: result.boss,
       itemIds: result.itemIds, memoryNotes: result.memoryNotes, finalState: result.finalState, events: result.events };
     await connection.execute('INSERT INTO rpg_expedition_logs (id,guild_id,user_id,zone_id,events_json,coins,xp,item_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
       [reference, guildId, userId, zone.id, JSON.stringify(payload), result.coins, result.xp, result.item?.id ?? null, at]);
@@ -1017,7 +1299,8 @@ export async function exploreRpg(guildId: string, userId: string, zoneId: string
     savePetSqlite(guildId, userId, result.pet, at);
     if (result.coins) changeBalanceSqlite(guildId, userId, result.coins, 'rpg_explore', `${reference}:coins`, at);
     for (const itemId of result.itemIds) db.prepare('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId);
-    const payload = { v: 2, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage,
+    const payload = { v: 3, summary: result.summary, outcome: result.outcome, durationMinutes: result.durationMinutes, damage: result.damage, damageReceived: result.damageReceived,
+      petName: result.pet.name, petSpecies: result.pet.species, boss: result.boss,
       itemIds: result.itemIds, memoryNotes: result.memoryNotes, finalState: result.finalState, events: result.events };
     db.prepare('INSERT INTO rpg_expedition_logs (id,guild_id,user_id,zone_id,events_json,coins,xp,item_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)')
       .run(reference, guildId, userId, zone.id, JSON.stringify(payload), result.coins, result.xp, result.item?.id ?? null, at);
@@ -1079,17 +1362,24 @@ function expeditionLogFromRow(row: RowDataPacket | undefined): ExpeditionLog | u
   const outcome = validOutcomes.includes(payload.outcome as ExpeditionOutcome) ? payload.outcome! : events.some((event) => event.title.includes('contratiempo') || event.title.includes('Jefe avistado')) ? 'peligrosa'
     : Number(row.coins) > 0 || itemId ? 'afortunada' : 'tranquila';
   const finalState = payload.finalState && typeof payload.finalState === 'object' ? payload.finalState : undefined;
+  const damageReceived = Number(payload.damageReceived);
+  const bossPayload = payload.boss && typeof payload.boss === 'object' ? payload.boss as { name?: unknown; won?: unknown } : undefined;
   return { id: String(row.id), zoneId: String(row.zoneId), zoneName: zone?.name ?? String(row.zoneId), events,
     summary: typeof payload.summary === 'string' ? payload.summary : legacySummary || 'La bitácora de esta salida conserva sus apuntes, aunque la narración antigua era breve.',
     outcome, durationMinutes: Number(payload.durationMinutes) || 0, coins: Number(row.coins), xp: Number(row.xp), damage: Number(payload.damage) || 0,
     itemId, itemIds: Array.isArray(payload.itemIds) ? payload.itemIds.filter((id): id is string => typeof id === 'string') : itemId ? [itemId] : [],
     memoryNotes: Array.isArray(payload.memoryNotes) ? payload.memoryNotes.filter((note): note is string => typeof note === 'string') : [],
-    ...(finalState ? { finalState } : {}), createdAt: Number(row.createdAt) };
+    ...(finalState ? { finalState } : {}),
+    ...(Number.isFinite(damageReceived) && damageReceived >= 0 ? { damageReceived } : {}),
+    ...(typeof payload.petName === 'string' ? { petName: payload.petName } : {}),
+    ...(typeof payload.petSpecies === 'string' ? { petSpecies: payload.petSpecies } : {}),
+    ...(bossPayload && typeof bossPayload.name === 'string' && typeof bossPayload.won === 'boolean' ? { boss: { name: bossPayload.name, won: bossPayload.won } } : {}),
+    createdAt: Number(row.createdAt) };
 }
 
-export async function battleRpg(guildId: string, userId: string, reference: string): Promise<
+export async function battleRpg(guildId: string, userId: string, reference: string, selectedMoveId?: string): Promise<
   | { ok: true; pet: RpgPet; won: boolean; enemy: string; coins: number; xp: number; damage: number; levelUps: number; message: string }
-  | { ok: false; reason: 'no_pet' | 'low_energy' | 'knocked_out' | 'cooldown'; secondsRemaining?: number }
+  | { ok: false; reason: 'no_pet' | 'low_energy' | 'knocked_out' | 'cooldown' | 'invalid_move'; secondsRemaining?: number }
 > {
   guildId = GLOBAL_SCOPE_ID;
   const enemies = [{ name: 'Slime de bosque', minLevel: 1, power: 8, reward: [20, 35] }, { name: 'Ladrón de ruinas', minLevel: 3, power: 17, reward: [40, 65] }, { name: 'Gólem de obsidiana', minLevel: 6, power: 28, reward: [75, 110] }];
@@ -1101,43 +1391,72 @@ export async function battleRpg(guildId: string, userId: string, reference: stri
     if (pet.energy < 10) return { ok: false as const, reason: 'low_energy' as const };
     const eligible = enemies.filter((candidate) => candidate.minLevel <= pet.level);
     const enemy = eligible[randomInt(eligible.length)]!;
-    const combatMoves = pet.equippedMoves.map(getRpgMove).filter((move): move is RpgMove => Boolean(move && ['damage', 'drain', 'weaken'].includes(move.effect) && move.energy <= pet.energy));
-    const chosenMove = combatMoves.sort((a, b) => (b.power * b.accuracy) - (a.power * a.accuracy))[0] ?? getRpgMove('quick_tackle')!;
-    const moveHit = randomInt(100) < chosenMove.accuracy;
+    const combatMoves = pet.equippedMoves.map(getRpgMove).filter((move): move is RpgMove => Boolean(move && move.energy <= pet.energy));
+    const selected = selectedMoveId ? getRpgMove(selectedMoveId) : undefined;
+    if (selectedMoveId && (!selected || !pet.equippedMoves.includes(selectedMoveId))) return { ok: false as const, reason: 'invalid_move' as const };
+    const chosenMove = selected ?? combatMoves.sort((a, b) => (getRpgMovePower(pet, b) * b.accuracy) - (getRpgMovePower(pet, a) * a.accuracy))[0] ?? getRpgMove('quick_tackle')!;
+    if (chosenMove.energy > pet.energy) return { ok: false as const, reason: 'low_energy' as const };
+    const moveProgress = getRpgMoveProgress(pet, chosenMove.id);
+    const movePower = getRpgMovePower(pet, chosenMove);
+    const moveHit = randomInt(100) < Math.min(100, chosenMove.accuracy + moveProgress.level - 1);
     const elementalBonus = chosenMove.element === pet.element && pet.specialization === 'Místico' ? 5 : 0;
     const conditionBonus = pet.affection >= 75 ? 3 : 0;
     const hungerPenalty = pet.hunger < 30 ? 5 : pet.hunger < 55 ? 2 : 0;
-    const power = pet.strength + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + chosenMove.power * 0.65 + elementalBonus + conditionBonus - hungerPenalty + randomInt(12) + (moveHit ? 0 : -chosenMove.power);
+    const effectBonus = chosenMove.effect === 'weaken' ? 5 : chosenMove.effect === 'guard' ? 3 : chosenMove.effect === 'heal' ? 2 : 0;
+    const power = pet.strength + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + movePower * 0.65 + elementalBonus + conditionBonus + effectBonus - hungerPenalty + randomInt(12) + (moveHit ? 0 : -movePower);
     const won = power >= enemy.power + randomInt(18);
-    const damage = won ? Math.max(1, enemy.power - Math.floor(pet.defense / 3) - randomInt(4)) : 12 + randomInt(18);
+    const rawDamage = won ? Math.max(1, enemy.power - Math.floor(pet.defense / 3) - randomInt(4)) : 12 + randomInt(18);
+    const guard = moveHit && chosenMove.effect === 'guard' ? Math.max(6, Math.floor(movePower * 0.6) + 6) : 0;
+    const weaken = moveHit && chosenMove.effect === 'weaken' ? 4 + Math.floor(movePower * 0.2) : 0;
+    const damage = Math.max(0, rawDamage - guard - weaken);
     let xp = won ? 35 + randomInt(26) : 15;
     const coins = won ? enemy.reward[0]! + randomInt(enemy.reward[1]! - enemy.reward[0]! + 1) : 0;
-    const level = applyXp(pet, xp, true, at); xp = level.gained; const healing = chosenMove.effect === 'drain' && moveHit ? Math.max(0, Math.floor(chosenMove.power * 0.15)) : 0;
-    const updated = { ...level.pet, hp: Math.min(level.pet.maxHp, Math.max(0, level.pet.hp - damage + healing)), energy: pet.energy - Math.max(10, chosenMove.energy),
+    const level = applyXp(pet, xp, true, at); xp = level.gained;
+    const healing = moveHit ? chosenMove.effect === 'heal' ? Math.max(0, Math.floor(movePower * 0.65)) : chosenMove.effect === 'drain' ? Math.max(0, Math.floor(movePower * 0.2)) : 0 : 0;
+    const moveGrowth = gainRpgMoveXp(level.pet, chosenMove.id, 16);
+    const updated = { ...moveGrowth.pet, hp: Math.min(level.pet.maxHp, Math.max(0, level.pet.hp - damage + healing)), energy: pet.energy - Math.max(10, chosenMove.energy),
       hunger: Math.max(0, pet.hunger - 7), affection: Math.min(100, pet.affection + (won ? 1 : 0)), needsUpdatedAt: at, lastBattleAt: at };
-    
     return { ok: true as const, pet: updated, won, enemy: enemy.name, coins, xp, damage, levelUps: level.levels,
-      message: `${won ? '🏆 Victoria' : '💫 Retirada'} contra **${enemy.name}**. ${updated.name} usó **${chosenMove.name}**${moveHit ? '' : ', pero falló'} y ganó **${xp} XP**; recibió **${damage} de daño**.${healing ? ` Recuperó ${healing} PV al absorber energía.` : ''}${coins ? ` Botín: **${coins} monedas**.` : ''}${level.levels ? ` ¡Subió ${level.levels} nivel(es) y obtuvo ${level.levels} punto(s) de aprendizaje!` : ''}${updated.hp === 0 ? ' Quedó debilitada; usa polvo de renacer.' : ''}` };
+      message: `${won ? '🏆 Victoria' : '💫 Retirada'} contra **${enemy.name}**. ${updated.name} usó **${chosenMove.name} (Nv. ${moveProgress.level})**${moveHit ? '' : ', pero falló'} y ganó **${xp} XP**; recibió **${damage} de daño**.${healing ? ` Recuperó ${healing} PV.` : ''}${guard || weaken ? ` Su técnica redujo ${guard + weaken} el daño recibido.` : ''}${moveGrowth.levels ? ` ¡${chosenMove.name} subió a nivel ${moveGrowth.level}!` : ''}${coins ? ` Botín: **${coins} monedas**.` : ''}${level.levels ? ` ¡Subió ${level.levels} nivel(es) y obtuvo ${level.levels} punto(s) de aprendizaje!` : ''}${updated.hp === 0 ? ' Quedó debilitada; usa polvo de renacer.' : ''}` };
   };
   if (economyPool) return withEconomyTransaction(async (connection) => { const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const result = resolve(pet); if (!result.ok) return result; await savePetMysql(connection, guildId, userId, result.pet, at); if (result.coins) await changeBalanceMysql(connection, guildId, userId, result.coins, 'rpg_battle', `${reference}:coins`, at); if (result.won) await updateQuestMysql(connection, guildId, userId, 'battle', at); return result; });
   const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const result = resolve(pet); if (!result.ok) return result; savePetSqlite(guildId, userId, result.pet, at); if (result.coins) changeBalanceSqlite(guildId, userId, result.coins, 'rpg_battle', `${reference}:coins`, at); if (result.won) updateQuestSqlite(guildId, userId, 'battle', at); return result; });
   return run.immediate();
 }
 
-export async function trainRpgPet(guildId: string, userId: string, stat: 'strength' | 'defense' | 'agility', reference: string): Promise<{ ok: true; pet: RpgPet; balance: number } | { ok: false; reason: 'no_pet' | 'low_energy' | 'low_hunger' | 'funds' | 'cooldown'; secondsRemaining?: number }> {
+export async function trainRpgPet(guildId: string, userId: string, stat: RpgTrainableStat, reference: string): Promise<
+  { ok: true; pet: RpgPet; balance: number; xpSpent: number }
+  | { ok: false; reason: 'no_pet' | 'low_energy' | 'low_hunger' | 'funds' | 'cooldown' | 'low_xp' | 'level_required' | 'stat_cap'; secondsRemaining?: number; requiredXp?: number; requiredLevel?: number; statCap?: number }
+> {
   guildId = GLOBAL_SCOPE_ID;
   const at = now();
-  const levelPet = (pet: RpgPet): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, energy: pet.energy - RPG_TRAIN_ENERGY_COST, hunger: Math.max(0, pet.hunger - RPG_TRAIN_HUNGER_COST), needsUpdatedAt: at, lastTrainAt: at });
+  const check = (pet: RpgPet) => {
+    const requirements = getRpgTrainingRequirements(pet, stat);
+    if (pet[stat] >= requirements.statCap) return { ok: false as const, reason: 'stat_cap' as const, statCap: requirements.statCap };
+    if (pet.level < requirements.requiredLevel) return { ok: false as const, reason: 'level_required' as const, requiredLevel: requirements.requiredLevel };
+    if (pet.xp < requirements.requiredXp) return { ok: false as const, reason: 'low_xp' as const, requiredXp: requirements.requiredXp };
+    if (pet.energy < RPG_TRAIN_ENERGY_COST) return { ok: false as const, reason: 'low_energy' as const };
+    if (pet.hunger < RPG_TRAIN_MIN_HUNGER) return { ok: false as const, reason: 'low_hunger' as const };
+    return { ok: true as const, requirements };
+  };
+  const levelPet = (pet: RpgPet, xpCost: number): RpgPet => ({ ...pet, [stat]: pet[stat] + 1, xp: pet.xp - xpCost,
+    energy: pet.energy - RPG_TRAIN_ENERGY_COST, hunger: Math.max(0, pet.hunger - RPG_TRAIN_HUNGER_COST), needsUpdatedAt: at, lastTrainAt: at });
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const pet = await mysqlPet(connection, guildId, userId, true); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
     const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
-    if (pet.energy < RPG_TRAIN_ENERGY_COST) return { ok: false as const, reason: 'low_energy' as const };
-    if (pet.hunger < RPG_TRAIN_MIN_HUNGER) return { ok: false as const, reason: 'low_hunger' as const };
+    const requirement = check(pet); if (!requirement.ok) return requirement;
     const payment = await changeBalanceMysql(connection, guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const };
-    const updated = levelPet(pet); await savePetMysql(connection, guildId, userId, updated, at); await updateQuestMysql(connection, guildId, userId, 'train', at);
-    return { ok: true as const, pet: updated, balance: payment.balance };
+    const updated = levelPet(pet, requirement.requirements.requiredXp); await savePetMysql(connection, guildId, userId, updated, at); await updateQuestMysql(connection, guildId, userId, 'train', at);
+    return { ok: true as const, pet: updated, balance: payment.balance, xpSpent: requirement.requirements.requiredXp };
   });
-  const run = db.transaction(() => { const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const }; const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining }; if (pet.energy < RPG_TRAIN_ENERGY_COST) return { ok: false as const, reason: 'low_energy' as const }; if (pet.hunger < RPG_TRAIN_MIN_HUNGER) return { ok: false as const, reason: 'low_hunger' as const }; const payment = changeBalanceSqlite(guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const }; const updated = levelPet(pet); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at); return { ok: true as const, pet: updated, balance: payment.balance }; });
+  const run = db.transaction(() => {
+    const pet = sqlitePet(guildId, userId); if (!pet) return { ok: false as const, reason: 'no_pet' as const };
+    const remaining = (pet.lastTrainAt ?? 0) + RPG_TRAIN_COOLDOWN - at; if (remaining > 0) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: remaining };
+    const requirement = check(pet); if (!requirement.ok) return requirement;
+    const payment = changeBalanceSqlite(guildId, userId, -RPG_TRAIN_COIN_COST, 'rpg_training', reference, at); if (!payment.ok) return { ok: false as const, reason: 'funds' as const };
+    const updated = levelPet(pet, requirement.requirements.requiredXp); savePetSqlite(guildId, userId, updated, at); updateQuestSqlite(guildId, userId, 'train', at);
+    return { ok: true as const, pet: updated, balance: payment.balance, xpSpent: requirement.requirements.requiredXp };
+  });
   return run.immediate();
 }
 
@@ -1309,7 +1628,7 @@ export async function getRpgLeaderboard(guildId: string): Promise<Array<{ userId
 
 export type RpgPvpStatus = 'pending' | 'active' | 'finished' | 'declined' | 'expired';
 export type RpgPvpAction = 'attack' | 'guard' | 'special' | 'surrender' | 'move';
-export type RpgPvpFighter = { userId: string; username: string; petName: string; species: string; rarity: PetRarity; element: string; specialization: PetSpecialization; level: number; strength: number; defense: number; agility: number; hp: number; maxHp: number; energy: number; maxEnergy: number; equippedMoves: string[]; guarding: boolean; weakened: boolean; specialUsed: boolean };
+export type RpgPvpFighter = { userId: string; username: string; petName: string; species: string; rarity: PetRarity; element: string; specialization: PetSpecialization; level: number; strength: number; defense: number; agility: number; hp: number; maxHp: number; energy: number; maxEnergy: number; equippedMoves: string[]; moveProgress: Record<string, { level: number; xp: number }>; guarding: boolean; weakened: boolean; specialUsed: boolean };
 export type RpgPvpMatch = { id: string; guildId: string; challengerId: string; defenderId: string; status: RpgPvpStatus; turnUserId: string | null; winnerId: string | null; fighters: [RpgPvpFighter, RpgPvpFighter]; round: number; log: string[]; createdAt: number; updatedAt: number; expiresAt: number };
 type PvpMatchRow = RowDataPacket & { id: string; guildId: string; challengerId: string; defenderId: string; status: RpgPvpStatus; state: string; winnerId: string | null; createdAt: number; updatedAt: number; expiresAt: number };
 const PVP_CHALLENGE_TTL = 5 * 60;
@@ -1318,7 +1637,7 @@ const PVP_MATCH_TTL = 24 * 60 * 60;
 function fighterFromPet(userId: string, username: string, pet: RpgPet): RpgPvpFighter {
   const safeName = pet.name.replace(/@/g, '@\u200b').replace(/([\\_*~`|>])/g, '\\$1');
   return { userId, username, petName: safeName, species: pet.species, rarity: pet.rarity, element: pet.element, specialization: pet.specialization, level: pet.level,
-    strength: pet.strength, defense: pet.defense, agility: pet.agility, hp: pet.maxHp, maxHp: pet.maxHp, energy: pet.energy, maxEnergy: pet.maxEnergy, equippedMoves: pet.equippedMoves, guarding: false, weakened: false, specialUsed: false };
+    strength: pet.strength, defense: pet.defense, agility: pet.agility, hp: pet.maxHp, maxHp: pet.maxHp, energy: pet.energy, maxEnergy: pet.maxEnergy, equippedMoves: pet.equippedMoves, moveProgress: pet.moveProgress, guarding: false, weakened: false, specialUsed: false };
 }
 function pvpState(match: RpgPvpMatch) { return JSON.stringify({ turnUserId: match.turnUserId, fighters: match.fighters, round: match.round, log: match.log }); }
 function pvpMatchFromRow(row: PvpMatchRow | undefined): RpgPvpMatch | undefined {
@@ -1326,7 +1645,7 @@ function pvpMatchFromRow(row: PvpMatchRow | undefined): RpgPvpMatch | undefined 
   try {
     const state = JSON.parse(row.state) as Pick<RpgPvpMatch, 'turnUserId' | 'fighters' | 'round' | 'log'>;
     if (!Array.isArray(state.fighters) || state.fighters.length !== 2) return undefined;
-    const fighters = state.fighters.map((fighter) => ({ ...fighter, energy: Number(fighter.energy ?? 100), maxEnergy: Number(fighter.maxEnergy ?? 100), equippedMoves: Array.isArray(fighter.equippedMoves) ? fighter.equippedMoves : ['quick_tackle'], weakened: Boolean(fighter.weakened) })) as [RpgPvpFighter, RpgPvpFighter];
+    const fighters = state.fighters.map((fighter) => ({ ...fighter, energy: Number(fighter.energy ?? 100), maxEnergy: Number(fighter.maxEnergy ?? 100), equippedMoves: Array.isArray(fighter.equippedMoves) ? fighter.equippedMoves : ['quick_tackle'], moveProgress: fighter.moveProgress && typeof fighter.moveProgress === 'object' ? fighter.moveProgress : {}, weakened: Boolean(fighter.weakened) })) as [RpgPvpFighter, RpgPvpFighter];
     return { id: String(row.id), guildId: String(row.guildId), challengerId: String(row.challengerId), defenderId: String(row.defenderId), status: row.status,
       turnUserId: state.turnUserId, winnerId: row.winnerId == null ? null : String(row.winnerId), fighters, round: Number(state.round), log: state.log,
       createdAt: Number(row.createdAt), updatedAt: Number(row.updatedAt), expiresAt: Number(row.expiresAt) };
@@ -1460,6 +1779,10 @@ export async function playRpgPvpTurn(guildId: string, matchId: string, userId: s
     const chosenMove = action === 'move' ? getRpgMove(moveId ?? '') : undefined;
     if (action === 'move' && (!chosenMove || !actor.equippedMoves.includes(chosenMove.id))) return { ok: false as const, reason: 'move_not_equipped' as const };
     if (chosenMove && actor.energy < chosenMove.energy) return { ok: false as const, reason: 'low_energy' as const };
+    const moveLevel = chosenMove ? getRpgMoveLevel(actor.moveProgress, chosenMove.id) : 1;
+    const movePower = chosenMove ? chosenMove.power + Math.max(0, moveLevel - 1) * 2 : 0;
+    const moveGrowth = chosenMove ? advanceMoveProgress(actor.moveProgress ?? {}, chosenMove.id, 16) : undefined;
+    if (moveGrowth) actor.moveProgress = moveGrowth.progressMap;
     let line: string;
     if (action === 'guard') {
       actor.guarding = true;
@@ -1472,23 +1795,23 @@ export async function playRpgPvpTurn(guildId: string, matchId: string, userId: s
       line = `💚 ${actor.petName} usa su técnica de apoyo: recupera ${restored} PV y prepara una guardia.`;
     } else if (chosenMove?.effect === 'heal') {
       actor.energy -= chosenMove.energy;
-      const restored = Math.min(actor.maxHp - actor.hp, chosenMove.power + (actor.specialization === 'Apoyo' ? 8 : 0));
+      const restored = Math.min(actor.maxHp - actor.hp, movePower + (actor.specialization === 'Apoyo' ? 8 : 0));
       actor.hp += restored;
-      line = `💚 ${actor.petName} usa **${chosenMove.name}** y recupera ${restored} PV (${chosenMove.energy} energía).`;
+      line = `💚 ${actor.petName} usa **${chosenMove.name} (Nv. ${moveLevel})** y recupera ${restored} PV (${chosenMove.energy} energía).`;
     } else if (chosenMove?.effect === 'guard') {
       actor.energy -= chosenMove.energy;
       actor.guarding = true;
-      line = `🛡️ ${actor.petName} usa **${chosenMove.name}** y prepara una guardia reforzada (${chosenMove.energy} energía).`;
+      line = `🛡️ ${actor.petName} usa **${chosenMove.name} (Nv. ${moveLevel})** y prepara una guardia reforzada (${chosenMove.energy} energía).`;
     } else {
       const special = action === 'special';
       if (special) actor.specialUsed = true;
       if (chosenMove) actor.energy -= chosenMove.energy;
-      const moveAccuracy = chosenMove ? Math.min(100, chosenMove.accuracy + (actor.specialization === 'Explorador' ? 5 : 0)) : 100;
+      const moveAccuracy = chosenMove ? Math.min(100, chosenMove.accuracy + moveLevel - 1 + (actor.specialization === 'Explorador' ? 5 : 0)) : 100;
       if (randomInt(100) >= moveAccuracy) {
         line = `💨 ${actor.petName} intenta **${chosenMove?.name ?? (special ? 'su técnica especial' : 'Placaje')}**, pero ${target.petName} esquiva el ataque.`;
         target.weakened = false;
       } else {
-      let raw = chosenMove ? chosenMove.power + Math.floor(actor.strength * 0.52) : actor.strength + 3 + randomInt(8) + (special ? Math.floor(actor.strength * (actor.specialization === 'Atacante' ? 0.85 : 0.45)) : 0);
+      let raw = chosenMove ? movePower + Math.floor(actor.strength * 0.52) : actor.strength + 3 + randomInt(8) + (special ? Math.floor(actor.strength * (actor.specialization === 'Atacante' ? 0.85 : 0.45)) : 0);
       if (actor.specialization === 'Atacante') raw = Math.floor(raw * 1.08);
       if (chosenMove && chosenMove.element === actor.element && chosenMove.element !== 'Neutral' && actor.specialization === 'Místico') raw = Math.floor(raw * 1.15);
       const strongAgainst: Record<string, string[]> = { Fuego: ['Naturaleza', 'Hielo'], Agua: ['Fuego', 'Tierra'], Naturaleza: ['Agua', 'Tierra'], Viento: ['Naturaleza'], Hielo: ['Viento'], Luz: ['Sombra'], Sombra: ['Luz', 'Astral'], Tierra: ['Rayo', 'Fuego'], Rayo: ['Agua', 'Viento'], Astral: ['Sombra'] };
@@ -1507,28 +1830,51 @@ export async function playRpgPvpTurn(guildId: string, matchId: string, userId: s
       if ((special && actor.specialization === 'Guardián') || chosenMove?.specialization === 'Guardián') actor.guarding = true;
       const skill = chosenMove ? ` usa **${chosenMove.name}** contra` : special ? ` activa su técnica contra` : ' ataca a';
       const effectiveness = multiplier > 1 ? ' · ¡es muy eficaz!' : multiplier < 1 ? ' · no es muy eficaz.' : '';
-      line = `${critical ? '💥' : '⚔️'} ${actor.petName}${skill} ${target.petName} y causa **${damage} de daño**${critical ? ' crítico' : ''}${effectiveness}.${chosenMove?.effect === 'drain' ? ' Absorbe parte del daño.' : ''}${chosenMove?.effect === 'weaken' ? ' Debilita su siguiente ataque.' : ''}${actor.guarding ? ' Queda protegido.' : ''}`;
+      line = `${critical ? '💥' : '⚔️'} ${actor.petName}${skill} ${target.petName} y causa **${damage} de daño**${critical ? ' crítico' : ''}${effectiveness}.${chosenMove ? ` ${chosenMove.name} (Nv. ${moveLevel}) gana experiencia.` : ''}${chosenMove?.effect === 'drain' ? ' Absorbe parte del daño.' : ''}${chosenMove?.effect === 'weaken' ? ' Debilita su siguiente ataque.' : ''}${actor.guarding ? ' Queda protegido.' : ''}`;
       }
     }
+    if (moveGrowth?.levels) line += ` ✨ ¡${chosenMove!.name} subió al nivel ${moveGrowth.level}!`;
     match.log = [...match.log, line].slice(-12);
     match.updatedAt = at; match.expiresAt = at + PVP_MATCH_TTL;
     if (target.hp <= 0) {
       pvpFinish(match, actor.userId, 'finished', at, `🏆 ${actor.petName} vence el duelo amistoso.`);
-      return { ok: true as const, match, finished: true };
+      return { ok: true as const, match, finished: true, moveUsed: chosenMove?.id ?? null };
     }
     match.turnUserId = target.userId;
     if (target.userId === match.challengerId) match.round++;
-    return { ok: true as const, match, finished: false };
+    return { ok: true as const, match, finished: false, moveUsed: chosenMove?.id ?? null };
   };
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const match = await pvpSelectMysql(connection, matchId, true); const result = resolve(match);
-    if (match && result.ok) await pvpSaveMysql(connection, match);
+    if (match && result.ok) {
+      if (result.moveUsed) {
+        const actor = result.match.fighters.find((fighter) => fighter.userId === userId);
+        const pet = actor ? await mysqlPet(connection, guildId, userId, true) : undefined;
+        if (actor && pet) {
+          const trained = gainRpgMoveXp(pet, result.moveUsed, 16);
+          actor.moveProgress = trained.pet.moveProgress;
+          if (JSON.stringify(pet.moveProgress) !== JSON.stringify(trained.pet.moveProgress)) await connection.execute('UPDATE rpg_pets SET known_moves_json=? WHERE guild_id=? AND user_id=?', [serializeKnownMoveData(trained.pet), guildId, userId]);
+        }
+      }
+      await pvpSaveMysql(connection, match);
+    }
     else if (match && result.reason === 'expired') await pvpSaveMysql(connection, match);
     return result.ok ? { ok: true as const, match: result.match } : result.reason === 'expired' ? result : { ok: false as const, reason: result.reason };
   });
   const run = db.transaction(() => {
     const match = pvpSelectSqlite(matchId); const result = resolve(match);
-    if (match && result.ok) pvpSaveSqlite(match);
+    if (match && result.ok) {
+      if (result.moveUsed) {
+        const actor = result.match.fighters.find((fighter) => fighter.userId === userId);
+        const pet = actor ? sqlitePet(guildId, userId) : undefined;
+        if (actor && pet) {
+          const trained = gainRpgMoveXp(pet, result.moveUsed, 16);
+          actor.moveProgress = trained.pet.moveProgress;
+          if (JSON.stringify(pet.moveProgress) !== JSON.stringify(trained.pet.moveProgress)) db.prepare('UPDATE rpg_pets SET known_moves_json=? WHERE guild_id=? AND user_id=?').run(serializeKnownMoveData(trained.pet), guildId, userId);
+        }
+      }
+      pvpSaveSqlite(match);
+    }
     else if (match && result.reason === 'expired') pvpSaveSqlite(match);
     return result.ok ? { ok: true as const, match: result.match } : result.reason === 'expired' ? result : { ok: false as const, reason: result.reason };
   });
