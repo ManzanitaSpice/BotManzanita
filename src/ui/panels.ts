@@ -861,59 +861,98 @@ function signedAmount(value: number): string {
   return value > 0 ? `+${formatted}` : value < 0 ? `−${formatted}` : formatted;
 }
 
+function signedPoints(value: number): string {
+  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)} pb`;
+}
+
 function bankInterestChart(dashboard: BankInterestDashboard): Buffer {
-  const width = 1080; const height = 500;
+  const width = 1080; const height = 520;
   const canvas = createCanvas(width, height); const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#101827'; ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 24px Arial, sans-serif'; ctx.fillText('Curva de rendimiento anual · observaciones guardadas', 34, 42);
+  const observations = dashboard.history;
+  const latest = observations.at(-1)!;
+  const oneObservation = observations.length === 1;
+  ctx.fillStyle = '#8fb7e8'; ctx.font = 'bold 13px Arial, sans-serif';
+  ctx.fillText('BANCO · TASAS ANUALES', 36, 34);
+  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 25px Arial, sans-serif';
+  ctx.fillText('Rendimiento anual comparado', 36, 65);
   ctx.fillStyle = '#aab7c8'; ctx.font = '15px Arial, sans-serif';
-  ctx.fillText('TEA nominal · rendimiento real Fisher · inflación mundial de referencia', 34, 68);
+  ctx.fillText('Porcentaje anual · cada punto corresponde a un corte diario guardado', 36, 91);
+  ctx.textAlign = 'right'; ctx.fillStyle = oneObservation ? '#f4c979' : '#b8c6d8'; ctx.font = 'bold 13px Arial, sans-serif';
+  ctx.fillText(oneObservation ? '1 CORTE GUARDADO' : `${observations.length} CORTES RECIENTES`, width - 36, 38);
 
-  const left = 96; const right = 36; const top = 106; const bottom = 74;
-  const plotWidth = width - left - right; const plotHeight = height - top - bottom;
-  const maxObserved = Math.max(BANK_MACRO_INFLATION_BPS, ...dashboard.history.flatMap((point) => [point.effectiveAnnualBps, point.realYieldBps]));
-  const maxBps = Math.max(800, Math.ceil(maxObserved / 200) * 200 + 200);
+  const left = 100; const right = 190; const top = 124; const bottom = 94;
+  const plotRight = width - right; const plotBottom = height - bottom;
+  const plotWidth = plotRight - left; const plotHeight = plotBottom - top;
+  const maxObserved = Math.max(BANK_MACRO_INFLATION_BPS, ...observations.flatMap((point) => [point.effectiveAnnualBps, point.realYieldBps]));
+  const maxBps = Math.max(800, Math.ceil(maxObserved / 250) * 250);
   const yFor = (bps: number) => top + plotHeight - (bps / maxBps) * plotHeight;
-  const xFor = (index: number) => dashboard.history.length <= 1 ? left + plotWidth / 2 : left + (index / (dashboard.history.length - 1)) * plotWidth;
+  const xFor = (index: number) => oneObservation ? left + plotWidth * 0.54 : left + (index / (observations.length - 1)) * plotWidth;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2638'; ctx.fillRect(left, top, plotWidth, plotHeight);
   ctx.strokeStyle = '#2b3a4d'; ctx.lineWidth = 1; ctx.fillStyle = '#b8c6d8'; ctx.font = '13px Arial, sans-serif'; ctx.textAlign = 'right';
   for (let step = 0; step <= 4; step++) {
     const value = maxBps * step / 4; const y = yFor(value);
     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(width - right, y); ctx.stroke();
-    ctx.fillText(ratePercent(value, 1), left - 12, y + 4);
+    ctx.fillText(ratePercent(value, Number.isInteger(value / 100) ? 0 : 1), left - 12, y + 4);
   }
   ctx.textAlign = 'center';
-  const ticks = dashboard.history.length <= 1 ? [0] : [...new Set([0, Math.floor((dashboard.history.length - 1) / 2), dashboard.history.length - 1])];
+  const ticks = oneObservation ? [0] : [...new Set([0, Math.floor((observations.length - 1) / 2), observations.length - 1])];
   for (const index of ticks) {
-    const point = dashboard.history[index]!;
-    ctx.fillText(new Date(point.observedAt * 1000).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }), xFor(index), height - 34);
+    const point = observations[index]!;
+    ctx.fillStyle = '#c1cddd';
+    ctx.fillText(new Date(point.observedAt * 1000).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }), xFor(index), plotBottom + 25);
   }
-  ctx.textAlign = 'left';
 
-  const drawSeries = (values: number[], color: string, dashed = false) => {
+  const series = [
+    { key: 'effectiveAnnualBps' as const, name: 'TEA nominal', shortName: 'TEA', color: '#62c8ff', dashed: false },
+    { key: 'realYieldBps' as const, name: 'Real Fisher', shortName: 'Real', color: '#66dfa0', dashed: false },
+    { key: 'inflationReferenceBps' as const, name: 'Inflación de referencia', shortName: 'Inflación', color: '#f3bd62', dashed: true },
+  ];
+  const drawSeries = (values: number[], color: string, dashed: boolean) => {
     if (!values.length) return;
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3; ctx.setLineDash(dashed ? [8, 7] : []);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = dashed ? 2.5 : 3.5; ctx.lineCap = 'round'; ctx.setLineDash(dashed ? [9, 8] : []);
     ctx.beginPath();
-    if (dashed && values.length === 1) { ctx.moveTo(left, yFor(values[0]!)); ctx.lineTo(width - right, yFor(values[0]!)); }
+    if (dashed && oneObservation) { ctx.moveTo(left, yFor(values[0]!)); ctx.lineTo(plotRight, yFor(values[0]!)); }
     else values.forEach((value, index) => { const x = xFor(index); const y = yFor(value); if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
     ctx.stroke(); ctx.setLineDash([]);
-    values.forEach((value, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(value), 4, 0, Math.PI * 2); ctx.fill(); });
+    values.forEach((value, index) => {
+      ctx.beginPath(); ctx.arc(xFor(index), yFor(value), oneObservation ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = '#101827'; ctx.lineWidth = 2; ctx.stroke();
+    });
   };
-  drawSeries(dashboard.history.map((point) => point.effectiveAnnualBps), '#62c8ff');
-  drawSeries(dashboard.history.map((point) => point.realYieldBps), '#66dfa0');
-  drawSeries(dashboard.history.map((point) => point.inflationReferenceBps), '#f3bd62', true);
+  for (const item of series) drawSeries(observations.map((point) => point[item.key]), item.color, item.dashed);
 
-  const legend = [
-    { label: 'TEA nominal', color: '#62c8ff' }, { label: 'Real Fisher', color: '#66dfa0' }, { label: `Inflación global ${ratePercent(BANK_MACRO_INFLATION_BPS)}`, color: '#f3bd62' },
-  ];
-  let legendX = left; const legendY = height - 12;
-  ctx.font = '14px Arial, sans-serif';
-  for (const entry of legend) {
-    ctx.fillStyle = entry.color; ctx.fillRect(legendX, legendY - 12, 20, 3);
-    ctx.fillStyle = '#d5deea'; ctx.fillText(entry.label, legendX + 27, legendY - 8);
-    legendX += ctx.measureText(entry.label).width + 65;
+  const labelColumnX = oneObservation ? xFor(0) + 18 : plotRight + 20;
+  const latestLabels = series.map((item) => ({ ...item, value: latest[item.key], targetY: yFor(latest[item.key]) }))
+    .sort((a, b) => a.targetY - b.targetY);
+  const labelYs = latestLabels.map((item) => item.targetY);
+  const minLabelSpacing = 25;
+  for (let index = 1; index < labelYs.length; index++) labelYs[index] = Math.max(labelYs[index]!, labelYs[index - 1]! + minLabelSpacing);
+  const lastLabelY = labelYs.at(-1) ?? plotBottom;
+  if (lastLabelY > plotBottom - 8) {
+    const shift = lastLabelY - (plotBottom - 8);
+    for (let index = 0; index < labelYs.length; index++) labelYs[index] = labelYs[index]! - shift;
   }
-  ctx.fillStyle = '#8292a8'; ctx.font = '12px Arial, sans-serif'; ctx.textAlign = 'right';
-  ctx.fillText(`${dashboard.history.length} observación(es)`, width - right, 90);
+  latestLabels.forEach((item, index) => {
+    const y = labelYs[index]!;
+    if (!oneObservation) {
+      ctx.strokeStyle = item.color; ctx.globalAlpha = 0.7; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(plotRight + 3, item.targetY); ctx.lineTo(labelColumnX - 8, y); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.fillStyle = item.color; ctx.fillText(`${item.shortName}  ${ratePercent(item.value)}`, labelColumnX, y);
+  });
+  ctx.textBaseline = 'alphabetic';
+
+  let legendX = left; const legendY = height - 17;
+  ctx.font = '14px Arial, sans-serif';
+  for (const item of series) {
+    ctx.strokeStyle = item.color; ctx.lineWidth = 3; ctx.setLineDash(item.dashed ? [6, 5] : []);
+    ctx.beginPath(); ctx.moveTo(legendX, legendY - 5); ctx.lineTo(legendX + 22, legendY - 5); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#d5deea'; ctx.textAlign = 'left'; ctx.fillText(item.name, legendX + 30, legendY);
+    legendX += ctx.measureText(item.name).width + 83;
+  }
   return canvas.toBuffer('image/png');
 }
 
@@ -928,41 +967,43 @@ export async function bankInterestPanel(guildId: string, userId: string) {
   const thirtyDayGain = bankBalance * (Math.pow(1 + periodicRate, 144) - 1);
   const annualGain = bankBalance * (Math.pow(1 + periodicRate, 1_752) - 1);
   const savingsShare = current.moneySupply > 0 ? current.savings / current.moneySupply * 100 : 0;
-  const jobLines = current.jobs.filter((job) => job.workers || job.shifts30d || job.payroll30d).slice(0, 5).map((job) =>
-    `› **${job.name}** · ${job.workers} plaza(s) activa(s) · ${money.format(job.shifts30d)} turnos · ${money.format(job.payroll30d)} monedas de nómina`);
+  const jobLines = current.jobs.filter((job) => job.workers || job.shifts30d || job.payroll30d).slice(0, 4).map((job) =>
+    `• **${job.name}** · ${job.workers} activo(s) · ${money.format(job.shifts30d)} turnos · ${money.format(job.payroll30d)} monedas`);
   const coverage = history.length > 1
-    ? `<t:${history[0]!.observedAt}:d>–<t:${current.observedAt}:d> · ${history.length} cortes diarios`
-    : `Primera observación guardada: <t:${current.observedAt}:f>. La curva crecerá con cada corte diario.`;
+    ? `Serie: <t:${history[0]!.observedAt}:d>–<t:${current.observedAt}:d> · ${history.length} cortes diarios`
+    : `Primer corte · <t:${current.observedAt}:f> · la tendencia aparecerá con próximos reajustes`;
   const compared = previous
-    ? `**Variación desde el corte anterior:** TEA ${signedAmount(current.effectiveAnnualBps - previous.effectiveAnnualBps)} pb · emisión neta ${signedAmount(current.netIssuance30d - previous.netIssuance30d)} monedas · gasto en compras ${signedAmount(current.purchaseVolume30d - previous.purchaseVolume30d)} monedas.`
-    : '**Comparación histórica:** todavía no existe un corte anterior; no se inventan datos previos al sistema.';
+    ? `Desde el corte anterior: TEA ${signedPoints(current.effectiveAnnualBps - previous.effectiveAnnualBps)} · emisión neta a 30 días ${signedAmount(current.netIssuance30d - previous.netIssuance30d)} monedas · compras a 30 días ${signedAmount(current.purchaseVolume30d - previous.purchaseVolume30d)} monedas.`
+    : 'Es el primer corte. La comparación aparecerá después del próximo reajuste diario.';
   const pressure = [
-    `Emisión neta **${current.issuancePressureBps >= 0 ? '+' : ''}${current.issuancePressureBps} pb**`,
-    `compras **+${current.purchasesPressureBps} pb**`,
-    `ahorro **${current.savingsPressureBps >= 0 ? '+' : ''}${current.savingsPressureBps} pb**`,
-    `liquidez **${current.liquidityPressureBps >= 0 ? '+' : ''}${current.liquidityPressureBps} pb**`,
-    `empleo **${current.laborPressureBps >= 0 ? '+' : ''}${current.laborPressureBps} pb**`,
-  ].join(' · ');
+    `🪙 Emisión **${signedPoints(current.issuancePressureBps)}**`,
+    `🛒 Compras **${signedPoints(current.purchasesPressureBps)}**`,
+    `🏦 Ahorro **${signedPoints(current.savingsPressureBps)}**`,
+    `💧 Liquidez **${signedPoints(current.liquidityPressureBps)}**`,
+    `👷 Empleo **${signedPoints(current.laborPressureBps)}**`,
+  ].join('　·　');
+  const macroLine = `FMI WEO 2026: inflación mundial **${ratePercent(BANK_MACRO_INFLATION_BPS)}** y crecimiento real **${ratePercent(BANK_MACRO_GROWTH_BPS)}** ([fuente](https://www.imf.org/en/Publications/WEO/Issues/2026/10/13/world-economic-outlook-october-2026)). El rendimiento real Fisher se calcula como (1 + TEA) / (1 + inflación) − 1. La actividad del bot es una señal de demanda monetaria, no un IPC.`;
   const container = new ContainerBuilder().setAccentColor(0x38bdf8)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📊 MERCADO E INTERÉS DEL BANCO\nSerie: ${coverage}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📊 MERCADO E INTERÉS DEL BANCO\n${coverage}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## Modelo de tasa real\nRendimiento real base del juego **${ratePercent(BANK_BASE_REAL_YIELD_BPS)}**, combinado por Fisher con inflación global de referencia **${ratePercent(BANK_MACRO_INFLATION_BPS)}**. La actividad del servidor modifica un objetivo real de **${ratePercent(BANK_REAL_YIELD_FLOOR_BPS)}–${ratePercent(BANK_REAL_YIELD_CEILING_BPS)}**: emisión neta, compras, proporción ahorrada, retiros frente a depósitos, nómina y mezcla/actividad de oficios. El crecimiento mundial sirve como contexto macroeconómico; no se equipara directamente al retorno bancario. El ajuste se suaviza a **±0.50 puntos** por día; el saldo solo recibe interés positivo.`))
+      `## Tasas del último corte\n**APR nominal ${ratePercent(current.nominalAprBps)}**　·　**TEA ${ratePercent(current.effectiveAnnualBps)}**　·　**Real Fisher ${ratePercent(current.realYieldBps)}**\nObjetivo real **${ratePercent(current.targetRealBps)}** · corte <t:${current.observedAt}:R>`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL('attachment://bank-interest-chart.png').setDescription('Serie diaria guardada de TEA nominal, rendimiento real Fisher e inflación global de referencia.'),
+      new MediaGalleryItemBuilder().setURL('attachment://bank-interest-chart.png').setDescription('Comparación anual de TEA nominal, rendimiento real Fisher e inflación de referencia, con sus porcentajes actuales etiquetados.'),
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## Tasa vigente al corte\n**APR nominal ${ratePercent(current.nominalAprBps)}** · **TEA ${ratePercent(current.effectiveAnnualBps)}** · **real Fisher ${ratePercent(current.realYieldBps)}**\nObjetivo real del modelo ${ratePercent(current.targetRealBps)}; se reajusta cada 24 h con un cambio máximo de 0.50 puntos porcentuales por día. Capitaliza el APR en períodos de 5 h.\n\n## Referencias macroeconómicas\nInflación mundial de referencia **${ratePercent(BANK_MACRO_INFLATION_BPS)}** y crecimiento real mundial **${ratePercent(BANK_MACRO_GROWTH_BPS)}**, proyecciones globales 2026 del [FMI WEO de octubre de 2026](https://www.imf.org/en/Publications/WEO/Issues/2026/10/13/world-economic-outlook-october-2026). El real Fisher compara la TEA nominal con esa inflación: (1 + TEA) / (1 + inflación) − 1. El FMI es referencia externa; los movimientos de moneda del bot no se etiquetan como IPC.`))
+      `**Cómo leerla:** azul = TEA tras capitalizar; verde = rendimiento real Fisher; punteado ámbar = inflación mundial. Los porcentajes están junto a cada valor.\n\n**Cómo se fija:** rendimiento real base **${ratePercent(BANK_BASE_REAL_YIELD_BPS)}**; rango **${ratePercent(BANK_REAL_YIELD_FLOOR_BPS)}–${ratePercent(BANK_REAL_YIELD_CEILING_BPS)}**. Reajuste cada 24 h, máximo **0.50 puntos** diarios, con cálculo de interés cada 5 h.\n${macroLine}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## Actividad monetaria observada\nOferta monetaria **${money.format(current.moneySupply)}** · ahorro **${money.format(current.savings)} (${savingsShare.toFixed(1)}%)**\nEmisión neta de 30 días **${signedAmount(current.netIssuance30d)}** · gasto registrado en compras **${money.format(current.purchaseVolume30d)}**\nNómina **${money.format(current.payroll30d)}** en ${money.format(current.workShifts30d)} turnos · ${current.activeWorkers} trabajador(es) con empleo activo\nDepósitos 24 h **${money.format(current.deposits24h)}** · retiros **${money.format(current.withdrawals24h)}**\n${jobLines.length ? jobLines.join('\n') : '_Sin turnos de trabajo registrados en la ventana de 30 días._'}\n\n**Ajuste del objetivo real:** ${pressure}\n${compared}`))
+      `## Economía observada\n**Oferta y ahorro**\nOferta monetaria ${money.format(current.moneySupply)} · ahorro ${money.format(current.savings)} (${savingsShare.toFixed(1)}%)\n\n**Flujos · últimos 30 días**\nEmisión neta ${signedAmount(current.netIssuance30d)} · compras ${money.format(current.purchaseVolume30d)}\nNómina ${money.format(current.payroll30d)} en ${money.format(current.workShifts30d)} turnos · ${current.activeWorkers} personas con oficio activo\n${jobLines.length ? jobLines.join('\n') : '_Sin turnos registrados en los últimos 30 días._'}\n\n**Banco · últimas 24 h**\nDepósitos ${money.format(current.deposits24h)} · retiros ${money.format(current.withdrawals24h)}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## Qué movió el objetivo real\n${pressure}\n_Valores positivos suben el objetivo; los negativos lo bajan._\n${compared}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## Simulación con tu ahorro actual\nSaldo **${money.format(bankBalance)}** · interés teórico a 5 h **+${fractionalMoney.format(fiveHourGain)}** · 30 días **+${fractionalMoney.format(thirtyDayGain)}** · 1 año **+${fractionalMoney.format(annualGain)}** monedas.\n_Proyección con APR vigente constante y saldo compuesto; el banco conserva fracciones y solo abona monedas enteras al saldo. La tasa puede cambiar en futuros reajustes._`))
+      `## Tu ahorro · simulación\nSaldo **${money.format(bankBalance)} monedas**\n**+${fractionalMoney.format(fiveHourGain)}** en 5 h　·　**+${fractionalMoney.format(thirtyDayGain)}** en 30 días　·　**+${fractionalMoney.format(annualGain)}** en 1 año\n_Proyección con tasa actual constante. Las fracciones se acumulan y se abonan al completar una moneda; la tasa puede cambiar._${bank.interestEarned ? `\n\n📥 Se acreditaron **${money.format(bank.interestEarned)} monedas** al abrir este panel.` : ''}`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:bank').setLabel('Volver al banco').setEmoji('🏦').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('eco:bank:interest:refresh').setLabel('Actualizar datos').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
     ));
-  if (bank.interestEarned > 0) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`📥 Al abrir este panel se abonaron **${money.format(bank.interestEarned)} monedas** de fracciones acumuladas.`));
   const chart = new AttachmentBuilder(bankInterestChart(dashboard)).setName('bank-interest-chart.png');
   return { components: [container], files: [chart], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
