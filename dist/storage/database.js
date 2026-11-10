@@ -90,6 +90,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_economy_ledger_scope_time_reason
     ON economy_ledger (guild_id, created_at, reason);
 
+  CREATE TABLE IF NOT EXISTS saved_word_responses (
+    guild_id TEXT NOT NULL,
+    trigger_key TEXT NOT NULL,
+    trigger_word TEXT NOT NULL,
+    response TEXT NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (guild_id, trigger_key)
+  );
+
   CREATE TABLE IF NOT EXISTS admin_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,

@@ -13,6 +13,8 @@ import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js
 import { catalogPanel } from '../ui/catalog.js';
 import { profileCardPanel, levelUpCardMessage } from '../ui/profile.js';
 import { giveReputation, recordChatActivity, recordReceivedRpgReaction } from '../services/profile.js';
+import { findSavedWordResponse } from '../services/word-responses.js';
+import { getSavedWordResponses, removeWordResponse, saveWordResponse } from '../services/word-responses.js';
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
 const adminActionAliases = {
@@ -38,6 +40,12 @@ export function registerMessageCommandHandler(client) {
                 if (result?.levelUp)
                     await message.reply({ content: `🎉 **${message.author.username} subió al nivel ${result.level}!**`, files: [await levelUpCardMessage(message.guildId, message.author, result.level)], allowedMentions: { repliedUser: false } });
             }).catch((error) => console.error('No pude registrar la actividad de perfil:', error));
+        if (message.guildId && message.content.trim() && !message.content.toLocaleLowerCase().startsWith(PREFIX)) {
+            void findSavedWordResponse(message.guildId, message.content).then(async (response) => {
+                if (response)
+                    await message.reply({ content: response, allowedMentions: { parse: [] } });
+            }).catch((error) => console.error('No pude procesar una respuesta automática por palabra:', error));
+        }
         if (!message.content.toLocaleLowerCase().startsWith(PREFIX))
             return;
         void routeMessage(message).catch(async (error) => {
@@ -58,6 +66,10 @@ async function routeMessage(message) {
     }
     if (command === 'say' || command === 'embed') {
         await relayMessageCommand(message, command);
+        return;
+    }
+    if (['palabra', 'palabras'].includes(command)) {
+        await manageSavedWordMessageCommand(message, userId, args);
         return;
     }
     if (await routeUtilityMessage(message, command, args))
@@ -1012,6 +1024,48 @@ async function resignMessageJob(message, guildId, userId, query) {
     await sendPanel(message, await jobsPanel(guildId, userId, `📤 Renunciaste a **${result.job.name} · nivel ${result.level}**. Tu nivel y XP se conservan si eliges ese oficio otra vez.${remaining}`));
 }
 async function say(message, content) { await message.reply({ content, allowedMentions: { repliedUser: false } }); }
+async function manageSavedWordMessageCommand(message, userId, args) {
+    if (userId !== ADMIN_OWNER_ID) {
+        await say(message, 'Solo ManzanitaJuice puede administrar las respuestas automáticas.');
+        return;
+    }
+    if (!message.guildId) {
+        await say(message, 'Configura las respuestas dentro del servidor donde quieras que funcionen.');
+        return;
+    }
+    const action = args[0]?.toLocaleLowerCase();
+    if (action === 'guardar' || action === 'save') {
+        const word = args[1] ?? '';
+        const response = args.slice(2).join(' ').trim();
+        const result = await saveWordResponse(message.guildId, word, response);
+        const text = result === 'saved'
+            ? `✅ Guardé **${word}**. Responderé una vez cuando alguien escriba esa palabra completa, sin distinguir mayúsculas.`
+            : result === 'invalid_word'
+                ? 'La palabra debe ser un término de 1–64 caracteres, sin espacios; se admiten letras, números, _ y guiones internos.'
+                : result === 'invalid_response'
+                    ? 'Escribe una respuesta de 1–1,800 caracteres. Ejemplo: `a!palabra guardar hola ¡Hola!`.'
+                    : 'Este servidor ya tiene 100 palabras guardadas. Quita una antes de añadir otra.';
+        await say(message, text);
+        return;
+    }
+    if (action === 'quitar' || action === 'remove') {
+        const word = args[1] ?? '';
+        const removed = await removeWordResponse(message.guildId, word);
+        await say(message, removed ? `🗑️ Eliminé la respuesta de **${word}**.` : 'No encontré esa palabra guardada (o no es válida).');
+        return;
+    }
+    if (action === 'lista' || action === 'list') {
+        const rules = await getSavedWordResponses(message.guildId);
+        if (!rules.length) {
+            await say(message, 'Aún no hay respuestas. Usa `a!palabra guardar hola ¡Hola!` para crear una.');
+            return;
+        }
+        const entries = rules.slice(0, 15).map((rule) => `• **${rule.triggerWord}** → ${escapeMarkdown(rule.response.replace(/\s+/g, ' ').slice(0, 55))}${rule.response.length > 55 ? '…' : ''}`);
+        await say(message, `📝 **Palabras guardadas (${rules.length})**\n${entries.join('\n')}${rules.length > entries.length ? `\n… y ${rules.length - entries.length} más.` : ''}`);
+        return;
+    }
+    await say(message, 'Solo ManzanitaJuice puede usar esto. Uso: `a!palabra guardar PALABRA respuesta`, `a!palabra quitar PALABRA` o `a!palabra lista`.');
+}
 async function sendPanel(message, panel) {
     await message.reply({ components: panel.components, ...(panel.files ? { files: panel.files } : {}), flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [], repliedUser: false } });
 }

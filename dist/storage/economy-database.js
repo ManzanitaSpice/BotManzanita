@@ -69,6 +69,16 @@ export async function initializeEconomyDatabase() {
   `);
     await ensureIndex('economy_ledger', 'idx_economy_ledger_scope_time_reason', 'guild_id,created_at,reason');
     await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS saved_word_responses (
+      guild_id VARCHAR(32) NOT NULL,
+      trigger_key VARCHAR(64) NOT NULL,
+      trigger_word VARCHAR(64) NOT NULL,
+      response TEXT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id,trigger_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_bank_policy (
       policy_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
       interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 6500,
