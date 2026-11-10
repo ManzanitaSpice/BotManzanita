@@ -42,12 +42,12 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS economy_bank_policy (
     policy_id INTEGER PRIMARY KEY CHECK (policy_id = 1),
-    interest_rate_bps INTEGER NOT NULL DEFAULT 608 CHECK (interest_rate_bps >= 1),
+    interest_rate_bps INTEGER NOT NULL DEFAULT 6500 CHECK (interest_rate_bps >= 1),
     last_rebalanced_at INTEGER NOT NULL DEFAULT 0,
-    model_version INTEGER NOT NULL DEFAULT 2
+    model_version INTEGER NOT NULL DEFAULT 3
   );
 
-  INSERT OR IGNORE INTO economy_bank_policy (policy_id, interest_rate_bps, last_rebalanced_at) VALUES (1, 608, 0);
+  INSERT OR IGNORE INTO economy_bank_policy (policy_id, interest_rate_bps, last_rebalanced_at) VALUES (1, 6500, 0);
 
   CREATE TABLE IF NOT EXISTS economy_bank_rate_history (
     effective_at INTEGER PRIMARY KEY,
@@ -75,7 +75,12 @@ db.exec(`
     active_workers INTEGER NOT NULL,
     deposits_24h INTEGER NOT NULL,
     withdrawals_24h INTEGER NOT NULL,
-    job_mix_json TEXT NOT NULL
+    job_mix_json TEXT NOT NULL,
+    bot_money_growth_bps INTEGER NOT NULL DEFAULT 0,
+    purchase_velocity_bps INTEGER NOT NULL DEFAULT 0,
+    savings_share_bps INTEGER NOT NULL DEFAULT 0,
+    projected_money_supply_30d INTEGER NOT NULL DEFAULT 0,
+    target_apr_bps INTEGER NOT NULL DEFAULT 6500
   );
 
   CREATE INDEX IF NOT EXISTS idx_economy_bank_market_history_time
@@ -303,6 +308,20 @@ try {
   db.exec('ALTER TABLE economy_bank_policy ADD COLUMN model_version INTEGER NOT NULL DEFAULT 1');
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
+}
+
+for (const [column, definition] of [
+  ['bot_money_growth_bps', 'INTEGER NOT NULL DEFAULT 0'],
+  ['purchase_velocity_bps', 'INTEGER NOT NULL DEFAULT 0'],
+  ['savings_share_bps', 'INTEGER NOT NULL DEFAULT 0'],
+  ['projected_money_supply_30d', 'INTEGER NOT NULL DEFAULT 0'],
+  ['target_apr_bps', 'INTEGER NOT NULL DEFAULT 6500'],
+] as const) {
+  try {
+    db.exec(`ALTER TABLE economy_bank_market_history ADD COLUMN ${column} ${definition}`);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
+  }
 }
 
 const playlistTrackIndexes = db.prepare("PRAGMA index_list('music_playlist_tracks')").all() as Array<{ unique: number; origin: string }>;

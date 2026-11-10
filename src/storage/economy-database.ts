@@ -74,13 +74,13 @@ export async function initializeEconomyDatabase(): Promise<void> {
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_bank_policy (
       policy_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-      interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 608,
+      interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 6500,
       last_rebalanced_at BIGINT NOT NULL DEFAULT 0,
-      model_version TINYINT UNSIGNED NOT NULL DEFAULT 2
+      model_version TINYINT UNSIGNED NOT NULL DEFAULT 3
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await ensureColumn('economy_bank_policy', 'model_version', 'TINYINT UNSIGNED NOT NULL DEFAULT 1');
-  await economyPool.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,608,0,2)');
+  await economyPool.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,6500,0,3)');
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_bank_rate_history (
       effective_at BIGINT NOT NULL PRIMARY KEY,
@@ -110,9 +110,19 @@ export async function initializeEconomyDatabase(): Promise<void> {
       deposits_24h BIGINT NOT NULL,
       withdrawals_24h BIGINT NOT NULL,
       job_mix_json TEXT NOT NULL,
+      bot_money_growth_bps INT NOT NULL DEFAULT 0,
+      purchase_velocity_bps INT UNSIGNED NOT NULL DEFAULT 0,
+      savings_share_bps INT UNSIGNED NOT NULL DEFAULT 0,
+      projected_money_supply_30d BIGINT NOT NULL DEFAULT 0,
+      target_apr_bps SMALLINT UNSIGNED NOT NULL DEFAULT 6500,
       KEY idx_economy_bank_market_history_time (observed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await ensureColumn('economy_bank_market_history', 'bot_money_growth_bps', 'INT NOT NULL DEFAULT 0');
+  await ensureColumn('economy_bank_market_history', 'purchase_velocity_bps', 'INT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('economy_bank_market_history', 'savings_share_bps', 'INT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('economy_bank_market_history', 'projected_money_supply_30d', 'BIGINT NOT NULL DEFAULT 0');
+  await ensureColumn('economy_bank_market_history', 'target_apr_bps', 'SMALLINT UNSIGNED NOT NULL DEFAULT 6500');
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS admin_audit_log (
       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
