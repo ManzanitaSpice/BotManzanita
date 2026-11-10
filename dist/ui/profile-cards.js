@@ -115,10 +115,10 @@ export async function renderProfileCard(input) {
     cardCache.set(key, { expiresAt: Date.now() + 60_000, buffer });
     return buffer;
 }
-export async function renderProfileBackgroundPreview(input, item) {
-    let mode;
+export async function renderProfileBackgroundPreview(input, item, fallbackMode = 'profile') {
+    let mode = fallbackMode;
     let setting;
-    switch (item.type) {
+    switch (item?.type) {
         case 'profile_bg':
             mode = 'profile';
             setting = 'profileBg';
@@ -135,9 +135,8 @@ export async function renderProfileBackgroundPreview(input, item) {
             mode = 'levelup';
             setting = 'levelupBg';
             break;
-        default: return undefined;
     }
-    const settings = { ...input.settings, [setting]: item.id };
+    const settings = item && setting ? { ...input.settings, [setting]: item.id } : input.settings;
     return { mode, buffer: await renderProfileCard({ ...input, mode, settings }) };
 }
 export async function renderShopItemPreview(item) {

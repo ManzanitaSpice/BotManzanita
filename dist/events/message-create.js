@@ -513,7 +513,7 @@ async function routeMessage(message) {
         return;
     }
     if (['shop', 'tienda'].includes(command)) {
-        await sendPanel(message, await storePanel(guildId, userId));
+        await sendPanel(message, await storePanel(guildId, userId, 'all', 0, undefined, '', undefined, message.author));
         return;
     }
     if (command === 'premium') {

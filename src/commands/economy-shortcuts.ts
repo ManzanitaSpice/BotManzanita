@@ -1,6 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
-import { balancePanel, economyActionPanel, leaderboardPanel } from '../ui/panels.js';
+import { balancePanel, componentUpdate, economyActionPanel, leaderboardPanel } from '../ui/panels.js';
 import {
   claimDaily,
   crime,
@@ -285,7 +285,8 @@ function createStoreCommand(): BotCommand {
         await interaction.reply({ content: 'La tienda solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
         return;
       }
-      await interaction.reply(await storePanel(interaction.guildId, interaction.user.id));
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user)));
     },
   };
 }

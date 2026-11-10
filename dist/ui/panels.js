@@ -1,4 +1,4 @@
-import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder, } from 'discord.js';
+import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, SectionBuilder, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder, } from 'discord.js';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
@@ -9,6 +9,20 @@ import { renderProfileBackgroundPreview, renderProfileCard } from './profile-car
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
+function isProfileBackgroundItem(item) {
+    return item?.type === 'profile_bg' || item?.type === 'rank_bg' || item?.type === 'wallet_bg' || item?.type === 'levelup_bg';
+}
+function backgroundMode(item) {
+    return item.type === 'profile_bg' ? 'profile' : item.type === 'rank_bg' ? 'rank' : item.type === 'wallet_bg' ? 'wallet' : 'levelup';
+}
+function profilePreviewMode(category) {
+    return category === 'profile:rank_bg' ? 'rank'
+        : category === 'profile:wallet_bg' ? 'wallet'
+            : category === 'profile:levelup_bg' ? 'levelup' : 'profile';
+}
+function backgroundSetting(mode) {
+    return mode === 'rank' ? 'rankBg' : mode === 'wallet' ? 'walletBg' : mode === 'levelup' ? 'levelupBg' : 'profileBg';
+}
 function rpgItemMenu(entries, requestedPage = 0, noun = 'artículos') {
     const pageSize = entries.length > 25 ? 23 : 25;
     const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
@@ -537,7 +551,7 @@ export async function inventoryPanel(guildId, userId, requestedPage = 0, request
     container.addActionRowComponents(navigation);
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
-export async function storePanel(guildId, userId, requestedCategory = 'all', requestedPage = 0, requestedItemId, notice = '', requestedKind) {
+export async function storePanel(guildId, userId, requestedCategory = 'all', requestedPage = 0, requestedItemId, notice = '', requestedKind, previewUser) {
     const selectedCategory = storeCategoryOptions.some((entry) => entry.id === requestedCategory) ? requestedCategory : 'all';
     const categoryState = selectedCategory;
     const catalogFilter = selectedCategory;
@@ -568,36 +582,43 @@ export async function storePanel(guildId, userId, requestedCategory = 'all', req
     const status = notice ? `\n\n${notice}` : '';
     const container = new ContainerBuilder().setAccentColor(0x8b75dc)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛍️ TIENDA MANZANITA\n**Saldo:** ${money.format(snapshot.balance)} monedas · ${money.format(snapshot.premiumBalance)} gemas premium · **Categoría:** ${categoryLabel}\n${filtered.length} productos · página ${page + 1} de ${pageCount}\n_Las gemas premium se usan para cosméticos._${accentCategoryNote}${status}`))
-        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${listing || '_No hay productos en esta categoría._'}\n\n${selectedDetails}`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('shop:category').setPlaceholder('Categorías de la tienda')
         .addOptions(storeCategoryOptions.map((entry) => ({ label: entry.label, value: entry.id, emoji: entry.emoji, default: entry.id === selectedCategory })))));
     let backgroundPreviewFile;
     const selectedProfileItem = selected?.kind === 'profile' ? profileShopItems.find((item) => item.id === selected.id) : undefined;
-    if (selectedProfileItem && (selectedProfileItem.type === 'profile_bg' || selectedProfileItem.type === 'rank_bg' || selectedProfileItem.type === 'wallet_bg' || selectedProfileItem.type === 'levelup_bg')) {
+    const showProfilePreview = selectedCategory.startsWith('profile:') || (selectedCategory === 'all' && selected?.kind === 'profile');
+    if (showProfilePreview) {
         const [settings, progress, account, badges] = await Promise.all([
             getProfileSettings(userId), getProfileProgress(guildId, userId), getAccountBalances(guildId, userId), equippedProfileBadges(userId),
         ]);
+        const selectedBackground = requestedItemId && isProfileBackgroundItem(selectedProfileItem) ? selectedProfileItem : undefined;
+        const mode = selectedBackground ? backgroundMode(selectedBackground) : profilePreviewMode(selectedCategory);
+        const equippedBackground = profileShopItems.find((item) => item.id === settings[backgroundSetting(mode)] && isProfileBackgroundItem(item));
+        const firstBackground = !requestedItemId && !equippedBackground && isProfileBackgroundItem(selectedProfileItem) ? selectedProfileItem : undefined;
+        const backgroundToPreview = selectedBackground ?? equippedBackground ?? firstBackground;
         const preview = await renderProfileBackgroundPreview({
             userId,
-            username: `Usuario ${userId.slice(-4)}`,
-            avatarUrl: '',
+            username: previewUser?.username ?? `Usuario ${userId.slice(-4)}`,
+            avatarUrl: previewUser?.displayAvatarURL({ extension: 'png', size: 256 }) ?? '',
             settings,
             progress,
             wallet: account.wallet,
             bank: account.bank,
             premium: account.premium,
             badges,
-        }, selectedProfileItem);
-        if (preview) {
-            const filename = 'shop-background-preview.png';
-            const cardLabel = { profile: 'perfil', rank: 'rango', wallet: 'billetera', levelup: 'subida de nivel' }[preview.mode];
-            backgroundPreviewFile = new AttachmentBuilder(preview.buffer).setName(filename);
-            container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-                .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa · tarjeta de ${cardLabel}\nAsí se verá con **${selectedProfileItem.name}** antes de comprarlo.`))
-                .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${filename}`).setDescription(`Tarjeta de ${cardLabel} con ${selectedProfileItem.name}`)));
-        }
+        }, backgroundToPreview, mode);
+        const filename = 'shop-background-preview.png';
+        const cardLabel = { profile: 'perfil', rank: 'rango', wallet: 'billetera', levelup: 'subida de nivel' }[preview.mode];
+        backgroundPreviewFile = new AttachmentBuilder(preview.buffer).setName(filename);
+        const description = selectedBackground ? `Probando **${selectedBackground.name}** antes de comprarlo.`
+            : equippedBackground ? `Fondo equipado: **${equippedBackground.name}**.`
+                : firstBackground ? `Vista inicial: **${firstBackground.name}**.` : 'Fondo predeterminado.';
+        container.addSectionComponents(new SectionBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa · tarjeta de ${cardLabel}\n${description}`))
+            .setThumbnailAccessory(new ThumbnailBuilder().setURL(`attachment://${filename}`).setDescription(`Tarjeta de ${cardLabel}`)));
     }
+    container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${listing || '_No hay productos en esta categoría._'}\n\n${selectedDetails}`));
     if (pageItems.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`shop:item:${encodeURIComponent(categoryState)}:${page}`).setPlaceholder('Seleccionar producto')
             .addOptions(pageItems.map((item) => ({ label: `${item.name} (${getProductCategoryLabel(item)})`.slice(0, 100), value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${productPriceLabel(item)} · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind })))));

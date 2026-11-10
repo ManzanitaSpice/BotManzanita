@@ -83,9 +83,9 @@ export async function profileInventoryPanel(guildId, userId, category = 'all', s
     const response = { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
     return selected ? { ...response, files: [png(await renderShopItemPreview(selected), 'inventory-preview.png')] } : response;
 }
-export async function profileShopPanel(guildId, userId, category = 'all', query = '', selectedId, notice = '') {
+export async function profileShopPanel(guildId, userId, category = 'all', query = '', selectedId, notice = '', previewUser) {
     void query;
-    return storePanel(guildId, userId, category === 'all' ? 'profile:all' : `profile:${category}`, 0, selectedId, notice);
+    return storePanel(guildId, userId, category === 'all' ? 'profile:all' : `profile:${category}`, 0, selectedId, notice, 'profile', previewUser);
 }
 async function selfCard(guildId, userId, mode, settingsOverride, user) {
     const [settings, progress, account, badges] = await Promise.all([settingsOverride ? Promise.resolve(settingsOverride) : getProfileSettings(userId), getProfileProgress(guildId, userId), getAccountBalances(guildId, userId), equippedProfileBadges(userId)]);

@@ -143,7 +143,7 @@ export function registerInteractionHandler(client) {
             if (interaction.customId.startsWith('shop:')) {
                 if (interaction.customId === 'shop:category' && interaction.isStringSelectMenu()) {
                     await interaction.deferUpdate();
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, interaction.values[0] ?? 'all')));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, interaction.values[0] ?? 'all', 0, undefined, '', undefined, interaction.user)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:item:') && interaction.isStringSelectMenu()) {
@@ -161,7 +161,7 @@ export function registerInteractionHandler(client) {
                         category = 'all';
                     }
                     await interaction.deferUpdate();
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, '', kind)));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, '', kind, interaction.user)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:page:') && interaction.isButton()) {
@@ -174,7 +174,7 @@ export function registerInteractionHandler(client) {
                         category = 'all';
                     }
                     await interaction.deferUpdate();
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue))));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), undefined, '', undefined, interaction.user)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:buy:') && interaction.isButton()) {
@@ -208,7 +208,7 @@ export function registerInteractionHandler(client) {
                         category = 'all';
                     }
                     const currencyName = result.currency === 'gems' ? 'gemas' : 'monedas';
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} ${currencyName}.`, kind)));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} ${currencyName}.`, kind, interaction.user)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:equip:') && interaction.isButton()) {
@@ -226,7 +226,7 @@ export function registerInteractionHandler(client) {
                         await interaction.followUp({ content: result.message, flags: MessageFlags.Ephemeral });
                         return;
                     }
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, result.message, 'profile')));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, result.message, 'profile', interaction.user)));
                     return;
                 }
             }
@@ -666,15 +666,16 @@ export function registerInteractionHandler(client) {
             if (interaction.customId.startsWith('eco:')) {
                 if (interaction.customId === 'eco:section' && interaction.isStringSelectMenu()) {
                     const section = interaction.values[0];
+                    await interaction.deferUpdate();
                     const panel = section === 'inventory' ? await inventoryPanel(interaction.guildId, interaction.user.id)
                         : section === 'bank' ? await bankPanel(interaction.guildId, interaction.user.id)
                             : section === 'casino' ? await casinoPanel(interaction.guildId, interaction.user.id)
-                                : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id) : undefined;
+                                : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user) : undefined;
                     if (!panel) {
-                        await interaction.reply({ content: 'Esa sección ya no está disponible.', flags: MessageFlags.Ephemeral });
+                        await interaction.followUp({ content: 'Esa sección ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
-                    await interaction.update(componentUpdate(panel));
+                    await interaction.editReply(componentUpdate(panel));
                     return;
                 }
                 if (interaction.customId === 'eco:bank' || interaction.customId === 'eco:bank:refresh') {
@@ -752,11 +753,13 @@ export function registerInteractionHandler(client) {
                     return;
                 }
                 if (interaction.customId === 'eco:store') {
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id)));
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user)));
                     return;
                 }
                 if (interaction.customId === 'eco:premium-store') {
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id)));
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user)));
                     return;
                 }
                 if (interaction.customId === 'eco:inventory:category' && interaction.isStringSelectMenu()) {
@@ -830,13 +833,14 @@ export function registerInteractionHandler(client) {
                         await interaction.reply({ content: 'Ese artículo ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
+                    await interaction.deferUpdate();
                     const result = await purchaseItem(interaction.guildId, interaction.user.id, item.id, interaction.id);
                     const content = result.ok
                         ? `✅ Compraste **${item.name}** por ${item.cost} monedas. Ahora tienes **x${result.quantity}**. Te quedan **${result.balance}**.`
                         : result.reason === 'invalid_item' ? 'Ese artículo ya no está disponible.'
                             : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.`
                                 : `Te faltan monedas para **${item.name}**. Saldo actual: **${result.balance}**.`;
-                    await interaction.update(componentUpdate(await storePanel(interaction.guildId, interaction.user.id)));
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user)));
                     await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
                     return;
                 }
@@ -1142,7 +1146,8 @@ async function handleProfileInteraction(interaction) {
         }
         if (action === 'search-submit') {
             const query = interaction.fields.getTextInputValue('query').trim();
-            await interaction.reply(await profileShopPanel(guildId, ownerId, 'all', query));
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            await interaction.editReply(componentUpdate(await profileShopPanel(guildId, ownerId, 'all', query, undefined, '', interaction.user)));
             return true;
         }
         return false;
@@ -1170,13 +1175,15 @@ async function handleProfileInteraction(interaction) {
             return true;
         }
         if (action === 'shop-category') {
-            await interaction.update(componentUpdate(await profileShopPanel(guildId, ownerId, interaction.values[0] ?? 'all')));
+            await interaction.deferUpdate();
+            await interaction.editReply(componentUpdate(await profileShopPanel(guildId, ownerId, interaction.values[0] ?? 'all', '', undefined, '', interaction.user)));
             return true;
         }
         if (action === 'shop-item') {
             const category = parts[1] ?? 'all';
             const query = decodeURIComponent(parts.slice(2).join(':') ?? '');
-            await interaction.update(componentUpdate(await profileShopPanel(guildId, ownerId, category, query, interaction.values[0])));
+            await interaction.deferUpdate();
+            await interaction.editReply(componentUpdate(await profileShopPanel(guildId, ownerId, category, query, interaction.values[0], '', interaction.user)));
             return true;
         }
         if (action === 'inventory-category') {
@@ -1210,7 +1217,7 @@ async function handleProfileInteraction(interaction) {
         const item = profileShopItems.find((entry) => entry.id === itemId);
         const result = await buyProfileItem(guildId, ownerId, itemId, interaction.id);
         if (result.ok) {
-            await interaction.update(componentUpdate(await profileShopPanel(guildId, ownerId, item?.category ?? 'all', '', itemId, `✅ Compraste **${item?.name ?? itemId}** · saldo restante: **${result.balance.toLocaleString('es-MX')} monedas**.`)));
+            await interaction.update(componentUpdate(await profileShopPanel(guildId, ownerId, item?.category ?? 'all', '', itemId, `✅ Compraste **${item?.name ?? itemId}** · saldo restante: **${result.balance.toLocaleString('es-MX')} monedas**.`, interaction.user)));
             return true;
         }
         const response = result.reason === 'insufficient' ? `Te faltan monedas. Saldo: **${result.balance.toLocaleString('es-MX')}**.` : result.reason === 'already_owned' ? 'Ya tienes ese artículo.' : 'Ese artículo no se puede comprar.';
@@ -1257,7 +1264,8 @@ async function handleProfileInteraction(interaction) {
         return true;
     }
     if (action === 'shop') {
-        await interaction.reply(await storePanel(guildId, ownerId));
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await interaction.editReply(componentUpdate(await storePanel(guildId, ownerId, 'all', 0, undefined, '', undefined, interaction.user)));
         return true;
     }
     if (action === 'progress') {

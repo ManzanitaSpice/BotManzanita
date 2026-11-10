@@ -318,7 +318,7 @@ async function routeMessage(message: Message): Promise<void> {
     if (directAction) return say(message, `Uso: \`a!${command} cantidad\`.`);
     await sendPanel(message, await bankPanel(guildId, userId)); return;
   }
-  if (['shop', 'tienda'].includes(command)) { await sendPanel(message, await storePanel(guildId, userId)); return; }
+  if (['shop', 'tienda'].includes(command)) { await sendPanel(message, await storePanel(guildId, userId, 'all', 0, undefined, '', undefined, message.author)); return; }
   if (command === 'premium') { const account = await getAccountBalances(guildId,userId); return say(message, `💎 Tienes **${money.format(account.premium)} gemas premium**.`); }
   if (['casino'].includes(command)) { await sendPanel(message, await casinoPanel(guildId, userId)); return; }
   if (['inv', 'inventory', 'inventario'].includes(command)) { await sendPanel(message, await inventoryPanel(guildId, userId)); return; }

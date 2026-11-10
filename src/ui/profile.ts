@@ -98,9 +98,9 @@ export async function profileInventoryPanel(guildId:string,userId:string,categor
   return selected?{...response,files:[png(await renderShopItemPreview(selected),'inventory-preview.png')]}:response;
 }
 
-export async function profileShopPanel(guildId:string,userId:string,category='all',query='',selectedId?:string,notice=''){
+export async function profileShopPanel(guildId:string,userId:string,category='all',query='',selectedId?:string,notice='',previewUser?:User){
   void query;
-  return storePanel(guildId,userId,category==='all'?'profile:all':`profile:${category}`,0,selectedId,notice);
+  return storePanel(guildId,userId,category==='all'?'profile:all':`profile:${category}`,0,selectedId,notice,'profile',previewUser);
 }
 
 async function selfCard(guildId:string,userId:string,mode:ProfileCardMode,settingsOverride?:ProfileSettings,user?:User){

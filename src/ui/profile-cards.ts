@@ -56,18 +56,18 @@ export async function renderProfileCard(input: ProfileCardInput): Promise<Buffer
 
 export async function renderProfileBackgroundPreview(
   input: Omit<ProfileCardInput, 'mode'>,
-  item: ProfileShopItem,
-): Promise<{ mode: ProfileCardMode; buffer: Buffer } | undefined> {
-  let mode: ProfileCardMode;
-  let setting: keyof ProfileSettings;
-  switch (item.type) {
+  item: ProfileShopItem | undefined,
+  fallbackMode: ProfileCardMode = 'profile',
+): Promise<{ mode: ProfileCardMode; buffer: Buffer }> {
+  let mode = fallbackMode;
+  let setting: keyof ProfileSettings | undefined;
+  switch (item?.type) {
     case 'profile_bg': mode = 'profile'; setting = 'profileBg'; break;
     case 'rank_bg': mode = 'rank'; setting = 'rankBg'; break;
     case 'wallet_bg': mode = 'wallet'; setting = 'walletBg'; break;
     case 'levelup_bg': mode = 'levelup'; setting = 'levelupBg'; break;
-    default: return undefined;
   }
-  const settings = { ...input.settings, [setting]: item.id };
+  const settings = item && setting ? { ...input.settings, [setting]: item.id } : input.settings;
   return { mode, buffer: await renderProfileCard({ ...input, mode, settings }) };
 }
 
