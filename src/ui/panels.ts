@@ -834,8 +834,9 @@ export async function casinoPanel(guildId: string, userId: string) {
 
 export async function bankPanel(guildId: string, userId: string, bankSnapshot?: BankResult) {
   const bank = bankSnapshot ?? await bankAction(guildId, userId, 'view');
-  const next = Math.floor(bank.nextInterestAt / 1000);
-  const nextRate = Math.floor(bank.nextRateRebalanceAt / 1000);
+  // Bank timestamps come from nowSeconds() and are already Unix seconds for Discord.
+  const next = Math.floor(bank.nextInterestAt);
+  const nextRate = Math.floor(bank.nextRateRebalanceAt);
   const nextInterest = bank.bankBalance > 0 ? `⏳ Siguiente cálculo de interés <t:${next}:R>` : '⏳ Deposita monedas para empezar a generar interés.';
   const earned = bank.interestEarned ? `\n\nInterés acreditado al abrir el banco: **${money.format(bank.interestEarned)} monedas**.` : '';
   const annual = (bank.interestRateBps / 100).toFixed(2);
