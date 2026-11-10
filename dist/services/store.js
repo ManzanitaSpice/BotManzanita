@@ -24,7 +24,7 @@ export function storeCatalog() {
     return [
         ...profileShopItems
             .filter((item) => item.type !== 'pet')
-            .map((item) => ({ kind: 'profile', id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.price, rarity: item.rarity, repeatable: false })),
+            .map((item) => ({ kind: 'profile', id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.price, ...(item.premiumPrice === undefined ? {} : { premiumPrice: item.premiumPrice }), rarity: item.rarity, repeatable: false })),
         ...storeItems.map((item) => ({ kind: 'economy', id: item.id, name: item.name, emoji: item.emoji, category: item.category === 'jobs' ? 'economy:jobs' : 'economy', description: item.description, price: item.cost, rarity: 'Común', repeatable: item.repeatable })),
         ...rpgItems.map((item) => ({ kind: 'rpg', id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.cost, rarity: item.rarity, repeatable: true })),
     ];
@@ -68,25 +68,28 @@ export async function getStoreSnapshot(guildId, userId) {
         quantities.set(`rpg:${item.itemId}`, item.quantity);
     return {
         balance: account.wallet,
+        premiumBalance: account.premium,
         products: storeCatalog().map((item) => ({ ...item, quantity: quantities.get(`${item.kind}:${item.id}`) ?? 0 })),
     };
 }
-export async function purchaseStoreProduct(guildId, userId, kind, itemId, reference) {
+export async function purchaseStoreProduct(guildId, userId, kind, itemId, reference, currency = 'coins') {
     const item = findStoreProduct(kind, itemId);
     if (!item)
         return { ok: false, reason: 'not_found' };
+    if (currency === 'gems' && (kind !== 'profile' || typeof item.premiumPrice !== 'number' || !Number.isSafeInteger(item.premiumPrice) || item.premiumPrice <= 0))
+        return { ok: false, reason: 'currency_unavailable' };
     if (kind === 'profile') {
-        const result = await buyProfileItem(guildId, userId, itemId, reference);
+        const result = await buyProfileItem(guildId, userId, itemId, reference, currency);
         if (result.ok) {
             const inventory = await getProfileInventory(guildId, userId);
-            return { ok: true, balance: result.balance, quantity: inventory.find((entry) => entry.itemId === itemId)?.quantity ?? 1 };
+            return { ok: true, balance: result.balance, quantity: inventory.find((entry) => entry.itemId === itemId)?.quantity ?? 1, currency };
         }
-        return { ok: false, reason: result.reason === 'already_owned' ? 'already_owned' : result.reason === 'insufficient' ? 'insufficient_funds' : 'not_found' };
+        return { ok: false, reason: result.reason === 'already_owned' ? 'already_owned' : result.reason === 'insufficient' ? 'insufficient_funds' : result.reason === 'currency_unavailable' ? 'currency_unavailable' : 'not_found' };
     }
     if (kind === 'economy') {
         const result = await purchaseItem(guildId, userId, itemId, reference);
-        return result.ok ? result : { ok: false, reason: result.reason === 'insufficient_funds' ? 'insufficient_funds' : result.reason === 'already_owned' ? 'already_owned' : 'not_found' };
+        return result.ok ? { ...result, currency } : { ok: false, reason: result.reason === 'insufficient_funds' ? 'insufficient_funds' : result.reason === 'already_owned' ? 'already_owned' : 'not_found' };
     }
     const result = await buyRpgItem(guildId, userId, itemId, reference);
-    return result.ok ? result : { ok: false, reason: result.reason === 'funds' ? 'insufficient_funds' : 'not_found' };
+    return result.ok ? { ...result, currency } : { ok: false, reason: result.reason === 'funds' ? 'insufficient_funds' : 'not_found' };
 }

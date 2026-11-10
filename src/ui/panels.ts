@@ -20,7 +20,7 @@ import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory,
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
-import { renderProfileCard } from './profile-cards.js';
+import { renderProfileBackgroundPreview, renderProfileCard } from './profile-cards.js';
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
 
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
@@ -675,12 +675,16 @@ export async function inventoryPanel(guildId: string, userId: string, requestedP
   if (usableItems.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId(`eco:inventory:use:${page}:${filter}`).setPlaceholder('Consumir o equipar un artículo').addOptions(usableItems.map((item) => ({ label: `${item.name} · x${item.quantity}`, value: `${item.kind}:${item.itemId}`, description: item.description.slice(0, 100), emoji: item.emoji }))),
   ));
-  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.max(0, page - 1)}:${filter}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-    new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.min(pageCount - 1, page + 1)}:${filter}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
+  const navigation = new ActionRowBuilder<ButtonBuilder>();
+  if (pageCount > 1) navigation.addComponents(
+    new ButtonBuilder().setCustomId(`eco:inventory:page:${page - 1}:${filter}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId(`eco:inventory:page:${page + 1}:${filter}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
+  );
+  navigation.addComponents(
     new ButtonBuilder().setCustomId('eco:back').setLabel('Bóveda').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
-  ));
+  );
+  container.addActionRowComponents(navigation);
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
@@ -703,7 +707,7 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
       ?? (item.kind === 'profile' ? profileShopCategories.find((entry) => entry.id === item.category)?.label : undefined)
       ?? (item.kind === 'profile' ? 'Personalización' : item.kind === 'economy' ? 'Consumibles' : item.category);
   };
-  const hasPremiumPrice = (item: (typeof snapshot.products)[number]) => typeof item.premiumPrice === 'number' && Number.isSafeInteger(item.premiumPrice) && item.premiumPrice > 0;
+  const hasPremiumPrice = (item: (typeof snapshot.products)[number]): item is (typeof snapshot.products)[number] & { premiumPrice: number } => typeof item.premiumPrice === 'number' && Number.isSafeInteger(item.premiumPrice) && item.premiumPrice > 0;
   const productPriceLabel = (item: (typeof snapshot.products)[number]) => !hasPremiumPrice(item)
     ? `${money.format(item.price)} monedas`
     : `${money.format(item.price)} monedas · ${money.format(item.premiumPrice!)} gemas premium`;
@@ -722,6 +726,32 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
       new StringSelectMenuBuilder().setCustomId('shop:category').setPlaceholder('Categorías de la tienda')
         .addOptions(storeCategoryOptions.map((entry) => ({ label: entry.label, value: entry.id, emoji: entry.emoji, default: entry.id === selectedCategory }))),
     ));
+  let backgroundPreviewFile: AttachmentBuilder | undefined;
+  const selectedProfileItem = selected?.kind === 'profile' ? profileShopItems.find((item) => item.id === selected.id) : undefined;
+  if (selectedProfileItem && (selectedProfileItem.type === 'profile_bg' || selectedProfileItem.type === 'rank_bg' || selectedProfileItem.type === 'wallet_bg' || selectedProfileItem.type === 'levelup_bg')) {
+    const [settings, progress, account, badges] = await Promise.all([
+      getProfileSettings(userId), getProfileProgress(guildId, userId), getAccountBalances(guildId, userId), equippedProfileBadges(userId),
+    ]);
+    const preview = await renderProfileBackgroundPreview({
+      userId,
+      username: `Usuario ${userId.slice(-4)}`,
+      avatarUrl: '',
+      settings,
+      progress,
+      wallet: account.wallet,
+      bank: account.bank,
+      premium: account.premium,
+      badges,
+    }, selectedProfileItem);
+    if (preview) {
+      const filename = 'shop-background-preview.png';
+      const cardLabel = { profile: 'perfil', rank: 'rango', wallet: 'billetera', levelup: 'subida de nivel' }[preview.mode];
+      backgroundPreviewFile = new AttachmentBuilder(preview.buffer).setName(filename);
+      container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa · tarjeta de ${cardLabel}\nAsí se verá con **${selectedProfileItem.name}** antes de comprarlo.`))
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${filename}`).setDescription(`Tarjeta de ${cardLabel} con ${selectedProfileItem.name}`)));
+    }
+  }
   if (pageItems.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId(`shop:item:${encodeURIComponent(categoryState)}:${page}`).setPlaceholder('Seleccionar producto')
       .addOptions(pageItems.map((item) => ({ label: `${item.name} (${getProductCategoryLabel(item)})`.slice(0, 100), value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${productPriceLabel(item)} · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind }))),
@@ -743,7 +773,8 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
     new ButtonBuilder().setCustomId(`shop:page:${Math.max(0, page - 1)}:${encodeURIComponent(categoryState)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
     new ButtonBuilder().setCustomId(`shop:page:${Math.min(pageCount - 1, page + 1)}:${encodeURIComponent(categoryState)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount),
   ));
-  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+  const panel = { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+  return backgroundPreviewFile ? { ...panel, files: [backgroundPreviewFile] } : panel;
 }
 
 export async function casinoPanel(guildId: string, userId: string) {

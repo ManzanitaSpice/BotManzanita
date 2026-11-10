@@ -698,7 +698,9 @@ export function registerInteractionHandler(client: Client) {
           return;
         }
         if (interaction.customId === 'eco:back' || interaction.customId === 'eco:refresh') {
-          await interaction.update(componentUpdate(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({extension:'png',size:256}))));
+          await interaction.deferUpdate();
+          const panel = await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({extension:'png',size:256}));
+          await interaction.editReply(componentUpdate(panel));
           return;
         }
         if (interaction.customId === 'eco:buy' && interaction.isStringSelectMenu()) {

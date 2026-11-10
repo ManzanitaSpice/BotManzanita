@@ -11,6 +11,7 @@ const CHAT_XP_COOLDOWN_MS = 60_000;
 export const PROFILE_CHAT_XP_DAILY_CAP = 1_200;
 const DEFAULT_SETTINGS = { about: '', title: 'Aventurero/a', accent: '#8b75dc', profileBg: null, rankBg: null, walletBg: null, levelupBg: null, tag: null, frame: null, sticker: null };
 const equipColumns = { profile_bg: 'profileBg', rank_bg: 'rankBg', wallet_bg: 'walletBg', levelup_bg: 'levelupBg', tag: 'tag', frame: 'frame', sticker: 'sticker', accent: 'accent' };
+const gemPricedCosmeticTypes = new Set(['profile_bg', 'rank_bg', 'wallet_bg', 'levelup_bg', 'badge', 'tag', 'frame', 'sticker', 'accent']);
 function normalizeProfileSettings(row) {
     if (!row)
         return DEFAULT_SETTINGS;
@@ -196,41 +197,45 @@ export async function getProfileInventory(guildId, userId) {
     transaction.immediate();
     return db.prepare('SELECT item_id itemId,quantity,acquired_at acquiredAt FROM user_inventory WHERE guild_id=? AND user_id=? AND quantity>0 ORDER BY acquired_at DESC').all(guildId, userId);
 }
-export async function buyProfileItem(guildId, userId, itemId, reference) {
+export async function buyProfileItem(guildId, userId, itemId, reference, currency = 'coins') {
     guildId = GLOBAL_SCOPE_ID;
     const item = profileShopItems.find((entry) => entry.id === itemId);
     if (!item)
         return { ok: false, reason: 'not_found', balance: 0 };
-    if (item.price <= 0)
-        return { ok: false, reason: 'free_item', balance: 0 };
+    const price = currency === 'gems' ? (gemPricedCosmeticTypes.has(item.type) ? item.premiumPrice : undefined) : item.price;
+    if (typeof price !== 'number' || !Number.isSafeInteger(price) || price <= 0)
+        return { ok: false, reason: currency === 'gems' ? 'currency_unavailable' : 'free_item', balance: 0 };
+    const balanceColumn = currency === 'gems' ? 'premium_balance' : 'balance';
+    const ledgerReference = `${currency === 'gems' ? 'profile-shop-gems' : 'profile-shop'}:${reference}`;
+    const ledgerReason = currency === 'gems' ? `profile_shop_gems:${itemId}` : `profile_shop:${itemId}`;
     const at = Math.floor(Date.now() / 1000);
-    const ledgerReference = `profile-shop:${reference}`;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             await connection.execute('INSERT IGNORE INTO economy_accounts(guild_id,user_id,balance,created_at,updated_at) VALUES(?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
             const [owned] = await connection.execute('SELECT quantity FROM user_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE', [guildId, userId, itemId]);
             if (owned.length)
                 return { ok: false, reason: 'already_owned', balance: 0 };
-            const [accounts] = await connection.execute('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
+            const [accounts] = await connection.execute(`SELECT ${balanceColumn} AS balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE`, [guildId, userId]);
             const balance = Number(accounts[0]?.balance ?? 0);
-            if (balance < item.price)
+            if (balance < price)
                 return { ok: false, reason: 'insufficient', balance };
-            await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [item.price, at, guildId, userId]);
-            await connection.execute('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)', [guildId, userId, -item.price, `profile_shop:${itemId}`, ledgerReference, at]);
+            await connection.execute(`UPDATE economy_accounts SET ${balanceColumn}=${balanceColumn}-?,updated_at=? WHERE guild_id=? AND user_id=?`, [price, at, guildId, userId]);
+            await connection.execute('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)', [guildId, userId, -price, ledgerReason, ledgerReference, at]);
             await connection.execute('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId, at]);
-            return { ok: true, balance: balance - item.price };
+            return { ok: true, balance: balance - price };
         });
     const transaction = db.transaction(() => {
         db.prepare('INSERT OR IGNORE INTO economy_accounts(guild_id,user_id,balance) VALUES(?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE);
         if (db.prepare('SELECT 1 FROM user_inventory WHERE guild_id=? AND user_id=? AND item_id=?').get(guildId, userId, itemId))
             return { ok: false, reason: 'already_owned', balance: 0 };
-        const balance = Number(db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId).balance);
-        if (balance < item.price)
+        const account = db.prepare(`SELECT ${balanceColumn} AS balance FROM economy_accounts WHERE guild_id=? AND user_id=?`).get(guildId, userId);
+        const balance = Number(account.balance);
+        if (balance < price)
             return { ok: false, reason: 'insufficient', balance };
-        db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(item.price, at, guildId, userId);
-        db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -item.price, `profile_shop:${itemId}`, ledgerReference, at);
+        db.prepare(`UPDATE economy_accounts SET ${balanceColumn}=${balanceColumn}-?,updated_at=? WHERE guild_id=? AND user_id=?`).run(price, at, guildId, userId);
+        db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -price, ledgerReason, ledgerReference, at);
         db.prepare('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId, at);
-        return { ok: true, balance: balance - item.price };
+        return { ok: true, balance: balance - price };
     });
     return transaction.immediate();
 }

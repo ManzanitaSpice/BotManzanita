@@ -383,120 +383,120 @@ export function getPetSpeciesMetadata(name) {
     return species.find((candidate) => candidate.name === name);
 }
 export function getSpeciesCatalog() { return species; }
-const defineMove = (element, id, name, minLevel, power, accuracy, energy, effect, expeditionFocus, description, specialization) =>
-  ({ id, name, element, minLevel, power, accuracy, energy, effect, expeditionFocus, description, ...(specialization ? { specialization } : {}) });
+const defineMove = (element, id, name, minLevel, power, accuracy, energy, effect, expeditionFocus, description, specialization) => ({ id, name, element, minLevel, power, accuracy, energy, effect, expeditionFocus, description, ...(specialization ? { specialization } : {}) });
 const elementalMoves = [
-  defineMove('Fuego','flame_flick','Chispa ígnea',1,12,100,0,'damage','presion','Golpe de fuego preciso y veloz.'),
-  defineMove('Fuego','ember_burst','Estallido de brasas',5,22,88,17,'weaken','presion','Quema y debilita el siguiente golpe rival.'),
-  defineMove('Fuego','cinder_guard','Velo de ceniza',3,0,100,11,'guard','proteccion','Una cortina caliente amortigua el daño.'),
-  defineMove('Fuego','foxfire_drain','Llama zorruna',7,17,94,14,'drain','presion','Una llama azul roba parte de la vitalidad.'),
-  defineMove('Fuego','ash_step','Paso de ceniza',9,19,100,14,'damage','proteccion','Esquiva entre chispas y contraataca.'),
-  defineMove('Fuego','hearth_pulse','Pulso de fogata',11,18,100,16,'heal','recuperacion','El calor sereno cierra heridas.'),
-  defineMove('Fuego','phoenix_feint','Finta del fénix',13,24,91,18,'weaken','presion','Renace en una llamarada que quiebra el ímpetu rival.'),
-  defineMove('Fuego','sunflare','Fulgor del mediodía',15,28,86,21,'damage','presion','Un arco solar golpea con gran potencia.'),
-  defineMove('Fuego','ember_bloom','Jardín de rescoldos',17,22,100,20,'heal','recuperacion','Brasas diminutas devuelven fuerzas.'),
-  defineMove('Fuego','last_spark','Último rescoldo',19,34,80,24,'damage','presion','Concentra todo el calor en un golpe decisivo.'),
-  defineMove('Agua','bubble_shot','Burbuja veloz',1,11,100,0,'damage','presion','Ataque acuático rápido y preciso.'),
-  defineMove('Agua','tidal_drain','Drenaje de marea',5,18,92,15,'drain','recuperacion','Daña y recupera PV con el vaivén de la marea.'),
-  defineMove('Agua','foam_screen','Pantalla de espuma',3,0,100,11,'guard','proteccion','La espuma desvía el siguiente impacto.'),
-  defineMove('Agua','undertow','Corriente traicionera',7,17,95,13,'weaken','presion','Una corriente baja desestabiliza al rival.'),
-  defineMove('Agua','rain_mend','Lluvia mansa',9,19,100,15,'heal','recuperacion','Una lluvia fresca restaura energía y heridas.'),
-  defineMove('Agua','splash_dash','Salto de rompiente',11,20,97,15,'damage','proteccion','Se impulsa en una ola y golpea al aterrizar.'),
-  defineMove('Agua','mirror_pool','Espejo de laguna',13,0,100,16,'guard','proteccion','Un reflejo líquido confunde y protege.'),
-  defineMove('Agua','deep_current','Corriente abisal',15,26,88,20,'drain','recuperacion','La presión del fondo roba vitalidad.'),
-  defineMove('Agua','spring_tide','Marea de primavera',17,25,100,21,'heal','recuperacion','Una fuente cálida sana a quien la invoca.'),
-  defineMove('Agua','tsunami_arc','Arco de tsunami',19,33,82,24,'damage','presion','Una ola enorme barre el campo de batalla.'),
-  defineMove('Naturaleza','thorn_whip','Látigo de espinas',1,12,96,0,'damage','presion','Ataque vegetal equilibrado.'),
-  defineMove('Naturaleza','bloom_mend','Brote sanador',5,24,100,19,'heal','recuperacion','Recupera PV con savia luminosa.'),
-  defineMove('Naturaleza','root_snare','Raíces enlazantes',3,15,96,12,'weaken','proteccion','Raíces frenan al rival y su próximo ataque.'),
-  defineMove('Naturaleza','moss_shell','Caparazón de musgo',7,0,100,13,'guard','proteccion','Musgo y corteza absorben parte del golpe.'),
-  defineMove('Naturaleza','pollen_drain','Polen vital',9,17,94,14,'drain','recuperacion','El polen extrae fuerza y la devuelve.'),
-  defineMove('Naturaleza','seed_barrage','Ráfaga de semillas',11,21,96,16,'damage','presion','Semillas duras vuelan como una lluvia de dardos.'),
-  defineMove('Naturaleza','verdant_song','Canto del claro',13,22,100,18,'heal','vinculo','Una melodía vegetal calma y cura.'),
-  defineMove('Naturaleza','bramble_crown','Corona de zarzas',15,27,88,20,'weaken','presion','Zarzas cierran el paso y rompen la guardia.'),
-  defineMove('Naturaleza','ancient_grove','Resguardo del bosque',17,0,100,20,'guard','proteccion','Espíritus del bosque alzan una defensa firme.'),
-  defineMove('Naturaleza','worldroot','Raíz del mundo',19,32,84,24,'drain','recuperacion','Una raíz ancestral absorbe la fuerza enemiga.'),
-  defineMove('Viento','gust_cut','Corte de vendaval',1,11,100,0,'damage','presion','Ataque veloz de viento.'),
-  defineMove('Viento','tailwind_guard','Guardia de cola',5,0,100,14,'guard','proteccion','Una ráfaga desvía el siguiente golpe.'),
-  defineMove('Viento','feather_step','Paso de pluma',3,15,100,11,'damage','proteccion','Un giro ligero convierte la esquiva en ataque.'),
-  defineMove('Viento','whistling_draft','Silbido cortante',7,18,96,14,'weaken','presion','Un silbido agudo desordena al rival.'),
-  defineMove('Viento','cloud_lullaby','Arrullo de nube',9,18,100,15,'heal','recuperacion','Una nube fresca le devuelve el aliento.'),
-  defineMove('Viento','spiral_dive','Picado en espiral',11,22,93,16,'damage','presion','Desciende en espiral con un golpe certero.'),
-  defineMove('Viento','updraft','Corriente ascendente',13,0,100,16,'guard','proteccion','Una corriente eleva y aparta del peligro.'),
-  defineMove('Viento','sky_lance','Lanza del cielo',15,27,88,20,'damage','presion','Comprime el aire en una lanza afilada.'),
-  defineMove('Viento','breeze_mend','Brisa reparadora',17,25,100,20,'heal','recuperacion','Una brisa tibia cierra heridas.'),
-  defineMove('Viento','tempest_wing','Alas de tempestad',19,34,82,24,'weaken','presion','Un vendaval golpea y deja al rival sin equilibrio.'),
-  defineMove('Hielo','snow_shard','Esquirla de nieve',1,13,94,0,'damage','presion','Golpe de hielo de potencia media.'),
-  defineMove('Hielo','frost_break','Ruptura glacial',5,20,88,16,'weaken','proteccion','Daña y reduce la fuerza del siguiente ataque rival.'),
-  defineMove('Hielo','rime_guard','Escarcha protectora',3,0,100,11,'guard','proteccion','Una capa de hielo amortigua el impacto.'),
-  defineMove('Hielo','blue_flurry','Ventisca azul',7,19,92,14,'damage','presion','Copos afilados atacan en rápida sucesión.'),
-  defineMove('Hielo','glacier_mend','Reposo glaciar',9,20,100,16,'heal','recuperacion','El frío sereno detiene el dolor y restaura PV.'),
-  defineMove('Hielo','ice_mirror','Espejo de hielo',11,0,100,16,'guard','proteccion','Un espejo helado desvía el golpe hacia un lado.'),
-  defineMove('Hielo','permafrost_bite','Mordida de permafrost',13,25,91,18,'drain','presion','El hielo muerde y absorbe calor vital.'),
-  defineMove('Hielo','whiteout','Ceguera blanca',15,27,86,20,'weaken','presion','Una nube de nieve oculta al rival y lo desarma.'),
-  defineMove('Hielo','aurora_snow','Nieve de aurora',17,25,100,21,'heal','vinculo','Copos brillantes alivian el cansancio.'),
-  defineMove('Hielo','zero_point','Punto cero',19,35,80,24,'damage','presion','Libera un pulso de frío absoluto.'),
-  defineMove('Luz','gleam_pulse','Pulso brillante',1,11,100,0,'damage','presion','Ataque luminoso fiable.'),
-  defineMove('Luz','renewing_ray','Rayo renovador',5,23,100,18,'heal','recuperacion','Recupera PV con energía luminosa.'),
-  defineMove('Luz','halo_guard','Halo protector',3,0,100,11,'guard','proteccion','Un halo desvía la energía del impacto.'),
-  defineMove('Luz','dawn_lance','Lanza del alba',7,18,98,14,'damage','presion','Un rayo de amanecer atraviesa la sombra.'),
-  defineMove('Luz','kindle_soul','Lumbre del ánimo',9,19,100,15,'heal','vinculo','Una luz amable devuelve el valor.'),
-  defineMove('Luz','prism_break','Prisma quebrado',11,22,94,16,'weaken','presion','Destellos distraen y debilitan al rival.'),
-  defineMove('Luz','sunlit_aegis','Égida solar',13,0,100,16,'guard','proteccion','Una barrera cálida protege de la embestida.'),
-  defineMove('Luz','mercy_burst','Destello compasivo',15,25,100,20,'heal','recuperacion','Una ráfaga luminosa restaura una gran cantidad de PV.'),
-  defineMove('Luz','judgement_star','Estrella justiciera',17,29,88,21,'damage','presion','Una estrella cae con precisión fulminante.'),
-  defineMove('Luz','daybreak','Primer amanecer',19,33,90,24,'weaken','presion','El alba ciega al rival y corta su impulso.'),
-  defineMove('Sombra','night_claw','Garra nocturna',1,13,92,0,'damage','presion','Golpe de sombra con probabilidad crítica alta.'),
-  defineMove('Sombra','umbral_drain','Drenaje umbrío',5,18,92,15,'drain','recuperacion','Roba vitalidad al rival.'),
-  defineMove('Sombra','dusk_cloak','Manto del ocaso',3,0,100,11,'guard','proteccion','Una capa oscura difumina el golpe.'),
-  defineMove('Sombra','whisper_hex','Susurro maldito',7,18,95,14,'weaken','presion','Un susurro inquietante quiebra la concentración.'),
-  defineMove('Sombra','moonless_pounce','Salto sin luna',9,21,93,15,'damage','proteccion','Aparece a la espalda antes de que miren.'),
-  defineMove('Sombra','shade_mend','Descanso en penumbra',11,20,100,16,'heal','recuperacion','La penumbra reconforta y cura.'),
-  defineMove('Sombra','phantom_bite','Mordida fantasma',13,25,90,18,'drain','recuperacion','Un mordisco espectral roba fuerza vital.'),
-  defineMove('Sombra','eclipse_snare','Trampa de eclipse',15,27,88,20,'weaken','proteccion','La sombra inmoviliza y debilita al enemigo.'),
-  defineMove('Sombra','blackout_guard','Velo abisal',17,0,100,20,'guard','proteccion','La oscuridad absorbe el siguiente ataque.'),
-  defineMove('Sombra','umbra_surge','Oleada umbría',19,34,84,24,'damage','presion','Una ola de noche golpea desde todos lados.'),
-  defineMove('Tierra','pebble_bash','Golpe de guijarro',1,13,94,0,'damage','presion','Ataque de tierra contundente.'),
-  defineMove('Tierra','stone_wall','Muro de piedra',5,0,100,14,'guard','proteccion','Levanta una defensa reforzada.'),
-  defineMove('Tierra','rooted_stance','Postura arraigada',3,15,100,11,'guard','proteccion','Afirmarse al suelo reduce el impacto y contraataca.'),
-  defineMove('Tierra','quarry_crash','Derrumbe de cantera',7,19,91,14,'damage','presion','Fragmentos pesados se desploman sobre el rival.'),
-  defineMove('Tierra','clay_mend','Arcilla balsámica',9,19,100,15,'heal','recuperacion','Arcilla mineral sella heridas.'),
-  defineMove('Tierra','fault_line','Falla sísmica',11,23,89,17,'weaken','presion','Una sacudida abre grietas bajo los pies enemigos.'),
-  defineMove('Tierra','geode_shell','Cáscara de geoda',13,0,100,16,'guard','proteccion','Una coraza cristalina recibe el golpe.'),
-  defineMove('Tierra','ore_drain','Veta absorbente',15,25,91,19,'drain','recuperacion','Extrae energía de los minerales cercanos.'),
-  defineMove('Tierra','mountain_mend','Aliento de montaña',17,25,100,20,'heal','recuperacion','La calma de la montaña restaura las fuerzas.'),
-  defineMove('Tierra','continental_break','Ruptura continental',19,35,80,24,'damage','presion','Un golpe tectónico abre el campo de batalla.'),
-  defineMove('Rayo','spark_bolt','Chispa eléctrica',1,12,98,0,'damage','presion','Descarga eléctrica rápida.'),
-  defineMove('Rayo','thunder_lance','Lanza de trueno',5,25,82,19,'damage','presion','Gran potencia, pero puede fallar.'),
-  defineMove('Rayo','static_guard','Campo estático',3,0,100,11,'guard','proteccion','La electricidad forma un escudo vibrante.'),
-  defineMove('Rayo','arc_snare','Lazo de arco',7,18,95,14,'weaken','proteccion','Un arco eléctrico entumece al rival.'),
-  defineMove('Rayo','pulse_drain','Pulso conductor',9,18,93,15,'drain','recuperacion','Absorbe corriente y la convierte en vigor.'),
-  defineMove('Rayo','flash_step','Destello veloz',11,21,100,16,'damage','proteccion','Un salto instantáneo termina en un impacto.'),
-  defineMove('Rayo','storm_mend','Lluvia de centellas',13,22,100,18,'heal','recuperacion','Centellas tibias revitalizan a la mascota.'),
-  defineMove('Rayo','thunderclap','Trueno súbito',15,28,88,20,'weaken','presion','Un estallido ensordecedor desordena al rival.'),
-  defineMove('Rayo','chain_lightning','Relámpago en cadena',17,30,86,22,'damage','presion','La descarga salta de un extremo al otro.'),
-  defineMove('Rayo','stormheart','Corazón de tormenta',19,35,84,24,'drain','recuperacion','La tormenta devuelve la energía que consume.'),
-  defineMove('Astral','stardust','Polvo estelar',1,12,98,0,'damage','busqueda','Proyectil astral estable.'),
-  defineMove('Astral','comet_well','Pozo de cometa',5,20,90,17,'drain','recuperacion','Drena energía vital con fuerza astral.'),
-  defineMove('Astral','orbit_guard','Órbita protectora',3,0,100,11,'guard','proteccion','Pequeños astros bloquean el impacto.'),
-  defineMove('Astral','nebula_mend','Nébula serena',7,18,100,14,'heal','recuperacion','Una nebulosa restaura PV y calma el ánimo.'),
-  defineMove('Astral','fate_thread','Hilo del destino',9,18,100,14,'weaken','busqueda','Revela el siguiente movimiento del rival.'),
-  defineMove('Astral','meteor_skip','Salto meteórico',11,22,94,16,'damage','proteccion','Una estela engaña al rival antes del golpe.'),
-  defineMove('Astral','constellation_call','Llamado de constelación',13,21,100,17,'heal','vinculo','Una constelación conocida devuelve esperanza.'),
-  defineMove('Astral','quasar_burst','Estallido de cuásar',15,28,88,20,'damage','presion','Condensa una estrella en un impacto breve.'),
-  defineMove('Astral','starlit_map','Mapa celeste',17,0,100,19,'guard','busqueda','Las estrellas señalan una ruta segura.'),
-  defineMove('Astral','cosmic_reprise','Reprise cósmica',19,34,86,24,'drain','recuperacion','La energía de las estrellas vuelve a su origen.'),
+    defineMove('Fuego', 'flame_flick', 'Chispa ígnea', 1, 12, 100, 0, 'damage', 'presion', 'Golpe de fuego preciso y veloz.'),
+    defineMove('Fuego', 'ember_burst', 'Estallido de brasas', 5, 22, 88, 17, 'weaken', 'presion', 'Quema y debilita el siguiente golpe rival.'),
+    defineMove('Fuego', 'cinder_guard', 'Velo de ceniza', 3, 0, 100, 11, 'guard', 'proteccion', 'Una cortina caliente amortigua el daño.'),
+    defineMove('Fuego', 'foxfire_drain', 'Llama zorruna', 7, 17, 94, 14, 'drain', 'presion', 'Una llama azul roba parte de la vitalidad.'),
+    defineMove('Fuego', 'ash_step', 'Paso de ceniza', 9, 19, 100, 14, 'damage', 'proteccion', 'Esquiva entre chispas y contraataca.'),
+    defineMove('Fuego', 'hearth_pulse', 'Pulso de fogata', 11, 18, 100, 16, 'heal', 'recuperacion', 'El calor sereno cierra heridas.'),
+    defineMove('Fuego', 'phoenix_feint', 'Finta del fénix', 13, 24, 91, 18, 'weaken', 'presion', 'Renace en una llamarada que quiebra el ímpetu rival.'),
+    defineMove('Fuego', 'sunflare', 'Fulgor del mediodía', 15, 28, 86, 21, 'damage', 'presion', 'Un arco solar golpea con gran potencia.'),
+    defineMove('Fuego', 'ember_bloom', 'Jardín de rescoldos', 17, 22, 100, 20, 'heal', 'recuperacion', 'Brasas diminutas devuelven fuerzas.'),
+    defineMove('Fuego', 'last_spark', 'Último rescoldo', 19, 34, 80, 24, 'damage', 'presion', 'Concentra todo el calor en un golpe decisivo.'),
+    defineMove('Agua', 'bubble_shot', 'Burbuja veloz', 1, 11, 100, 0, 'damage', 'presion', 'Ataque acuático rápido y preciso.'),
+    defineMove('Agua', 'tidal_drain', 'Drenaje de marea', 5, 18, 92, 15, 'drain', 'recuperacion', 'Daña y recupera PV con el vaivén de la marea.'),
+    defineMove('Agua', 'foam_screen', 'Pantalla de espuma', 3, 0, 100, 11, 'guard', 'proteccion', 'La espuma desvía el siguiente impacto.'),
+    defineMove('Agua', 'undertow', 'Corriente traicionera', 7, 17, 95, 13, 'weaken', 'presion', 'Una corriente baja desestabiliza al rival.'),
+    defineMove('Agua', 'rain_mend', 'Lluvia mansa', 9, 19, 100, 15, 'heal', 'recuperacion', 'Una lluvia fresca restaura energía y heridas.'),
+    defineMove('Agua', 'splash_dash', 'Salto de rompiente', 11, 20, 97, 15, 'damage', 'proteccion', 'Se impulsa en una ola y golpea al aterrizar.'),
+    defineMove('Agua', 'mirror_pool', 'Espejo de laguna', 13, 0, 100, 16, 'guard', 'proteccion', 'Un reflejo líquido confunde y protege.'),
+    defineMove('Agua', 'deep_current', 'Corriente abisal', 15, 26, 88, 20, 'drain', 'recuperacion', 'La presión del fondo roba vitalidad.'),
+    defineMove('Agua', 'spring_tide', 'Marea de primavera', 17, 25, 100, 21, 'heal', 'recuperacion', 'Una fuente cálida sana a quien la invoca.'),
+    defineMove('Agua', 'tsunami_arc', 'Arco de tsunami', 19, 33, 82, 24, 'damage', 'presion', 'Una ola enorme barre el campo de batalla.'),
+    defineMove('Naturaleza', 'thorn_whip', 'Látigo de espinas', 1, 12, 96, 0, 'damage', 'presion', 'Ataque vegetal equilibrado.'),
+    defineMove('Naturaleza', 'bloom_mend', 'Brote sanador', 5, 24, 100, 19, 'heal', 'recuperacion', 'Recupera PV con savia luminosa.'),
+    defineMove('Naturaleza', 'root_snare', 'Raíces enlazantes', 3, 15, 96, 12, 'weaken', 'proteccion', 'Raíces frenan al rival y su próximo ataque.'),
+    defineMove('Naturaleza', 'moss_shell', 'Caparazón de musgo', 7, 0, 100, 13, 'guard', 'proteccion', 'Musgo y corteza absorben parte del golpe.'),
+    defineMove('Naturaleza', 'pollen_drain', 'Polen vital', 9, 17, 94, 14, 'drain', 'recuperacion', 'El polen extrae fuerza y la devuelve.'),
+    defineMove('Naturaleza', 'seed_barrage', 'Ráfaga de semillas', 11, 21, 96, 16, 'damage', 'presion', 'Semillas duras vuelan como una lluvia de dardos.'),
+    defineMove('Naturaleza', 'verdant_song', 'Canto del claro', 13, 22, 100, 18, 'heal', 'vinculo', 'Una melodía vegetal calma y cura.'),
+    defineMove('Naturaleza', 'bramble_crown', 'Corona de zarzas', 15, 27, 88, 20, 'weaken', 'presion', 'Zarzas cierran el paso y rompen la guardia.'),
+    defineMove('Naturaleza', 'ancient_grove', 'Resguardo del bosque', 17, 0, 100, 20, 'guard', 'proteccion', 'Espíritus del bosque alzan una defensa firme.'),
+    defineMove('Naturaleza', 'worldroot', 'Raíz del mundo', 19, 32, 84, 24, 'drain', 'recuperacion', 'Una raíz ancestral absorbe la fuerza enemiga.'),
+    defineMove('Viento', 'gust_cut', 'Corte de vendaval', 1, 11, 100, 0, 'damage', 'presion', 'Ataque veloz de viento.'),
+    defineMove('Viento', 'tailwind_guard', 'Guardia de cola', 5, 0, 100, 14, 'guard', 'proteccion', 'Una ráfaga desvía el siguiente golpe.'),
+    defineMove('Viento', 'feather_step', 'Paso de pluma', 3, 15, 100, 11, 'damage', 'proteccion', 'Un giro ligero convierte la esquiva en ataque.'),
+    defineMove('Viento', 'whistling_draft', 'Silbido cortante', 7, 18, 96, 14, 'weaken', 'presion', 'Un silbido agudo desordena al rival.'),
+    defineMove('Viento', 'cloud_lullaby', 'Arrullo de nube', 9, 18, 100, 15, 'heal', 'recuperacion', 'Una nube fresca le devuelve el aliento.'),
+    defineMove('Viento', 'spiral_dive', 'Picado en espiral', 11, 22, 93, 16, 'damage', 'presion', 'Desciende en espiral con un golpe certero.'),
+    defineMove('Viento', 'updraft', 'Corriente ascendente', 13, 0, 100, 16, 'guard', 'proteccion', 'Una corriente eleva y aparta del peligro.'),
+    defineMove('Viento', 'sky_lance', 'Lanza del cielo', 15, 27, 88, 20, 'damage', 'presion', 'Comprime el aire en una lanza afilada.'),
+    defineMove('Viento', 'breeze_mend', 'Brisa reparadora', 17, 25, 100, 20, 'heal', 'recuperacion', 'Una brisa tibia cierra heridas.'),
+    defineMove('Viento', 'tempest_wing', 'Alas de tempestad', 19, 34, 82, 24, 'weaken', 'presion', 'Un vendaval golpea y deja al rival sin equilibrio.'),
+    defineMove('Hielo', 'snow_shard', 'Esquirla de nieve', 1, 13, 94, 0, 'damage', 'presion', 'Golpe de hielo de potencia media.'),
+    defineMove('Hielo', 'frost_break', 'Ruptura glacial', 5, 20, 88, 16, 'weaken', 'proteccion', 'Daña y reduce la fuerza del siguiente ataque rival.'),
+    defineMove('Hielo', 'rime_guard', 'Escarcha protectora', 3, 0, 100, 11, 'guard', 'proteccion', 'Una capa de hielo amortigua el impacto.'),
+    defineMove('Hielo', 'blue_flurry', 'Ventisca azul', 7, 19, 92, 14, 'damage', 'presion', 'Copos afilados atacan en rápida sucesión.'),
+    defineMove('Hielo', 'glacier_mend', 'Reposo glaciar', 9, 20, 100, 16, 'heal', 'recuperacion', 'El frío sereno detiene el dolor y restaura PV.'),
+    defineMove('Hielo', 'ice_mirror', 'Espejo de hielo', 11, 0, 100, 16, 'guard', 'proteccion', 'Un espejo helado desvía el golpe hacia un lado.'),
+    defineMove('Hielo', 'permafrost_bite', 'Mordida de permafrost', 13, 25, 91, 18, 'drain', 'presion', 'El hielo muerde y absorbe calor vital.'),
+    defineMove('Hielo', 'whiteout', 'Ceguera blanca', 15, 27, 86, 20, 'weaken', 'presion', 'Una nube de nieve oculta al rival y lo desarma.'),
+    defineMove('Hielo', 'aurora_snow', 'Nieve de aurora', 17, 25, 100, 21, 'heal', 'vinculo', 'Copos brillantes alivian el cansancio.'),
+    defineMove('Hielo', 'zero_point', 'Punto cero', 19, 35, 80, 24, 'damage', 'presion', 'Libera un pulso de frío absoluto.'),
+    defineMove('Luz', 'gleam_pulse', 'Pulso brillante', 1, 11, 100, 0, 'damage', 'presion', 'Ataque luminoso fiable.'),
+    defineMove('Luz', 'renewing_ray', 'Rayo renovador', 5, 23, 100, 18, 'heal', 'recuperacion', 'Recupera PV con energía luminosa.'),
+    defineMove('Luz', 'halo_guard', 'Halo protector', 3, 0, 100, 11, 'guard', 'proteccion', 'Un halo desvía la energía del impacto.'),
+    defineMove('Luz', 'dawn_lance', 'Lanza del alba', 7, 18, 98, 14, 'damage', 'presion', 'Un rayo de amanecer atraviesa la sombra.'),
+    defineMove('Luz', 'kindle_soul', 'Lumbre del ánimo', 9, 19, 100, 15, 'heal', 'vinculo', 'Una luz amable devuelve el valor.'),
+    defineMove('Luz', 'prism_break', 'Prisma quebrado', 11, 22, 94, 16, 'weaken', 'presion', 'Destellos distraen y debilitan al rival.'),
+    defineMove('Luz', 'sunlit_aegis', 'Égida solar', 13, 0, 100, 16, 'guard', 'proteccion', 'Una barrera cálida protege de la embestida.'),
+    defineMove('Luz', 'mercy_burst', 'Destello compasivo', 15, 25, 100, 20, 'heal', 'recuperacion', 'Una ráfaga luminosa restaura una gran cantidad de PV.'),
+    defineMove('Luz', 'judgement_star', 'Estrella justiciera', 17, 29, 88, 21, 'damage', 'presion', 'Una estrella cae con precisión fulminante.'),
+    defineMove('Luz', 'daybreak', 'Primer amanecer', 19, 33, 90, 24, 'weaken', 'presion', 'El alba ciega al rival y corta su impulso.'),
+    defineMove('Sombra', 'night_claw', 'Garra nocturna', 1, 13, 92, 0, 'damage', 'presion', 'Golpe de sombra con probabilidad crítica alta.'),
+    defineMove('Sombra', 'umbral_drain', 'Drenaje umbrío', 5, 18, 92, 15, 'drain', 'recuperacion', 'Roba vitalidad al rival.'),
+    defineMove('Sombra', 'dusk_cloak', 'Manto del ocaso', 3, 0, 100, 11, 'guard', 'proteccion', 'Una capa oscura difumina el golpe.'),
+    defineMove('Sombra', 'whisper_hex', 'Susurro maldito', 7, 18, 95, 14, 'weaken', 'presion', 'Un susurro inquietante quiebra la concentración.'),
+    defineMove('Sombra', 'moonless_pounce', 'Salto sin luna', 9, 21, 93, 15, 'damage', 'proteccion', 'Aparece a la espalda antes de que miren.'),
+    defineMove('Sombra', 'shade_mend', 'Descanso en penumbra', 11, 20, 100, 16, 'heal', 'recuperacion', 'La penumbra reconforta y cura.'),
+    defineMove('Sombra', 'phantom_bite', 'Mordida fantasma', 13, 25, 90, 18, 'drain', 'recuperacion', 'Un mordisco espectral roba fuerza vital.'),
+    defineMove('Sombra', 'eclipse_snare', 'Trampa de eclipse', 15, 27, 88, 20, 'weaken', 'proteccion', 'La sombra inmoviliza y debilita al enemigo.'),
+    defineMove('Sombra', 'blackout_guard', 'Velo abisal', 17, 0, 100, 20, 'guard', 'proteccion', 'La oscuridad absorbe el siguiente ataque.'),
+    defineMove('Sombra', 'umbra_surge', 'Oleada umbría', 19, 34, 84, 24, 'damage', 'presion', 'Una ola de noche golpea desde todos lados.'),
+    defineMove('Tierra', 'pebble_bash', 'Golpe de guijarro', 1, 13, 94, 0, 'damage', 'presion', 'Ataque de tierra contundente.'),
+    defineMove('Tierra', 'stone_wall', 'Muro de piedra', 5, 0, 100, 14, 'guard', 'proteccion', 'Levanta una defensa reforzada.'),
+    defineMove('Tierra', 'rooted_stance', 'Postura arraigada', 3, 15, 100, 11, 'guard', 'proteccion', 'Afirmarse al suelo reduce el impacto y contraataca.'),
+    defineMove('Tierra', 'quarry_crash', 'Derrumbe de cantera', 7, 19, 91, 14, 'damage', 'presion', 'Fragmentos pesados se desploman sobre el rival.'),
+    defineMove('Tierra', 'clay_mend', 'Arcilla balsámica', 9, 19, 100, 15, 'heal', 'recuperacion', 'Arcilla mineral sella heridas.'),
+    defineMove('Tierra', 'fault_line', 'Falla sísmica', 11, 23, 89, 17, 'weaken', 'presion', 'Una sacudida abre grietas bajo los pies enemigos.'),
+    defineMove('Tierra', 'geode_shell', 'Cáscara de geoda', 13, 0, 100, 16, 'guard', 'proteccion', 'Una coraza cristalina recibe el golpe.'),
+    defineMove('Tierra', 'ore_drain', 'Veta absorbente', 15, 25, 91, 19, 'drain', 'recuperacion', 'Extrae energía de los minerales cercanos.'),
+    defineMove('Tierra', 'mountain_mend', 'Aliento de montaña', 17, 25, 100, 20, 'heal', 'recuperacion', 'La calma de la montaña restaura las fuerzas.'),
+    defineMove('Tierra', 'continental_break', 'Ruptura continental', 19, 35, 80, 24, 'damage', 'presion', 'Un golpe tectónico abre el campo de batalla.'),
+    defineMove('Rayo', 'spark_bolt', 'Chispa eléctrica', 1, 12, 98, 0, 'damage', 'presion', 'Descarga eléctrica rápida.'),
+    defineMove('Rayo', 'thunder_lance', 'Lanza de trueno', 5, 25, 82, 19, 'damage', 'presion', 'Gran potencia, pero puede fallar.'),
+    defineMove('Rayo', 'static_guard', 'Campo estático', 3, 0, 100, 11, 'guard', 'proteccion', 'La electricidad forma un escudo vibrante.'),
+    defineMove('Rayo', 'arc_snare', 'Lazo de arco', 7, 18, 95, 14, 'weaken', 'proteccion', 'Un arco eléctrico entumece al rival.'),
+    defineMove('Rayo', 'pulse_drain', 'Pulso conductor', 9, 18, 93, 15, 'drain', 'recuperacion', 'Absorbe corriente y la convierte en vigor.'),
+    defineMove('Rayo', 'flash_step', 'Destello veloz', 11, 21, 100, 16, 'damage', 'proteccion', 'Un salto instantáneo termina en un impacto.'),
+    defineMove('Rayo', 'storm_mend', 'Lluvia de centellas', 13, 22, 100, 18, 'heal', 'recuperacion', 'Centellas tibias revitalizan a la mascota.'),
+    defineMove('Rayo', 'thunderclap', 'Trueno súbito', 15, 28, 88, 20, 'weaken', 'presion', 'Un estallido ensordecedor desordena al rival.'),
+    defineMove('Rayo', 'chain_lightning', 'Relámpago en cadena', 17, 30, 86, 22, 'damage', 'presion', 'La descarga salta de un extremo al otro.'),
+    defineMove('Rayo', 'stormheart', 'Corazón de tormenta', 19, 35, 84, 24, 'drain', 'recuperacion', 'La tormenta devuelve la energía que consume.'),
+    defineMove('Astral', 'stardust', 'Polvo estelar', 1, 12, 98, 0, 'damage', 'busqueda', 'Proyectil astral estable.'),
+    defineMove('Astral', 'comet_well', 'Pozo de cometa', 5, 20, 90, 17, 'drain', 'recuperacion', 'Drena energía vital con fuerza astral.'),
+    defineMove('Astral', 'orbit_guard', 'Órbita protectora', 3, 0, 100, 11, 'guard', 'proteccion', 'Pequeños astros bloquean el impacto.'),
+    defineMove('Astral', 'nebula_mend', 'Nébula serena', 7, 18, 100, 14, 'heal', 'recuperacion', 'Una nebulosa restaura PV y calma el ánimo.'),
+    defineMove('Astral', 'fate_thread', 'Hilo del destino', 9, 18, 100, 14, 'weaken', 'busqueda', 'Revela el siguiente movimiento del rival.'),
+    defineMove('Astral', 'meteor_skip', 'Salto meteórico', 11, 22, 94, 16, 'damage', 'proteccion', 'Una estela engaña al rival antes del golpe.'),
+    defineMove('Astral', 'constellation_call', 'Llamado de constelación', 13, 21, 100, 17, 'heal', 'vinculo', 'Una constelación conocida devuelve esperanza.'),
+    defineMove('Astral', 'quasar_burst', 'Estallido de cuásar', 15, 28, 88, 20, 'damage', 'presion', 'Condensa una estrella en un impacto breve.'),
+    defineMove('Astral', 'starlit_map', 'Mapa celeste', 17, 0, 100, 19, 'guard', 'busqueda', 'Las estrellas señalan una ruta segura.'),
+    defineMove('Astral', 'cosmic_reprise', 'Reprise cósmica', 19, 34, 86, 24, 'drain', 'recuperacion', 'La energía de las estrellas vuelve a su origen.'),
 ];
 export const rpgMoves = [
-  defineMove('Neutral','quick_tackle','Placaje',1,10,100,0,'damage','presion','Ataque fiable, sin coste de energía.'),
-  ...elementalMoves,
-  defineMove('Neutral','reckless_charge','Carga temeraria',4,27,84,19,'damage','presion','Ataque muy potente y arriesgado.','Atacante'),
-  defineMove('Neutral','iron_counter','Contraataque férreo',4,17,96,15,'guard','proteccion','Golpea y prepara una guardia.','Guardián'),
-  defineMove('Neutral','precision_feint','Finta precisa',4,19,100,14,'damage','busqueda','Ataque preciso con crítico mejorado.','Explorador'),
-  defineMove('Neutral','arcane_focus','Enfoque arcano',4,23,90,18,'weaken','presion','Daña y debilita el siguiente golpe rival.','Místico'),
-  defineMove('Neutral','mending_song','Canto reparador',4,29,100,21,'heal','vinculo','Una gran curación sin atacar.','Apoyo'),
+    defineMove('Neutral', 'quick_tackle', 'Placaje', 1, 10, 100, 0, 'damage', 'presion', 'Ataque fiable, sin coste de energía.'),
+    ...elementalMoves,
+    defineMove('Neutral', 'reckless_charge', 'Carga temeraria', 4, 27, 84, 19, 'damage', 'presion', 'Ataque muy potente y arriesgado.', 'Atacante'),
+    defineMove('Neutral', 'iron_counter', 'Contraataque férreo', 4, 17, 96, 15, 'guard', 'proteccion', 'Golpea y prepara una guardia.', 'Guardián'),
+    defineMove('Neutral', 'precision_feint', 'Finta precisa', 4, 19, 100, 14, 'damage', 'busqueda', 'Ataque preciso con crítico mejorado.', 'Explorador'),
+    defineMove('Neutral', 'arcane_focus', 'Enfoque arcano', 4, 23, 90, 18, 'weaken', 'presion', 'Daña y debilita el siguiente golpe rival.', 'Místico'),
+    defineMove('Neutral', 'mending_song', 'Canto reparador', 4, 29, 100, 21, 'heal', 'vinculo', 'Una gran curación sin atacar.', 'Apoyo'),
 ];
-if (elementalMoves.length !== 100) throw new Error(`El catálogo elemental debe contener 100 técnicas; contiene ${elementalMoves.length}.`);
+if (elementalMoves.length !== 100)
+    throw new Error(`El catálogo elemental debe contener 100 técnicas; contiene ${elementalMoves.length}.`);
 const starterMoveByElement = {
     Fuego: 'flame_flick', Agua: 'bubble_shot', Naturaleza: 'thorn_whip', Viento: 'gust_cut', Hielo: 'snow_shard',
     Luz: 'gleam_pulse', Sombra: 'night_claw', Tierra: 'pebble_bash', Rayo: 'spark_bolt', Astral: 'stardust',
@@ -603,7 +603,7 @@ export async function trainRpgMove(guildId, userId, moveId) {
             return { ok: false, reason: 'low_xp', requiredXp: requirements.requiredXp };
         const moveProgress = getRpgMoveProgress(pet, moveId);
         return { ok: true, pet: { ...pet, xp: pet.xp - requirements.requiredXp,
-            moveProgress: { ...pet.moveProgress, [moveId]: { level: requirements.level + 1, xp: moveProgress.xp } } }, xpSpent: requirements.requiredXp, move };
+                moveProgress: { ...pet.moveProgress, [moveId]: { level: requirements.level + 1, xp: moveProgress.xp } } }, xpSpent: requirements.requiredXp, move };
     };
     const at = now();
     if (economyPool)
@@ -721,13 +721,15 @@ function parseKnownMoveData(value) {
             return { known: parsed.filter((id) => typeof id === 'string' && Boolean(getRpgMove(id))), progress: {} };
         if (!parsed || typeof parsed !== 'object')
             return { known: [], progress: {} };
-        const known = Array.isArray(parsed.known) ? parsed.known.filter((id) => typeof id === 'string' && Boolean(getRpgMove(id))) : [];
-        const rawProgress = parsed.progress && typeof parsed.progress === 'object' ? parsed.progress : {};
+        const record = parsed;
+        const known = Array.isArray(record.known) ? record.known.filter((id) => typeof id === 'string' && Boolean(getRpgMove(id))) : [];
+        const rawProgress = record.progress && typeof record.progress === 'object' ? record.progress : {};
         const progress = {};
         for (const [id, raw] of Object.entries(rawProgress)) {
             if (!raw || typeof raw !== 'object')
                 continue;
-            progress[id] = { level: Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(Number(raw.level) || 1))), xp: Math.max(0, Math.floor(Number(raw.xp) || 0)) };
+            const entry = raw;
+            progress[id] = { level: Math.max(1, Math.min(MOVE_LEVEL_CAP, Math.floor(Number(entry.level) || 1))), xp: Math.max(0, Math.floor(Number(entry.xp) || 0)) };
         }
         return { known, progress };
     }
@@ -841,7 +843,7 @@ async function savePetMysql(connection, guildId, userId, pet, updated = now()) {
 }
 function savePetSqlite(guildId, userId, pet, updated = now()) {
     db.prepare(`UPDATE rpg_pets SET name=?, element=?, specialization=?, level=?, xp=?, strength=?, defense=?, agility=?, hp=?, max_hp=?, energy=?, max_energy=?,
-        hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy, pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId);
+    hunger=?, affection=?, needs_updated_at=?, last_care_at=?, last_explore_at=?,last_battle_at=?,last_train_at=?,daily_xp=?,daily_xp_date=?, equipment_json=?, expedition_effects_json=?,expedition_memory_json=?,known_moves_json=?,equipped_moves_json=?,move_points=?,free_name_used=?,updated_at=? WHERE guild_id=? AND user_id=?`).run(pet.name, pet.element, pet.specialization, pet.level, pet.xp, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, pet.energy, pet.maxEnergy, pet.hunger, pet.affection, updated, pet.lastCareAt, pet.lastExploreAt, pet.lastBattleAt, pet.lastTrainAt, pet.dailyXp, pet.dailyXpDate, JSON.stringify(pet.equipment), JSON.stringify(pet.expeditionEffects), JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), pet.movePoints, Number(pet.freeNameUsed), updated, guildId, userId);
 }
 async function changeBalanceMysql(connection, guildId, userId, amount, reason, ref, at = now()) {
     await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
@@ -1105,9 +1107,11 @@ function expeditionTransition(previous, petName) {
     if (previous.kind === 'riesgo' && !previous.success)
         return `Aún con el corazón acelerado por ${previous.title.toLowerCase()}, ${petName} avanza con más cuidado.`;
     if (previous.kind === 'encuentro')
-        return previous.success ? `Dejando atrás ${previous.title.toLowerCase()}, ${petName} no baja la guardia: el bosque sigue lleno de sorpresas.`
+        return previous.success
+            ? `Dejando atrás ${previous.title.toLowerCase()}, ${petName} no baja la guardia: el bosque sigue lleno de sorpresas.`
             : `Después del susto en ${previous.title.toLowerCase()}, ${petName} toma una ruta más discreta.`;
-    return previous.success ? `El sendero se abre después de ${previous.title.toLowerCase()} y ${petName} continúa la exploración.`
+    return previous.success
+        ? `El sendero se abre después de ${previous.title.toLowerCase()} y ${petName} continúa la exploración.`
         : `Sacudiéndose el polvo de ${previous.title.toLowerCase()}, ${petName} busca un paso más seguro.`;
 }
 function expeditionSkillDialogue(petName, move, kind, succeeded) {
@@ -1134,9 +1138,11 @@ function bossDialogue(zone, petName, won, move, damage = 0) {
         astral: ['«Una chispa mortal no altera el curso de las estrellas.»', '«Quizá no, pero todavía puedo elegir mi rumbo.»'],
     };
     const [boss, pet] = voices[zone.id] ?? ['«¡GRAAAH!»', '«¡No busco problemas!»'];
-    const response = won ? move ? `«${move.name}, ¡abre una brecha! No queremos lastimarte.»` : pet
+    const response = won
+        ? move ? `«${move.name}, ¡abre una brecha! No queremos lastimarte.»` : pet
         : move ? `«${move.name}, cúbreme mientras busco la salida.»` : `«No quiero pelear. Voy a rodearte.»`;
-    const action = won ? `*${move ? `Con ${move.name}, ` : ''}${petName} evita una embestida y encuentra una abertura. ${zone.boss.name} retrocede, dejando libre el sendero.*`
+    const action = won
+        ? `*${move ? `Con ${move.name}, ` : ''}${petName} evita una embestida y encuentra una abertura. ${zone.boss.name} retrocede, dejando libre el sendero.*`
         : damage ? `*${zone.boss.name} embiste. ${petName} recibe ${damage} PV de daño, se zafa y se retira antes de que vuelva a atacar.*`
             : `*${move ? `${petName} se protege con ${move.name} y ` : `${petName} `}esquiva la embestida y se retira sin recibir daño.*`;
     return { boss, pet: response, action };
@@ -1191,173 +1197,256 @@ function weightedScene(scenes, pet, zone, mood, alreadyThisTrip) {
     return adjusted.at(-1).scene;
 }
 function simulateExpedition(pet, zone, at) {
-  const memory = parseExpeditionMemory(JSON.stringify(pet.expeditionMemory)); const scenes = expeditionScenes[zone.id];
-  const familiarVisits = memory.zoneVisits[zone.id] ?? 0; const targetEvents = 2 + randomInt(zone.danger >= 50 ? 3 : 4);
-  const events = []; const memoryNotes = []; const foundItems = [];
-  let moveProgress = { ...pet.moveProgress }; const moveUseCounts = {};
-  let coins = 0; let xpGenerated = pet.expeditionEffects.bonusXp; let totalMinutes = 12 + randomInt(24); let energySpent = 2 + randomInt(4);
-  let damageReceived = 0;
-  let hungerSpent = 0; let hp = pet.hp; let energy = pet.energy; let hunger = pet.hunger; let affection = pet.affection;
-  let failedChecks = 0; let riskyFailures = 0; let socialMoments = 0; let madeDiscovery = false; let earlyEnd = false;
-  let boss; let bossItem; const newRecent = [];
-  const familiarityBonus = Math.min(9, familiarVisits * 1.5) + (memory.lastZoneId === zone.id ? 2 : 0);
-  for (let index = 0; index < targetEvents; index++) {
-    const currentMoodPet = { ...pet, hp, energy: Math.max(0, pet.energy - energySpent), hunger: Math.max(0, pet.hunger - hungerSpent), affection };
-    const mood = sceneMood(currentMoodPet);
-    const chosen = weightedScene(scenes, currentMoodPet, zone, mood, newRecent);
-    const knownHazard = Boolean(chosen.hazard && remembered(memory.knownHazards, `${zone.id}:${chosen.hazard}`));
-    const knownDiscovery = Boolean(chosen.discovery && remembered(memory.discoveries, `${zone.id}:${chosen.discovery}`));
-    const knownFriend = Boolean(chosen.friend && remembered(memory.knownFriends, `${zone.id}:${chosen.friend}`));
-    const action = pick(chosen.choices[pet.specialization] ?? sceneChoices[pet.specialization]);
-    const sceneFocus = focusForExpedition(chosen.kind);
-    const expeditionMove = pet.equippedMoves.map(getRpgMove).filter((move) => Boolean(move && energy - energySpent >= 1))
-      .sort((a, b) => {
-        const aLevel = getRpgMoveProgress({ ...pet, moveProgress }, a.id).level; const bLevel = getRpgMoveProgress({ ...pet, moveProgress }, b.id).level;
-        const aScore = (a.expeditionFocus === sceneFocus ? 8 : 0) + aLevel * 0.1 - (moveUseCounts[a.id] ?? 0) * 3;
-        const bScore = (b.expeditionFocus === sceneFocus ? 8 : 0) + bLevel * 0.1 - (moveUseCounts[b.id] ?? 0) * 3;
-        return bScore - aScore;
-      })[0];
-    const expeditionMoveProgress = expeditionMove ? getRpgMoveProgress({ ...pet, moveProgress }, expeditionMove.id) : undefined;
-    const moveFocusMatches = Boolean(expeditionMove && expeditionMove.expeditionFocus === sceneFocus);
-    const skillBonus = expeditionMove ? (moveFocusMatches ? 7 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 2) : 0;
-    if (expeditionMove) moveUseCounts[expeditionMove.id] = (moveUseCounts[expeditionMove.id] ?? 0) + 1;
-    const openings = chosen.friend && knownFriend ? chosen.opening.slice(1) : chosen.opening.slice(0, chosen.opening.length > 1 ? 1 : undefined);
-    const transition = expeditionTransition(events.at(-1), pet.name);
-    let opening = replacePetName(pick(openings.length ? openings : chosen.opening), pet.name);
-    if (familiarVisits > 0 && index === 0 && randomInt(100) < 40) opening = `Esta ruta ya le resulta familiar a ${pet.name}. ${opening}`;
-    if (knownHazard && chosen.hazard) opening = `Al reconocer ${chosen.hazard.replaceAll('-', ' ')}, ${pet.name} se prepara antes de acercarse. ${opening}`;
-    const stat = chosen.skill === 'fuerza' ? pet.strength : chosen.skill === 'defensa' ? pet.defense : chosen.skill === 'agilidad' ? pet.agility : chosen.skill === 'vinculo' ? Math.floor(affection / 7)
-      : pet.level * (pet.specialization === 'Místico' ? 2 : 1) + Math.floor((pet.agility + pet.defense) / 4);
-    const affinity = pet.element !== 'Neutral' && zoneAffinity[zone.id].includes(pet.element) ? 8 : 0;
-    const roleFit = chosen.choices[pet.specialization] ? 7 : 0;
-    const moodBonus = mood === 'animada' ? 5 : mood === 'agotada' || mood === 'hambrienta' || mood === 'herida' ? -8 : mood === 'precavida' ? -3 : 1;
-    const hungerPenalty = hunger < 35 ? 8 : hunger < 55 ? 4 : 0;
-    const affectionBonus = affection >= 75 ? 3 : affection < 25 ? -5 : 0;
-    const healthPenalty = hp < pet.maxHp * 0.3 ? 10 : hp < pet.maxHp * 0.55 ? 5 : 0;
-    const chance = Math.max(18, Math.min(94, 62 + (stat - 8) * 2 + pet.level * 1.2 + affinity + roleFit + moodBonus + affectionBonus + familiarityBonus + skillBonus
-      + (knownHazard ? 8 : 0) + pet.expeditionEffects.safety - chosen.difficulty * 11 - zone.danger * 0.28 - hungerPenalty - healthPenalty));
-    let succeeded = randomInt(100) < chance; let eventCoins = 0; let eventXp = rollBetween(chosen.xp); let eventDamage = 0; let eventItem;
-    let eventTitle = chosen.title; let emoji = chosen.emoji; let resultLine = replacePetName(pick(succeeded ? chosen.success : chosen.setback), pet.name); let bossAppeared = false;
-    if (chosen.kind === 'encuentro' && !boss && randomInt(100) < zone.boss.spawnChance) {
-      bossAppeared = true;
-      const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + Math.floor(skillBonus / 2)
-        + (pet.specialization === 'Atacante' ? 5 : pet.specialization === 'Guardián' ? 3 : 0) + randomInt(12);
-      succeeded = bossPower >= zone.boss.power + randomInt(12); boss = { name: zone.boss.name, won: succeeded }; emoji = zone.boss.emoji;
-      eventTitle = `Encuentro con ${zone.boss.name}`;
-      resultLine = succeeded ? `Tras un breve forcejeo, ${zone.boss.name} retrocede y deja libre el paso.`
-        : `${zone.boss.name} cierra el paso y obliga a ${pet.name} a retirarse.`;
-      if (succeeded) {
-        eventCoins += Math.floor(rollBetween(zone.boss.reward) * RPG_COIN_REWARD_SCALE); eventXp += rollBetween(zone.boss.xp);
-        if (randomInt(100) < zone.boss.dropChance) bossItem = pick(zone.boss.drops.map((id) => rpgItems.find((item) => item.id === id)).filter(Boolean));
-      } else eventDamage += Math.max(6, 12 + randomInt(12) - Math.floor(pet.defense / 4));
-    } else if (!succeeded && chosen.damage) eventDamage = Math.max(1, rollBetween(chosen.damage)
-      - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
-    if (!succeeded) failedChecks++;
-    if (!succeeded && (chosen.kind === 'riesgo' || chosen.kind === 'encuentro')) riskyFailures++;
-    if (succeeded && chosen.coins) {
-      const zoneBase = rollBetween(zone.reward);
-      eventCoins += Math.max(1, Math.floor(zoneBase * RPG_COIN_REWARD_SCALE * (chosen.kind === 'social' ? 0.28 : 0.55)));
+    const memory = parseExpeditionMemory(JSON.stringify(pet.expeditionMemory));
+    const scenes = expeditionScenes[zone.id];
+    const familiarVisits = memory.zoneVisits[zone.id] ?? 0;
+    const targetEvents = 2 + randomInt(zone.danger >= 50 ? 3 : 4);
+    const events = [];
+    const memoryNotes = [];
+    const foundItems = [];
+    let moveProgress = { ...pet.moveProgress };
+    const moveUseCounts = {};
+    let coins = 0;
+    let xpGenerated = pet.expeditionEffects.bonusXp;
+    let totalMinutes = 12 + randomInt(24);
+    let energySpent = 2 + randomInt(4);
+    let damageReceived = 0;
+    let hungerSpent = 0;
+    let hp = pet.hp;
+    let energy = pet.energy;
+    let hunger = pet.hunger;
+    let affection = pet.affection;
+    let failedChecks = 0;
+    let riskyFailures = 0;
+    let socialMoments = 0;
+    let madeDiscovery = false;
+    let earlyEnd = false;
+    let boss;
+    let bossItem;
+    const newRecent = [];
+    const familiarityBonus = Math.min(9, familiarVisits * 1.5) + (memory.lastZoneId === zone.id ? 2 : 0);
+    for (let index = 0; index < targetEvents; index++) {
+        const currentMoodPet = { ...pet, hp, energy: Math.max(0, pet.energy - energySpent), hunger: Math.max(0, pet.hunger - hungerSpent), affection };
+        const mood = sceneMood(currentMoodPet);
+        const chosen = weightedScene(scenes, currentMoodPet, zone, mood, newRecent);
+        const knownHazard = Boolean(chosen.hazard && remembered(memory.knownHazards, `${zone.id}:${chosen.hazard}`));
+        const knownDiscovery = Boolean(chosen.discovery && remembered(memory.discoveries, `${zone.id}:${chosen.discovery}`));
+        const knownFriend = Boolean(chosen.friend && remembered(memory.knownFriends, `${zone.id}:${chosen.friend}`));
+        const action = pick(chosen.choices[pet.specialization] ?? sceneChoices[pet.specialization]);
+        const sceneFocus = focusForExpedition(chosen.kind);
+        const expeditionMove = pet.equippedMoves.map(getRpgMove).filter((move) => Boolean(move && energy - energySpent >= 1))
+            .sort((a, b) => {
+            const aLevel = getRpgMoveProgress({ ...pet, moveProgress }, a.id).level;
+            const bLevel = getRpgMoveProgress({ ...pet, moveProgress }, b.id).level;
+            const aScore = (a.expeditionFocus === sceneFocus ? 8 : 0) + aLevel * 0.1 - (moveUseCounts[a.id] ?? 0) * 3;
+            const bScore = (b.expeditionFocus === sceneFocus ? 8 : 0) + bLevel * 0.1 - (moveUseCounts[b.id] ?? 0) * 3;
+            return bScore - aScore;
+        })[0];
+        const expeditionMoveProgress = expeditionMove ? getRpgMoveProgress({ ...pet, moveProgress }, expeditionMove.id) : undefined;
+        const moveFocusMatches = Boolean(expeditionMove && expeditionMove.expeditionFocus === sceneFocus);
+        const skillBonus = expeditionMove ? (moveFocusMatches ? 7 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 2) : 0;
+        if (expeditionMove)
+            moveUseCounts[expeditionMove.id] = (moveUseCounts[expeditionMove.id] ?? 0) + 1;
+        const openings = chosen.friend && knownFriend ? chosen.opening.slice(1) : chosen.opening.slice(0, chosen.opening.length > 1 ? 1 : undefined);
+        const transition = expeditionTransition(events.at(-1), pet.name);
+        let opening = replacePetName(pick(openings.length ? openings : chosen.opening), pet.name);
+        if (familiarVisits > 0 && index === 0 && randomInt(100) < 40)
+            opening = `Esta ruta ya le resulta familiar a ${pet.name}. ${opening}`;
+        if (knownHazard && chosen.hazard)
+            opening = `Al reconocer ${chosen.hazard.replaceAll('-', ' ')}, ${pet.name} se prepara antes de acercarse. ${opening}`;
+        const stat = chosen.skill === 'fuerza' ? pet.strength : chosen.skill === 'defensa' ? pet.defense : chosen.skill === 'agilidad' ? pet.agility : chosen.skill === 'vinculo' ? Math.floor(affection / 7)
+            : pet.level * (pet.specialization === 'Místico' ? 2 : 1) + Math.floor((pet.agility + pet.defense) / 4);
+        const affinity = pet.element !== 'Neutral' && zoneAffinity[zone.id].includes(pet.element) ? 8 : 0;
+        const roleFit = chosen.choices[pet.specialization] ? 7 : 0;
+        const moodBonus = mood === 'animada' ? 5 : mood === 'agotada' || mood === 'hambrienta' || mood === 'herida' ? -8 : mood === 'precavida' ? -3 : 1;
+        const hungerPenalty = hunger < 35 ? 8 : hunger < 55 ? 4 : 0;
+        const affectionBonus = affection >= 75 ? 3 : affection < 25 ? -5 : 0;
+        const healthPenalty = hp < pet.maxHp * 0.3 ? 10 : hp < pet.maxHp * 0.55 ? 5 : 0;
+        const chance = Math.max(18, Math.min(94, 62 + (stat - 8) * 2 + pet.level * 1.2 + affinity + roleFit + moodBonus + affectionBonus + familiarityBonus + skillBonus
+            + (knownHazard ? 8 : 0) + pet.expeditionEffects.safety - chosen.difficulty * 11 - zone.danger * 0.28 - hungerPenalty - healthPenalty));
+        let succeeded = randomInt(100) < chance;
+        let eventCoins = 0;
+        let eventXp = rollBetween(chosen.xp);
+        let eventDamage = 0;
+        let eventItem;
+        let eventTitle = chosen.title;
+        let emoji = chosen.emoji;
+        let resultLine = replacePetName(pick(succeeded ? chosen.success : chosen.setback), pet.name);
+        let bossAppeared = false;
+        if (chosen.kind === 'encuentro' && !boss && randomInt(100) < zone.boss.spawnChance) {
+            bossAppeared = true;
+            const bossPower = pet.strength + Math.floor(pet.defense / 2) + Math.floor(pet.agility / 2) + pet.level * 3 + rarityRank[pet.rarity] * 2 + Math.floor(skillBonus / 2)
+                + (pet.specialization === 'Atacante' ? 5 : pet.specialization === 'Guardián' ? 3 : 0) + randomInt(12);
+            succeeded = bossPower >= zone.boss.power + randomInt(12);
+            boss = { name: zone.boss.name, won: succeeded };
+            emoji = zone.boss.emoji;
+            eventTitle = `Encuentro con ${zone.boss.name}`;
+            resultLine = succeeded ? `Tras un breve forcejeo, ${zone.boss.name} retrocede y deja libre el paso.`
+                : `${zone.boss.name} cierra el paso y obliga a ${pet.name} a retirarse.`;
+            if (succeeded) {
+                eventCoins += Math.floor(rollBetween(zone.boss.reward) * RPG_COIN_REWARD_SCALE);
+                eventXp += rollBetween(zone.boss.xp);
+                if (randomInt(100) < zone.boss.dropChance)
+                    bossItem = pick(zone.boss.drops.map((id) => rpgItems.find((item) => item.id === id)).filter(Boolean));
+            }
+            else
+                eventDamage += Math.max(6, 12 + randomInt(12) - Math.floor(pet.defense / 4));
+        }
+        else if (!succeeded && chosen.damage)
+            eventDamage = Math.max(1, rollBetween(chosen.damage)
+                - (pet.specialization === 'Guardián' ? Math.floor(pet.defense / 5) : 0) - Math.floor(pet.expeditionEffects.safety / 20));
+        if (!succeeded)
+            failedChecks++;
+        if (!succeeded && (chosen.kind === 'riesgo' || chosen.kind === 'encuentro'))
+            riskyFailures++;
+        if (succeeded && chosen.coins) {
+            const zoneBase = rollBetween(zone.reward);
+            eventCoins += Math.max(1, Math.floor(zoneBase * RPG_COIN_REWARD_SCALE * (chosen.kind === 'social' ? 0.28 : 0.55)));
+        }
+        const dropChance = Math.max(5, Math.min(82, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0)
+            + (succeeded && expeditionMove?.expeditionFocus === 'busqueda' ? 12 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 0)
+            + rarityRank[pet.rarity] * 2 + (affection >= 75 ? 4 : affection < 25 ? -5 : 0) - (hunger < 35 ? 8 : 0) - (knownDiscovery ? 18 : 0)));
+        if (succeeded && chosen.item && foundItems.length === 0 && randomInt(100) < dropChance)
+            eventItem = rollExpeditionDrop(zone);
+        if (eventItem)
+            foundItems.push(eventItem);
+        if (bossItem && foundItems.length < 2)
+            foundItems.push(bossItem);
+        if (succeeded && chosen.recover)
+            hp = Math.min(pet.maxHp, hp + chosen.recover);
+        const skillHealing = succeeded && expeditionMove && (expeditionMove.effect === 'heal' || expeditionMove.effect === 'drain')
+            ? Math.min(pet.maxHp - hp, 2 + Math.floor(getRpgMovePower({ ...pet, moveProgress }, expeditionMove) * 0.12) + (expeditionMoveProgress?.level ?? 1)) : 0;
+        if (skillHealing > 0)
+            hp += skillHealing;
+        if (succeeded && expeditionMove?.expeditionFocus === 'recuperacion')
+            energySpent = Math.max(0, energySpent - 1);
+        if (succeeded && expeditionMove?.expeditionFocus === 'vinculo')
+            hungerSpent = Math.max(0, hungerSpent - 1);
+        if (succeeded && moveFocusMatches && eventCoins > 0 && expeditionMove?.expeditionFocus === 'busqueda')
+            eventCoins = Math.ceil(eventCoins * 1.12);
+        let skillMitigation = 0;
+        if (!succeeded && eventDamage > 0 && expeditionMove) {
+            skillMitigation = expeditionMove.effect === 'guard' ? 4 + (expeditionMoveProgress?.level ?? 1) * 2
+                : expeditionMove.effect === 'weaken' ? 2 + (expeditionMoveProgress?.level ?? 1) : expeditionMove.expeditionFocus === 'proteccion' ? 2 : 0;
+            eventDamage = Math.max(0, eventDamage - skillMitigation);
+        }
+        let actualEventDamage = 0;
+        if (eventDamage > 0) {
+            actualEventDamage = Math.min(eventDamage, Math.max(0, hp - 1));
+            hp = Math.max(1, hp - eventDamage);
+            damageReceived += actualEventDamage;
+        }
+        if (succeeded && (chosen.kind === 'social' || chosen.kind === 'serena' || chosen.kind === 'descanso'))
+            affection = Math.min(100, affection + (chosen.kind === 'social' ? 2 : 1));
+        else if (!succeeded && chosen.kind === 'riesgo')
+            affection = Math.max(0, affection - 1);
+        if (succeeded && chosen.discovery && !knownDiscovery) {
+            memory.discoveries.push(`${zone.id}:${chosen.discovery}`);
+            madeDiscovery = true;
+            memoryNotes.push(`Nuevo lugar: ${chosen.title.toLowerCase()}.`);
+        }
+        if (chosen.friend) {
+            const key = `${zone.id}:${chosen.friend}`;
+            if (!remembered(memory.knownFriends, key)) {
+                memory.knownFriends.push(key);
+                const friendName = { iria: 'Iria', nara: 'Nara', boro: 'Boro', samir: 'Samir', luma: 'Luma', 'pastor-teo': 'Teo', 'medusa-nima': 'Nima' };
+                memoryNotes.push(`Conoció a ${friendName[chosen.friend] ?? 'una nueva compañía'}.`);
+            }
+            socialMoments++;
+        }
+        if (chosen.hazard) {
+            const key = `${zone.id}:${chosen.hazard}`;
+            if (!remembered(memory.knownHazards, key)) {
+                memory.knownHazards.push(key);
+                if (!succeeded)
+                    memoryNotes.push(`Aprendió a reconocer ${chosen.hazard.replaceAll('-', ' ')}.`);
+            }
+        }
+        const moveGrowth = expeditionMove ? gainRpgMoveXp({ ...pet, moveProgress }, expeditionMove.id, 8) : undefined;
+        if (moveGrowth)
+            moveProgress = moveGrowth.pet.moveProgress;
+        const skillStory = expeditionMove ? expeditionSkillDialogue(pet.name, expeditionMove, chosen.kind, succeeded) : '';
+        const bossStory = bossAppeared && boss ? bossDialogue(zone, pet.name, boss.won, expeditionMove, actualEventDamage) : undefined;
+        let detail = bossAppeared
+            ? `${transition ? `*${transition}*\n\n` : ''}*Un estruendo corta el recorrido: ${zone.boss.emoji} **${zone.boss.name}** aparece y le cierra el paso.*\n\n**${zone.boss.emoji} ${zone.boss.name}:** ${bossStory.boss}\n\n**🐾 ${pet.name}:** ${bossStory.pet}\n\n${bossStory.action}`
+            : `${transition ? `*${transition}*\n\n` : ''}*${opening}*\n\n*${pet.name} ${action}.*\n${resultLine}${skillStory ? `\n\n${skillStory}` : ''}`;
+        if (expeditionMove)
+            detail += `\n\n✨ **Técnica equipada:** ${expeditionMove.name} · Nv. ${expeditionMoveProgress?.level ?? 1} · +8 XP.`;
+        if (skillHealing > 0)
+            detail += `\n\n💚 **Recuperación:** ${pet.name} recupera **${skillHealing} PV** gracias a la técnica.`;
+        if (skillMitigation > 0)
+            detail += `\n\n🛡️ **Protección:** ${expeditionMove?.name} reduce el contratiempo en ${skillMitigation} puntos.`;
+        if (moveGrowth?.levels)
+            detail += `\n\n🎓 **Mejora:** ${expeditionMove.name} alcanza el nivel ${moveGrowth.level}.`;
+        if (actualEventDamage > 0 && !bossAppeared)
+            detail += `\n\n💥 **Contratiempo:** recibe **${actualEventDamage} PV de daño** antes de poder continuar.`;
+        if (chosen.item && succeeded && !eventItem && !bossAppeared)
+            detail += '\n\n🔎 Revisa el lugar, pero no encuentra ningún objeto que pueda llevarse.';
+        if (eventCoins) {
+            coins += eventCoins;
+            if (chosen.coins && succeeded && chosen.coinDetail)
+                detail += `\n\n🪙 ${chosen.coinDetail} **(+${eventCoins.toLocaleString('es-MX')} monedas).**`;
+            else if (bossAppeared && boss?.won)
+                detail += `\n\n🪙 Al revisar el sendero, encuentra **+${eventCoins.toLocaleString('es-MX')} monedas** entre las huellas.`;
+        }
+        if (eventItem)
+            detail += `\n\n🎒 Guarda ${eventItem.emoji} **${eventItem.name}** en la mochila.`;
+        if (bossItem)
+            detail += `\n\n🎒 El encuentro deja ${bossItem.emoji} **${bossItem.name}**, que guarda para el viaje.`;
+        if (chosen.friend && knownFriend && succeeded)
+            detail += '\n\nSe reconocen con una sonrisa: ya se habían encontrado antes.';
+        if (chosen.discovery && knownDiscovery && succeeded)
+            detail += '\n\nEl lugar le resulta familiar por su visita anterior.';
+        events.push({ emoji, title: eventTitle, detail, kind: chosen.kind, success: succeeded, important: Boolean(chosen.friend || chosen.discovery || eventItem || bossAppeared || eventDamage) });
+        newRecent.push(`${zone.id}:${chosen.id}`);
+        const eventMinutes = rollBetween(chosen.duration);
+        totalMinutes += eventMinutes;
+        eventXp = Math.floor(eventXp * (pet.specialization === 'Místico' ? 1.12 : 1));
+        xpGenerated += eventXp;
+        energySpent += 2 + Math.floor(eventMinutes / 22) + (expeditionMove ? 1 : 0);
+        hungerSpent += Math.max(1, Math.floor(eventMinutes / 30));
+        if (eventDamage > 0 && !succeeded && hp <= Math.max(12, Math.floor(pet.maxHp * 0.2)) && index < targetEvents - 1 && randomInt(100) < 62) {
+            earlyEnd = true;
+            break;
+        }
+        if (energySpent >= energy && index < targetEvents - 1 && randomInt(100) < 48) {
+            earlyEnd = true;
+            break;
+        }
+        if (!succeeded && chosen.difficulty >= 2 && index < targetEvents - 1 && randomInt(100) < 13 + chosen.difficulty * 5) {
+            earlyEnd = true;
+            break;
+        }
     }
-    const dropChance = Math.max(5, Math.min(82, zone.lootChance + pet.expeditionEffects.luck + (pet.specialization === 'Explorador' ? 8 : 0)
-      + (succeeded && expeditionMove?.expeditionFocus === 'busqueda' ? 12 + Math.min(4, (expeditionMoveProgress?.level ?? 1) - 1) : 0)
-      + rarityRank[pet.rarity] * 2 + (affection >= 75 ? 4 : affection < 25 ? -5 : 0) - (hunger < 35 ? 8 : 0) - (knownDiscovery ? 18 : 0)));
-    if (succeeded && chosen.item && foundItems.length === 0 && randomInt(100) < dropChance) eventItem = rollExpeditionDrop(zone);
-    if (eventItem) foundItems.push(eventItem);
-    if (bossItem && foundItems.length < 2) foundItems.push(bossItem);
-    if (succeeded && chosen.recover) hp = Math.min(pet.maxHp, hp + chosen.recover);
-    const skillHealing = succeeded && expeditionMove && (expeditionMove.effect === 'heal' || expeditionMove.effect === 'drain')
-      ? Math.min(pet.maxHp - hp, 2 + Math.floor(getRpgMovePower({ ...pet, moveProgress }, expeditionMove) * 0.12) + (expeditionMoveProgress?.level ?? 1)) : 0;
-    if (skillHealing > 0) hp += skillHealing;
-    if (succeeded && expeditionMove?.expeditionFocus === 'recuperacion') energySpent = Math.max(0, energySpent - 1);
-    if (succeeded && expeditionMove?.expeditionFocus === 'vinculo') hungerSpent = Math.max(0, hungerSpent - 1);
-    if (succeeded && moveFocusMatches && eventCoins > 0 && expeditionMove?.expeditionFocus === 'busqueda') eventCoins = Math.ceil(eventCoins * 1.12);
-    let skillMitigation = 0;
-    if (!succeeded && eventDamage > 0 && expeditionMove) {
-      skillMitigation = expeditionMove.effect === 'guard' ? 4 + (expeditionMoveProgress?.level ?? 1) * 2
-        : expeditionMove.effect === 'weaken' ? 2 + (expeditionMoveProgress?.level ?? 1) : expeditionMove.expeditionFocus === 'proteccion' ? 2 : 0;
-      eventDamage = Math.max(0, eventDamage - skillMitigation);
-    }
-    let actualEventDamage = 0;
-    if (eventDamage > 0) {
-      actualEventDamage = Math.min(eventDamage, Math.max(0, hp - 1));
-      hp = Math.max(1, hp - eventDamage);
-      damageReceived += actualEventDamage;
-    }
-    if (succeeded && (chosen.kind === 'social' || chosen.kind === 'serena' || chosen.kind === 'descanso')) affection = Math.min(100, affection + (chosen.kind === 'social' ? 2 : 1));
-    else if (!succeeded && chosen.kind === 'riesgo') affection = Math.max(0, affection - 1);
-    if (succeeded && chosen.discovery && !knownDiscovery) {
-      memory.discoveries.push(`${zone.id}:${chosen.discovery}`); madeDiscovery = true; memoryNotes.push(`Nuevo lugar: ${chosen.title.toLowerCase()}.`);
-    }
-    if (chosen.friend) {
-      const key = `${zone.id}:${chosen.friend}`;
-      if (!remembered(memory.knownFriends, key)) {
-        memory.knownFriends.push(key);
-        const friendName = { iria: 'Iria', nara: 'Nara', boro: 'Boro', samir: 'Samir', luma: 'Luma', 'pastor-teo': 'Teo', 'medusa-nima': 'Nima' };
-        memoryNotes.push(`Conoció a ${friendName[chosen.friend] ?? 'una nueva compañía'}.`);
-      }
-      socialMoments++;
-    }
-    if (chosen.hazard) {
-      const key = `${zone.id}:${chosen.hazard}`;
-      if (!remembered(memory.knownHazards, key)) { memory.knownHazards.push(key); if (!succeeded) memoryNotes.push(`Aprendió a reconocer ${chosen.hazard.replaceAll('-', ' ')}.`); }
-    }
-    const moveGrowth = expeditionMove ? gainRpgMoveXp({ ...pet, moveProgress }, expeditionMove.id, 8) : undefined;
-    if (moveGrowth) moveProgress = moveGrowth.pet.moveProgress;
-    const skillStory = expeditionMove ? expeditionSkillDialogue(pet.name, expeditionMove, chosen.kind, succeeded) : '';
-    const bossStory = bossAppeared && boss ? bossDialogue(zone, pet.name, boss.won, expeditionMove, actualEventDamage) : undefined;
-    let detail = bossAppeared
-      ? `${transition ? `*${transition}*\n\n` : ''}*Un estruendo corta el recorrido: ${zone.boss.emoji} **${zone.boss.name}** aparece y le cierra el paso.*\n\n**${zone.boss.emoji} ${zone.boss.name}:** ${bossStory.boss}\n\n**🐾 ${pet.name}:** ${bossStory.pet}\n\n${bossStory.action}`
-      : `${transition ? `*${transition}*\n\n` : ''}*${opening}*\n\n*${pet.name} ${action}.*\n${resultLine}${skillStory ? `\n\n${skillStory}` : ''}`;
-    if (expeditionMove) detail += `\n\n✨ **Técnica equipada:** ${expeditionMove.name} · Nv. ${expeditionMoveProgress?.level ?? 1} · +8 XP.`;
-    if (skillHealing > 0) detail += `\n\n💚 **Recuperación:** ${pet.name} recupera **${skillHealing} PV** gracias a la técnica.`;
-    if (skillMitigation > 0) detail += `\n\n🛡️ **Protección:** ${expeditionMove?.name} reduce el contratiempo en ${skillMitigation} puntos.`;
-    if (moveGrowth?.levels) detail += `\n\n🎓 **Mejora:** ${expeditionMove.name} alcanza el nivel ${moveGrowth.level}.`;
-    if (actualEventDamage > 0 && !bossAppeared) detail += `\n\n💥 **Contratiempo:** recibe **${actualEventDamage} PV de daño** antes de poder continuar.`;
-    if (chosen.item && succeeded && !eventItem && !bossAppeared) detail += '\n\n🔎 Revisa el lugar, pero no encuentra ningún objeto que pueda llevarse.';
-    if (eventCoins) {
-      coins += eventCoins;
-      if (chosen.coins && succeeded && chosen.coinDetail) detail += `\n\n🪙 ${chosen.coinDetail} **(+${eventCoins.toLocaleString('es-MX')} monedas).**`;
-      else if (bossAppeared && boss?.won) detail += `\n\n🪙 Al revisar el sendero, encuentra **+${eventCoins.toLocaleString('es-MX')} monedas** entre las huellas.`;
-    }
-    if (eventItem) detail += `\n\n🎒 Guarda ${eventItem.emoji} **${eventItem.name}** en la mochila.`;
-    if (bossItem) detail += `\n\n🎒 El encuentro deja ${bossItem.emoji} **${bossItem.name}**, que guarda para el viaje.`;
-    if (chosen.friend && knownFriend && succeeded) detail += '\n\nSe reconocen con una sonrisa: ya se habían encontrado antes.';
-    if (chosen.discovery && knownDiscovery && succeeded) detail += '\n\nEl lugar le resulta familiar por su visita anterior.';
-    events.push({ emoji, title: eventTitle, detail, kind: chosen.kind, success: succeeded, important: Boolean(chosen.friend || chosen.discovery || eventItem || bossAppeared || eventDamage) });
-    newRecent.push(`${zone.id}:${chosen.id}`);
-    const eventMinutes = rollBetween(chosen.duration); totalMinutes += eventMinutes;
-    eventXp = Math.floor(eventXp * (pet.specialization === 'Místico' ? 1.12 : 1)); xpGenerated += eventXp;
-    energySpent += 2 + Math.floor(eventMinutes / 22) + (expeditionMove ? 1 : 0); hungerSpent += Math.max(1, Math.floor(eventMinutes / 30));
-    if (eventDamage > 0 && !succeeded && hp <= Math.max(12, Math.floor(pet.maxHp * 0.2)) && index < targetEvents - 1 && randomInt(100) < 62) { earlyEnd = true; break; }
-    if (energySpent >= energy && index < targetEvents - 1 && randomInt(100) < 48) { earlyEnd = true; break; }
-    if (!succeeded && chosen.difficulty >= 2 && index < targetEvents - 1 && randomInt(100) < 13 + chosen.difficulty * 5) { earlyEnd = true; break; }
-  }
-  totalMinutes += randomInt(30);
-  energy = Math.max(0, energy - Math.min(energy, energySpent));
-  hunger = Math.max(0, hunger - Math.min(hunger, Math.min(30, 9 + Math.floor(totalMinutes / 22) + hungerSpent)));
-  const damage = Math.max(0, pet.hp - hp); const outOfEvents = events.length < targetEvents;
-  const outcome = earlyEnd || outOfEvents
-    ? events.length === 1 && failedChecks === 1 && !coins && !foundItems.length ? 'fallida' : 'incompleta'
-    : riskyFailures >= 2 || damage >= Math.ceil(pet.maxHp * 0.3) ? 'peligrosa'
-      : failedChecks === events.length && !socialMoments && !madeDiscovery ? 'fallida'
-        : madeDiscovery || coins > 0 || foundItems.length > 0 ? 'afortunada' : socialMoments > 0 ? 'social' : 'tranquila';
-  const xpResult = applyXp(pet, xpGenerated, true, at); const levelHp = xpResult.pet.maxHp - pet.maxHp;
-  hp = Math.min(xpResult.pet.maxHp, hp + levelHp);
-  const cooldownHaste = Math.min(60 * 60, pet.expeditionEffects.haste);
-  const updatedMemory = { ...memory, trips: memory.trips + 1, zoneVisits: { ...memory.zoneVisits, [zone.id]: familiarVisits + 1 },
-    lastZoneId: zone.id, lastOutcome: outcome, recentEvents: [...memory.recentEvents, ...newRecent].slice(-12),
-    knownFriends: [...new Set(memory.knownFriends)].slice(-30), knownHazards: [...new Set(memory.knownHazards)].slice(-30), discoveries: [...new Set(memory.discoveries)].slice(-50) };
-  if (familiarVisits > 0) memoryNotes.push(`Ya conoce ${zone.name}; esa experiencia le ayudó a orientarse.`);
-  const updated = { ...xpResult.pet, hp, energy, hunger, affection, moveProgress, needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
-    expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: updatedMemory };
-  const summary = events.map((event) => event.detail).join('\n\n');
-  const itemIds = foundItems.map((found) => found.id); const item = foundItems[0];
-  const finalState = { hp: updated.hp, maxHp: updated.maxHp, energy: updated.energy, maxEnergy: updated.maxEnergy, hunger: updated.hunger, affection: updated.affection };
-  const message = `${zone.emoji} ${pet.name} regresó de **${zone.name}** tras ${totalMinutes} min.${coins ? ` Recuperó ${coins} monedas.` : ''}${xpResult.gained ? ` Ganó ${xpResult.gained} XP.` : ''}${item ? ` Hallazgo: ${item.emoji} **${item.name}**.` : ''}${xpResult.levels ? ` ¡Subió ${xpResult.levels} nivel(es)!` : ''}`;
-  return { pet: updated, zone, coins, xp: xpResult.gained, damage, damageReceived, item, bossItem, ...(boss ? { boss } : {}), levelUps: xpResult.levels,
-    events, summary, outcome, durationMinutes: totalMinutes, itemIds, memoryNotes: [...new Set(memoryNotes)].slice(0, 5), finalState, message };
+    totalMinutes += randomInt(30);
+    energy = Math.max(0, energy - Math.min(energy, energySpent));
+    hunger = Math.max(0, hunger - Math.min(hunger, Math.min(30, 9 + Math.floor(totalMinutes / 22) + hungerSpent)));
+    const damage = Math.max(0, pet.hp - hp);
+    const outOfEvents = events.length < targetEvents;
+    const outcome = earlyEnd || outOfEvents
+        ? events.length === 1 && failedChecks === 1 && !coins && !foundItems.length ? 'fallida' : 'incompleta'
+        : riskyFailures >= 2 || damage >= Math.ceil(pet.maxHp * 0.3) ? 'peligrosa'
+            : failedChecks === events.length && !socialMoments && !madeDiscovery ? 'fallida'
+                : madeDiscovery || coins > 0 || foundItems.length > 0 ? 'afortunada' : socialMoments > 0 ? 'social' : 'tranquila';
+    const xpResult = applyXp(pet, xpGenerated, true, at);
+    const levelHp = xpResult.pet.maxHp - pet.maxHp;
+    hp = Math.min(xpResult.pet.maxHp, hp + levelHp);
+    const cooldownHaste = Math.min(60 * 60, pet.expeditionEffects.haste);
+    const updatedMemory = { ...memory, trips: memory.trips + 1, zoneVisits: { ...memory.zoneVisits, [zone.id]: familiarVisits + 1 },
+        lastZoneId: zone.id, lastOutcome: outcome, recentEvents: [...memory.recentEvents, ...newRecent].slice(-12),
+        knownFriends: [...new Set(memory.knownFriends)].slice(-30), knownHazards: [...new Set(memory.knownHazards)].slice(-30), discoveries: [...new Set(memory.discoveries)].slice(-50) };
+    if (familiarVisits > 0)
+        memoryNotes.push(`Ya conoce ${zone.name}; esa experiencia le ayudó a orientarse.`);
+    const updated = { ...xpResult.pet, hp, energy, hunger, affection, moveProgress, needsUpdatedAt: at, lastExploreAt: at - cooldownHaste,
+        expeditionEffects: { safety: 0, luck: 0, haste: 0, bonusXp: 0 }, expeditionMemory: updatedMemory };
+    const summary = events.map((event) => event.detail).join('\n\n');
+    const itemIds = foundItems.map((found) => found.id);
+    const item = foundItems[0];
+    const finalState = { hp: updated.hp, maxHp: updated.maxHp, energy: updated.energy, maxEnergy: updated.maxEnergy, hunger: updated.hunger, affection: updated.affection };
+    const message = `${zone.emoji} ${pet.name} regresó de **${zone.name}** tras ${totalMinutes} min.${coins ? ` Recuperó ${coins} monedas.` : ''}${xpResult.gained ? ` Ganó ${xpResult.gained} XP.` : ''}${item ? ` Hallazgo: ${item.emoji} **${item.name}**.` : ''}${xpResult.levels ? ` ¡Subió ${xpResult.levels} nivel(es)!` : ''}`;
+    return { pet: updated, zone, coins, xp: xpResult.gained, damage, damageReceived, item, bossItem, ...(boss ? { boss } : {}), levelUps: xpResult.levels,
+        events, summary, outcome, durationMinutes: totalMinutes, itemIds, memoryNotes: [...new Set(memoryNotes)].slice(0, 5), finalState, message };
 }
-
 export async function exploreRpg(guildId, userId, zoneId, reference) {
     guildId = GLOBAL_SCOPE_ID;
     const zone = rpgZones.find((candidate) => candidate.id === zoneId);

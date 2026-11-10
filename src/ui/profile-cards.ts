@@ -54,6 +54,23 @@ export async function renderProfileCard(input: ProfileCardInput): Promise<Buffer
   return buffer;
 }
 
+export async function renderProfileBackgroundPreview(
+  input: Omit<ProfileCardInput, 'mode'>,
+  item: ProfileShopItem,
+): Promise<{ mode: ProfileCardMode; buffer: Buffer } | undefined> {
+  let mode: ProfileCardMode;
+  let setting: keyof ProfileSettings;
+  switch (item.type) {
+    case 'profile_bg': mode = 'profile'; setting = 'profileBg'; break;
+    case 'rank_bg': mode = 'rank'; setting = 'rankBg'; break;
+    case 'wallet_bg': mode = 'wallet'; setting = 'walletBg'; break;
+    case 'levelup_bg': mode = 'levelup'; setting = 'levelupBg'; break;
+    default: return undefined;
+  }
+  const settings = { ...input.settings, [setting]: item.id };
+  return { mode, buffer: await renderProfileCard({ ...input, mode, settings }) };
+}
+
 export async function renderShopItemPreview(item:ProfileShopItem):Promise<Buffer>{
   const canvas=createCanvas(width,height);const ctx=canvas.getContext('2d');
   const gradient=ctx.createLinearGradient(0,0,width,height);gradient.addColorStop(0,item.color);gradient.addColorStop(.58,'#171b31');gradient.addColorStop(1,'#090d18');

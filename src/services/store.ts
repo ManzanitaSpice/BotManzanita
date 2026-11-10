@@ -43,7 +43,7 @@ export function storeCatalog(): StoreProduct[] {
   return [
     ...profileShopItems
       .filter((item) => item.type !== 'pet')
-      .map((item) => ({ kind: 'profile' as const, id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.price, premiumPrice: item.premiumPrice, rarity: item.rarity, repeatable: false })),
+      .map((item) => ({ kind: 'profile' as const, id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.price, ...(item.premiumPrice === undefined ? {} : { premiumPrice: item.premiumPrice }), rarity: item.rarity, repeatable: false })),
     ...storeItems.map((item) => ({ kind: 'economy' as const, id: item.id, name: item.name, emoji: item.emoji, category: item.category === 'jobs' ? 'economy:jobs' : 'economy', description: item.description, price: item.cost, rarity: 'Común', repeatable: item.repeatable })),
     ...rpgItems.map((item) => ({ kind: 'rpg' as const, id: item.id, name: item.name, emoji: item.emoji, category: item.category, description: item.description, price: item.cost, rarity: item.rarity, repeatable: true })),
   ];

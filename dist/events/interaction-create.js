@@ -178,22 +178,25 @@ export function registerInteractionHandler(client) {
                     return;
                 }
                 if (interaction.customId.startsWith('shop:buy:') && interaction.isButton()) {
-                    const [, , kindValue, itemId = '', categoryValue = 'all', pageValue = '0'] = interaction.customId.split(':');
-                    if ((kindValue !== 'profile' && kindValue !== 'economy' && kindValue !== 'rpg') || !itemId) {
+                    const [, , kindValue, itemId = '', categoryValue = 'all', pageValue = '0', currencyValue = 'coins'] = interaction.customId.split(':');
+                    if ((kindValue !== 'profile' && kindValue !== 'economy' && kindValue !== 'rpg') || !itemId || (currencyValue !== 'coins' && currencyValue !== 'gems')) {
                         await interaction.reply({ content: 'Ese producto ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
                     const kind = kindValue;
+                    const currency = currencyValue;
                     const item = findStoreProduct(kind, itemId);
                     if (!item) {
                         await interaction.reply({ content: 'Ese producto ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
                     }
                     await interaction.deferUpdate();
-                    const result = await purchaseStoreProduct(interaction.guildId, interaction.user.id, kind, itemId, interaction.id);
+                    const result = await purchaseStoreProduct(interaction.guildId, interaction.user.id, kind, itemId, interaction.id, currency);
                     if (!result.ok) {
-                        const message = result.reason === 'insufficient_funds' ? `No tienes monedas suficientes para **${item.name}**.`
-                            : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.` : 'Ese producto ya no está disponible.';
+                        const currencyName = currency === 'gems' ? 'gemas' : 'monedas';
+                        const message = result.reason === 'insufficient_funds' ? `No tienes ${currencyName} suficientes para **${item.name}**.`
+                            : result.reason === 'already_owned' ? `Ya tienes **${item.name}**.`
+                                : result.reason === 'currency_unavailable' ? 'Ese producto no se puede comprar con gemas.' : 'Ese producto ya no está disponible.';
                         await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
                         return;
                     }
@@ -204,7 +207,8 @@ export function registerInteractionHandler(client) {
                     catch {
                         category = 'all';
                     }
-                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} monedas.`, kind)));
+                    const currencyName = result.currency === 'gems' ? 'gemas' : 'monedas';
+                    await interaction.editReply(componentUpdate(await storePanel(interaction.guildId, interaction.user.id, category, Number(pageValue), itemId, `✅ Compraste **${item.name}** · inventario x${result.quantity} · saldo ${result.balance.toLocaleString('es-MX')} ${currencyName}.`, kind)));
                     return;
                 }
                 if (interaction.customId.startsWith('shop:equip:') && interaction.isButton()) {
@@ -331,11 +335,11 @@ export function registerInteractionHandler(client) {
                             : result.reason === 'no_pet' ? 'Primero adopta una mascota.'
                                 : result.reason === 'cooldown' ? `Podrás entrenar de nuevo en ${formatCooldown(result.secondsRemaining ?? 0)}.`
                                     : result.reason === 'low_energy' ? 'Necesita al menos 15 de energía.'
-                                            : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.'
-                                                : result.reason === 'low_xp' ? `Necesita ${result.requiredXp} XP disponible para esa mejora.`
-                                                    : result.reason === 'level_required' ? `Esa mejora requiere nivel ${result.requiredLevel}.`
-                                                        : result.reason === 'stat_cap' ? `Ese atributo ya alcanzó el límite actual (${result.statCap}); sube de nivel para ampliarlo.`
-                                                            : 'Necesitas 180 monedas.';
+                                        : result.reason === 'low_hunger' ? 'Necesita al menos 8 de saciedad; dale de comer antes de entrenar.'
+                                            : result.reason === 'low_xp' ? `Necesita ${result.requiredXp} XP disponible para esa mejora.`
+                                                : result.reason === 'level_required' ? `Esa mejora requiere nivel ${result.requiredLevel}.`
+                                                    : result.reason === 'stat_cap' ? `Ese atributo ya alcanzó el límite actual (${result.statCap}); sube de nivel para ampliarlo.`
+                                                        : 'Necesitas 180 monedas.';
                         await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
                         return;
                     }
@@ -806,7 +810,9 @@ export function registerInteractionHandler(client) {
                     return;
                 }
                 if (interaction.customId === 'eco:back' || interaction.customId === 'eco:refresh') {
-                    await interaction.update(componentUpdate(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 }))));
+                    await interaction.deferUpdate();
+                    const panel = await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 }));
+                    await interaction.editReply(componentUpdate(panel));
                     return;
                 }
                 if (interaction.customId === 'eco:buy' && interaction.isStringSelectMenu()) {

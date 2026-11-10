@@ -5,7 +5,7 @@ import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory,
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
-import { renderProfileCard } from './profile-cards.js';
+import { renderProfileBackgroundPreview, renderProfileCard } from './profile-cards.js';
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
@@ -296,7 +296,8 @@ export async function rpgManagePanel(guildId, userId) {
             const requirements = getRpgMoveTrainingRequirements(pet, id);
             if (requirements.atCap)
                 continue;
-            options.push({ label: `Mejorar: ${move.name}`, value: `skill:${id}`, emoji: '✨', description: `Nv. ${requirements.level} → ${requirements.level + 1} · ${requirements.requiredXp} XP · requiere Nv. ${requirements.requiredLevel}` });
+            options.push({ label: `Mejorar: ${move.name}`, value: `skill:${id}`, emoji: '✨',
+                description: `Nv. ${requirements.level} → ${requirements.level + 1} · ${requirements.requiredXp} XP · requiere Nv. ${requirements.requiredLevel}` });
         }
         if (!pet.freeNameUsed)
             options.push({ label: 'Cambiar nombre', value: 'name', emoji: '🏷️', description: 'Gratis · una vez' });
@@ -324,10 +325,11 @@ export async function rpgCombatPanel(guildId, userId) {
                 : pet.energy < 10 ? '⚡ Necesita al menos 10 de energía.'
                     : '🟢 Lista para combatir.';
     const container = new ContainerBuilder().setAccentColor(0xef4444)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ COMBATE RPG${pet ? ` · ${pet.name}, nivel ${pet.level}` : ''}\n${pet ? `❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad` : 'Primero adopta una mascota para participar en combate.'}\n${pet ? battleStatus : ''}\n\nCombatir contra un enemigo consume al menos 10 de energía y puede reducir vida y saciedad. Espera ${RPG_BATTLE_COOLDOWN / 3600} h entre combates contra enemigos. Elige una técnica equipada para decidir qué usará tu mascota.`));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚔️ COMBATE RPG${pet ? ` · ${pet.name}, nivel ${pet.level}` : ''}\n${pet ? `❤️ ${pet.hp}/${pet.maxHp} PV · ⚡ ${pet.energy}/${pet.maxEnergy} energía · 🍖 ${pet.hunger}/100 saciedad` : 'Primero adopta una mascota para participar en combate.'}\n${pet ? battleStatus : ''}\n\nCombatir contra un enemigo consume al menos 10 de energía y puede reducir vida y saciedad. Espera ${RPG_BATTLE_COOLDOWN / 3600} h entre combates contra enemigos. Elige técnicas para los duelos.`));
     const equipped = pet?.equippedMoves.map((id) => getRpgMove(id)).filter((move) => Boolean(move)) ?? [];
     if (equipped.length)
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:battle:move').setPlaceholder('Elige una de tus 4 técnicas para combatir').addOptions(equipped.map((move) => {
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('rpg:battle:move').setPlaceholder('Elige una de tus 4 técnicas para combatir')
+            .addOptions(equipped.map((move) => {
             const level = getRpgMoveProgress(pet, move.id).level;
             return { label: move.name, value: move.id, emoji: move.element === 'Neutral' ? '⚪' : '✨', description: `Nv. ${level} · poder ${getRpgMovePower(pet, move)} · ⚡${move.energy} · ${move.effect}` };
         }))));
@@ -528,7 +530,11 @@ export async function inventoryPanel(guildId, userId, requestedPage = 0, request
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('eco:inventory:category').setPlaceholder(`Ver categoría · ${filterNames[filter]}`).addOptions(categoryOptions.map((option) => ({ ...option, default: option.value === filter })))));
     if (usableItems.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`eco:inventory:use:${page}:${filter}`).setPlaceholder('Consumir o equipar un artículo').addOptions(usableItems.map((item) => ({ label: `${item.name} · x${item.quantity}`, value: `${item.kind}:${item.itemId}`, description: item.description.slice(0, 100), emoji: item.emoji })))));
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.max(0, page - 1)}:${filter}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`eco:inventory:page:${Math.min(pageCount - 1, page + 1)}:${filter}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount), new ButtonBuilder().setCustomId('eco:back').setLabel('Bóveda').setEmoji('↩️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary)));
+    const navigation = new ActionRowBuilder();
+    if (pageCount > 1)
+        navigation.addComponents(new ButtonBuilder().setCustomId(`eco:inventory:page:${page - 1}:${filter}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`eco:inventory:page:${page + 1}:${filter}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount));
+    navigation.addComponents(new ButtonBuilder().setCustomId('eco:back').setLabel('Bóveda').setEmoji('↩️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary));
+    container.addActionRowComponents(navigation);
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function storePanel(guildId, userId, requestedCategory = 'all', requestedPage = 0, requestedItemId, notice = '', requestedKind) {
@@ -550,28 +556,68 @@ export async function storePanel(guildId, userId, requestedCategory = 'all', req
             ?? (item.kind === 'profile' ? profileShopCategories.find((entry) => entry.id === item.category)?.label : undefined)
             ?? (item.kind === 'profile' ? 'Personalización' : item.kind === 'economy' ? 'Consumibles' : item.category);
     };
-    const listing = pageItems.map((item) => `${item.emoji} **${item.name} (${getProductCategoryLabel(item)})** · ${item.rarity}\n${money.format(item.price)} monedas · ${item.quantity ? `tienes x${item.quantity}` : 'sin comprar'}`).join('\n\n');
+    const hasPremiumPrice = (item) => typeof item.premiumPrice === 'number' && Number.isSafeInteger(item.premiumPrice) && item.premiumPrice > 0;
+    const productPriceLabel = (item) => !hasPremiumPrice(item)
+        ? `${money.format(item.price)} monedas`
+        : `${money.format(item.price)} monedas · ${money.format(item.premiumPrice)} gemas premium`;
+    const listing = pageItems.map((item) => `${item.emoji} **${item.name} (${getProductCategoryLabel(item)})** · ${item.rarity}\n${productPriceLabel(item)} · ${item.quantity ? `tienes x${item.quantity}` : 'sin comprar'}`).join('\n\n');
     const selectedDetails = selected
-        ? `### ${selected.emoji} ${selected.name} (${getProductCategoryLabel(selected)})\n${selected.description}\n**Precio:** ${money.format(selected.price)} monedas · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
+        ? `### ${selected.emoji} ${selected.name} (${getProductCategoryLabel(selected)})\n${selected.description}\n**Precio:** ${productPriceLabel(selected)} · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
         : '_No hay productos en esta categoría._';
     const accentCategoryNote = selectedCategory === 'profile:accent' ? '\n\nEl estilo Lavanda predeterminado es gratis; los demás estilos se compran aquí.' : '';
     const status = notice ? `\n\n${notice}` : '';
     const container = new ContainerBuilder().setAccentColor(0x8b75dc)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛍️ TIENDA MANZANITA\n**Saldo:** ${money.format(snapshot.balance)} monedas · **Categoría:** ${categoryLabel}\n${filtered.length} productos · página ${page + 1} de ${pageCount}${accentCategoryNote}${status}`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🛍️ TIENDA MANZANITA\n**Saldo:** ${money.format(snapshot.balance)} monedas · ${money.format(snapshot.premiumBalance)} gemas premium · **Categoría:** ${categoryLabel}\n${filtered.length} productos · página ${page + 1} de ${pageCount}\n_Las gemas premium se usan para cosméticos._${accentCategoryNote}${status}`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${listing || '_No hay productos en esta categoría._'}\n\n${selectedDetails}`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('shop:category').setPlaceholder('Categorías de la tienda')
         .addOptions(storeCategoryOptions.map((entry) => ({ label: entry.label, value: entry.id, emoji: entry.emoji, default: entry.id === selectedCategory })))));
+    let backgroundPreviewFile;
+    const selectedProfileItem = selected?.kind === 'profile' ? profileShopItems.find((item) => item.id === selected.id) : undefined;
+    if (selectedProfileItem && (selectedProfileItem.type === 'profile_bg' || selectedProfileItem.type === 'rank_bg' || selectedProfileItem.type === 'wallet_bg' || selectedProfileItem.type === 'levelup_bg')) {
+        const [settings, progress, account, badges] = await Promise.all([
+            getProfileSettings(userId), getProfileProgress(guildId, userId), getAccountBalances(guildId, userId), equippedProfileBadges(userId),
+        ]);
+        const preview = await renderProfileBackgroundPreview({
+            userId,
+            username: `Usuario ${userId.slice(-4)}`,
+            avatarUrl: '',
+            settings,
+            progress,
+            wallet: account.wallet,
+            bank: account.bank,
+            premium: account.premium,
+            badges,
+        }, selectedProfileItem);
+        if (preview) {
+            const filename = 'shop-background-preview.png';
+            const cardLabel = { profile: 'perfil', rank: 'rango', wallet: 'billetera', levelup: 'subida de nivel' }[preview.mode];
+            backgroundPreviewFile = new AttachmentBuilder(preview.buffer).setName(filename);
+            container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+                .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa · tarjeta de ${cardLabel}\nAsí se verá con **${selectedProfileItem.name}** antes de comprarlo.`))
+                .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${filename}`).setDescription(`Tarjeta de ${cardLabel} con ${selectedProfileItem.name}`)));
+        }
+    }
     if (pageItems.length)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`shop:item:${encodeURIComponent(categoryState)}:${page}`).setPlaceholder('Seleccionar producto')
-            .addOptions(pageItems.map((item) => ({ label: `${item.name} (${getProductCategoryLabel(item)})`.slice(0, 100), value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${money.format(item.price)} monedas · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind })))));
-    if (selected)
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(selected.kind === 'profile' && selected.quantity > 0 && !selected.repeatable
-            ? new ButtonBuilder().setCustomId(`shop:equip:${selected.id}:${encodeURIComponent(categoryState)}:${page}`).setLabel('Equipar').setEmoji('✅').setStyle(ButtonStyle.Success)
-            : new ButtonBuilder().setCustomId(`shop:buy:${selected.kind}:${selected.id}:${encodeURIComponent(categoryState)}:${page}`).setLabel(selected.quantity > 0 && !selected.repeatable ? 'Ya comprado' : `${selected.kind === 'profile' && selected.quantity > 0 ? 'Comprar otra copia' : 'Comprar'} · ${money.format(selected.price)}`).setEmoji(selected.quantity > 0 && !selected.repeatable ? '✅' : '🪙').setStyle(ButtonStyle.Success).setDisabled(selected.quantity > 0 && !selected.repeatable), new ButtonBuilder().setCustomId('eco:back').setLabel('Volver a economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
+            .addOptions(pageItems.map((item) => ({ label: `${item.name} (${getProductCategoryLabel(item)})`.slice(0, 100), value: `${item.kind}:${item.id}`, emoji: item.emoji, description: `${productPriceLabel(item)} · ${item.rarity}${item.quantity ? ` · tienes x${item.quantity}` : ''}`.slice(0, 100), default: item.id === selected?.id && item.kind === selected.kind })))));
+    if (selected) {
+        const alreadyOwned = selected.quantity > 0 && !selected.repeatable;
+        const shopActions = alreadyOwned
+            ? [new ButtonBuilder().setCustomId(`shop:equip:${selected.id}:${encodeURIComponent(categoryState)}:${page}`).setLabel('Equipar').setEmoji('✅').setStyle(ButtonStyle.Success)]
+            : selected.kind === 'profile' && hasPremiumPrice(selected)
+                ? [
+                    new ButtonBuilder().setCustomId(`shop:buy:${selected.kind}:${selected.id}:${encodeURIComponent(categoryState)}:${page}:coins`).setLabel(`Comprar · ${money.format(selected.price)}`).setEmoji('🪙').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`shop:buy:${selected.kind}:${selected.id}:${encodeURIComponent(categoryState)}:${page}:gems`).setLabel(`Comprar · ${money.format(selected.premiumPrice)}`).setEmoji('💎').setStyle(ButtonStyle.Success),
+                ]
+                : [new ButtonBuilder().setCustomId(`shop:buy:${selected.kind}:${selected.id}:${encodeURIComponent(categoryState)}:${page}:coins`).setLabel(`Comprar · ${money.format(selected.price)}`).setEmoji('🪙').setStyle(ButtonStyle.Success)];
+        shopActions.push(new ButtonBuilder().setCustomId('eco:back').setLabel('Volver a economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(...shopActions));
+    }
     if (pageCount > 1)
         container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`shop:page:${Math.max(0, page - 1)}:${encodeURIComponent(categoryState)}`).setLabel('Anterior').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0), new ButtonBuilder().setCustomId(`shop:page:${Math.min(pageCount - 1, page + 1)}:${encodeURIComponent(categoryState)}`).setLabel('Siguiente').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= pageCount)));
-    return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
+    const panel = { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
+    return backgroundPreviewFile ? { ...panel, files: [backgroundPreviewFile] } : panel;
 }
 export async function casinoPanel(guildId, userId) {
     const balance = await getBalance(guildId, userId);
