@@ -19,9 +19,10 @@ import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BankInterestDashboard, type BankResult, type BlackjackView } from '../services/economy.js';
+import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BankInterestDashboard, type BankResult, type BlackjackView, type RoosterDuelView } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
+import { getProductPriceQuote, getProductPriceQuotes } from '../services/product-market.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
 import { renderProfileBackgroundPreview, renderProfileCard, type ProfileCardMode } from './profile-cards.js';
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem, type ProfileSettings } from '../services/profile.js';
@@ -109,6 +110,20 @@ export function economyActionPanel(title: string, narrative: string, amount: num
   return { components: [container], flags: ephemeral ? ['IsComponentsV2', 'Ephemeral'] as const : ['IsComponentsV2'] as const };
 }
 
+export function roosterDuelPanel(duel: RoosterDuelView) {
+  const moneyLabel = new Intl.NumberFormat('es-MX');
+  const pending = duel.status === 'pending';
+  const result = duel.resultMessage ?? (duel.status === 'pending' ? `El reto vence <t:${duel.expiresAt}:R>.` : 'El duelo terminó.');
+  const container = new ContainerBuilder().setAccentColor(duel.status === 'accepted' ? 0xf59e0b : 0x22c55e)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `# 🐓 DUELO DE GALLOS\n<@${duel.challengerId}> con **${duel.challengerRooster}** vs. <@${duel.defenderId}> con **${duel.defenderRooster}**.\n\n**Apuesta por participante:** ${moneyLabel.format(duel.bet)} monedas · **pozo total:** ${moneyLabel.format(duel.bet * 2)} monedas\nDuelo parejo al azar: cada gallo tiene **50%** de probabilidad. Si aceptas, se descuenta la apuesta de ambos; el perdedor pierde ${moneyLabel.format(duel.bet)} y el ganador recibe el pozo completo.\n\n${result}`));
+  if (pending) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`rooster:accept:${duel.id}:${duel.defenderId}`).setLabel('Aceptar y apostar').setEmoji('✅').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`rooster:decline:${duel.id}:${duel.defenderId}`).setLabel('Rechazar').setEmoji('✖️').setStyle(ButtonStyle.Secondary),
+  ));
+  return { components: [container], flags: ['IsComponentsV2'] as const };
+}
+
 export function leaderboardPanel(title: string, subtitle: string, entries: string[], accent = colors.economy, emptyMessage = 'Todavía no hay resultados para mostrar.', ephemeral = false) {
   const rows = entries.length ? entries.map((entry, index) => {
     const medal = ['🥇', '🥈', '🥉'][index] ?? `**${String(index + 1).padStart(2, '0')}.**`;
@@ -140,6 +155,7 @@ export async function economyPanel(guildId: string, userId: string, username = `
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:daily').setLabel('Reclamar diaria').setEmoji('🎁').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('eco:business').setLabel('Terreno y negocio').setEmoji('🏡').setStyle(ButtonStyle.Secondary),
     ))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más opciones de economía').addOptions(
@@ -152,9 +168,19 @@ export async function economyPanel(guildId: string, userId: string, username = `
   return { components: [container], files: [new AttachmentBuilder(walletCard).setName('economy-wallet.png')], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export async function jobsPanel(guildId: string, userId: string, notice = '') {
-  const [roster, inventory] = await Promise.all([getJobRoster(guildId, userId), getInventory(guildId, userId)]);
+export async function jobsPanel(guildId: string, userId: string, notice = '', requestedToolId?: string) {
+  const [roster, inventory, toolStatuses] = await Promise.all([getJobRoster(guildId, userId), getInventory(guildId, userId), getJobToolStatuses(guildId, userId)]);
   const owned = new Set(inventory.filter((item) => item.quantity > 0).map((item) => item.itemId));
+  const jobTools = storeItems.filter((item) => roster.jobs.some((entry) => entry.job.toolId === item.id));
+  const jobToolPrices = await getProductPriceQuotes(jobTools.map((item) => ({
+    kind: 'economy' as const,
+    id: item.id,
+    category: 'economy:jobs',
+    basePrice: item.cost,
+    categorySize: jobProductCategorySize(),
+  })));
+  const selectedTool = toolStatuses.find((entry) => entry.toolId === requestedToolId) ?? toolStatuses[0];
+  const selectedToolUpgrade = selectedTool ? await getJobToolUpgradeQuote(guildId, userId, selectedTool.toolId) : undefined;
   const activeJobs = roster.jobs.filter((entry) => entry.active);
   const activeSummary = activeJobs.length
     ? activeJobs.map((entry) => `› ${entry.job.emoji} **${entry.job.name} · nivel ${entry.level}**${entry.level >= MAX_JOB_LEVEL ? ' · máximo' : ` · ${entry.xp}/${entry.xpToNext} XP`}${entry.job.id === roster.primaryJobId ? ' · en uso con a!work' : ''}`).join('\n')
@@ -163,20 +189,27 @@ export async function jobsPanel(guildId: string, userId: string, notice = '') {
     const { job, level, xp, xpToNext } = entry;
     const payBonus = Math.min(level - 1, MAX_JOB_LEVEL - 1) * 3;
     const progress = level >= MAX_JOB_LEVEL ? 'nivel máximo' : `${xp}/${xpToNext} XP`;
-    const toolCost = storeItems.find((item) => item.id === job.toolId)?.cost;
-    const tool = owned.has(job.toolId) ? '✅ herramienta disponible' : `🛒 ${job.toolName} · ${toolCost === undefined ? 'precio por confirmar' : `${money.format(toolCost)} monedas`} en a!shop`;
+    const toolCost = jobTools.find((item) => item.id === job.toolId);
+    const toolPrice = toolCost ? jobToolPrices.get(`economy:${toolCost.id}`)?.price : undefined;
+    const currentTool = toolStatuses.find((entry) => entry.toolId === job.toolId);
+    const toolMaterial = currentTool?.toolId === 'kit_cocinero'
+      ? currentTool.upgradeLevel === 0 ? 'kit básico · cuchillo y espátula' : `cuchillo y espátula de ${jobToolMaterial(currentTool.upgradeLevel).toLowerCase()}`
+      : currentTool ? jobToolMaterial(currentTool.upgradeLevel) : '';
+    const tool = currentTool ? `✅ herramienta · ${currentTool.durability}/${currentTool.maxDurability} de durabilidad · ${toolMaterial}`
+      : owned.has(job.toolId) ? '✅ herramienta disponible'
+        : `🛒 ${job.toolName} · ${toolPrice === undefined ? 'precio por confirmar' : `${money.format(toolPrice)} monedas`} en a!shop`;
     return `${job.emoji} **${job.name} · Nv. ${level}** (${progress})\nPaga: **${money.format(job.minPay + payBonus)}–${money.format(job.maxPay + payBonus)}** monedas · ${tool}`;
   }).join('\n\n');
   const container = new ContainerBuilder().setAccentColor(colors.economy)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🧰 OFICIOS\nElige el trabajo con el que quieres generar monedas. Cada turno de trabajo da **${JOB_XP_PER_SHIFT} XP** y el pago aumenta con cada nivel.${notice ? `\n\n${notice}` : ''}`))
+      `# 🧰 OFICIOS\nElige el trabajo con el que quieres generar monedas. Cada turno da **${JOB_XP_PER_SHIFT} XP**; tu experiencia reduce el desgaste de la herramienta. Las herramientas pueden romperse; repararlas y mejorarlas retira monedas de la economía.${notice ? `\n\n${notice}` : ''}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## Plazas de trabajo · ${roster.activeCount}/${roster.slotLimit}\n${activeSummary}\n\n${roster.secondSlotUnlocked
         ? '🔓 Alcanzaste el nivel máximo en un oficio: tienes **dos plazas**. Si ambas están ocupadas, se prioriza conservar el oficio al máximo y el más reciente; el progreso de los demás también queda guardado.'
         : `🔒 Llega al nivel ${MAX_JOB_LEVEL} en cualquier oficio para desbloquear una segunda plaza.`}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Trabajos disponibles\n${jobList}\n\nUsa **a!work** para cobrar. Necesitas la herramienta indicada; puedes comprarla con **a!shop**. Renuncia con **a!renunciar [oficio]**; el nivel y la experiencia quedan guardados.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Trabajos disponibles\n${jobList}\n\nUsa **a!work** para cobrar. Las herramientas básicas empiezan con 30 puntos de durabilidad; cada turno suele gastar uno. Los niveles añaden durabilidad y reducen la probabilidad de desgaste. Si se rompen, hay que recomprarlas. Renuncia con **a!renunciar [oficio]**; el nivel y la experiencia quedan guardados.`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId(`jobs:select:${userId}`).setPlaceholder('Elegir o cambiar de trabajo').addOptions(
         roster.jobs.map((entry) => ({
@@ -188,6 +221,22 @@ export async function jobsPanel(guildId: string, userId: string, notice = '') {
         })),
       ),
     ));
+  if (toolStatuses.length) {
+    const toolTitle = selectedTool?.toolId === 'kit_cocinero'
+      ? selectedTool.upgradeLevel === 0 ? 'Kit básico · cuchillo y espátula' : `Cuchillo y espátula de ${jobToolMaterial(selectedTool.upgradeLevel).toLowerCase()}`
+      : selectedTool ? `${selectedTool.toolName} de ${jobToolMaterial(selectedTool.upgradeLevel).toLowerCase()}` : '';
+    container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## Herramientas y mejoras\n${selectedTool ? `**${toolTitle}** · ${selectedTool.durability}/${selectedTool.maxDurability} de durabilidad · ${selectedTool.jobName} nivel ${selectedTool.jobLevel}${selectedToolUpgrade ? `\nSiguiente mejora: **${selectedToolUpgrade.material}** · ${money.format(selectedToolUpgrade.price)} monedas · restaura la herramienta y añade ${JOB_TOOL_DURABILITY_PER_UPGRADE} usos máximos.` : '\n🏆 Calidad oro alcanzada.'}` : 'Compra una herramienta para poder mejorarla.'}\nUsa un **Kit de reparación** para recuperar 15 puntos o un **Servicio de taller** para llenarla; se usan desde el inventario y antes de que se rompa. Un **Manual de oficio** añade 75 XP al trabajo activo.`))
+      .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(`jobs:tool-select:${userId}`).setPlaceholder('Selecciona una herramienta')
+          .addOptions(toolStatuses.map((entry) => ({ label: `${entry.emoji} ${entry.toolName} · ${entry.durability}/${entry.maxDurability}`.slice(0, 100), value: entry.toolId, default: entry.toolId === selectedTool?.toolId }))),
+      ));
+    if (selectedTool) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`jobs:tool-upgrade:${userId}:${selectedTool.toolId}`).setLabel(selectedToolUpgrade ? `Mejorar · ${money.format(selectedToolUpgrade.price)}` : 'Nivel oro alcanzado').setEmoji('⚒️').setStyle(ButtonStyle.Primary).setDisabled(!selectedToolUpgrade),
+      new ButtonBuilder().setCustomId(`jobs:shop:${userId}`).setLabel('Comprar consumibles').setEmoji('🛍️').setStyle(ButtonStyle.Secondary),
+    ));
+  }
   return { components: [container], flags: ['IsComponentsV2'] as const };
 }
 
@@ -648,9 +697,11 @@ export async function inventoryPanel(guildId: string, userId: string, requestedP
   const legacyNames = new Map([['marco_neon', 'Marco Neón'], ['tema_nocturno', 'Tema Nocturno'], ['insignia_dj', 'Insignia DJ']]);
   const economyRows: InventoryRow[] = economyInventory.map((entry) => {
     const item = storeItems.find((candidate) => candidate.id === entry.itemId);
+    const good = businessGoods.find((candidate) => candidate.id === entry.itemId);
     return item
       ? { kind: 'economy', itemId: entry.itemId, name: item.name, emoji: item.emoji, description: item.description, quantity: entry.quantity, section: item.category === 'jobs' ? 'Herramientas de oficio' : 'Economía', filter: 'economy', usable: item.usable }
-      : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Artículo anterior', quantity: entry.quantity, section: 'Otros objetos', filter: 'economy', usable: false };
+      : good ? { kind: 'economy', itemId: good.id, name: good.name, emoji: good.emoji, description: good.description, quantity: entry.quantity, section: 'Productos del negocio', filter: 'economy', usable: good.usable }
+        : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Artículo anterior', quantity: entry.quantity, section: 'Otros objetos', filter: 'economy', usable: false };
   });
   const rpgRows: InventoryRow[] = rpgInventory.flatMap((entry): InventoryRow[] => {
     const item = rpgItems.find((candidate) => candidate.id === entry.itemId);
@@ -683,7 +734,7 @@ export async function inventoryPanel(guildId: string, userId: string, requestedP
   const pageItems = entries.slice(page * pageSize, (page + 1) * pageSize);
   const sections = new Map<string, InventoryRow[]>();
   for (const item of pageItems) sections.set(item.section, [...(sections.get(item.section) ?? []), item]);
-  const sectionEmoji = (section: string) => section === 'Comida de compañera' ? '🍓' : section.startsWith('Aventura RPG') ? '🐾' : section === 'Economía' ? '🪙' : section === 'Herramientas de oficio' ? '🧰' : section === 'Personalización' ? '🎨' : '📦';
+  const sectionEmoji = (section: string) => section === 'Comida de compañera' ? '🍓' : section.startsWith('Aventura RPG') ? '🐾' : section === 'Economía' ? '🪙' : section === 'Herramientas de oficio' ? '🧰' : section === 'Productos del negocio' ? '🏪' : section === 'Personalización' ? '🎨' : '📦';
   const listing = [...sections].map(([section, items]) => `### ${sectionEmoji(section)} ${section}\n${items.map((item) => `› ${item.emoji} **${item.name}**　×${item.quantity}${item.rarity ? `　· ${item.rarity}` : ''}`).join('\n')}`).join('\n\n');
   const units = entries.reduce((sum, item) => sum + item.quantity, 0);
   const start = entries.length ? page * pageSize + 1 : 0;
@@ -732,18 +783,24 @@ export async function storePanel(guildId: string, userId: string, requestedCateg
       ?? (item.kind === 'profile' ? 'Personalización' : item.kind === 'economy' ? 'Consumibles' : item.category);
   };
   const hasPremiumPrice = (item: (typeof snapshot.products)[number]): item is (typeof snapshot.products)[number] & { premiumPrice: number } => typeof item.premiumPrice === 'number' && Number.isSafeInteger(item.premiumPrice) && item.premiumPrice > 0;
-  const productPriceLabel = (item: (typeof snapshot.products)[number]) => !hasPremiumPrice(item)
-    ? `${money.format(item.price)} monedas`
-    : `${money.format(item.price)} monedas · ${money.format(item.premiumPrice!)} gemas premium`;
+  const priceChangeLabel = (price: number, basePrice: number) => {
+    if (!basePrice || price === basePrice) return '';
+    const change = Math.round((price / basePrice - 1) * 100);
+    return ` · ${change > 0 ? '+' : ''}${change}% vs. base`;
+  };
+  const productPriceLabel = (item: (typeof snapshot.products)[number]) => {
+    const coins = `${money.format(item.price)} monedas${priceChangeLabel(item.price, item.basePrice)}`;
+    return hasPremiumPrice(item) ? `${coins} · ${money.format(item.premiumPrice!)} gemas premium` : coins;
+  };
   const listing = pageItems.map((item) => `${item.emoji} **${item.name} (${getProductCategoryLabel(item)})** · ${item.rarity}\n${productPriceLabel(item)} · ${item.quantity ? `tienes x${item.quantity}` : 'sin comprar'}`).join('\n\n');
   const selectedDetails = selected
-    ? `### ${selected.emoji} ${selected.name} (${getProductCategoryLabel(selected)})\n${selected.description}\n**Precio:** ${productPriceLabel(selected)} · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
+    ? `### ${selected.emoji} ${selected.name} (${getProductCategoryLabel(selected)})\n${selected.description}\n**Precio:** ${productPriceLabel(selected)} · **Base:** ${money.format(selected.basePrice)} monedas · **Demanda:** ${selected.demandIndexBps >= 11_000 ? 'alta' : selected.demandIndexBps <= 9_500 ? 'baja' : 'normal'} (${(selected.demandIndexBps / 100).toFixed(1)}%) · **Ventas:** ${selected.units30d} en 30 días · **Cotización:** <t:${selected.quotedAt}:R> · **Rareza:** ${selected.rarity}${selected.quantity ? ` · **En inventario:** x${selected.quantity}` : ''}`
     : '_No hay productos en esta categoría._';
   const accentCategoryNote = selectedCategory === 'profile:accent' ? '\n\nEl estilo Lavanda predeterminado es gratis; los demás estilos se compran aquí.' : '';
   const status = notice ? `\n\n${notice}` : '';
   const container = new ContainerBuilder().setAccentColor(0x8b75dc)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🛍️ TIENDA MANZANITA\n**Saldo:** ${money.format(snapshot.balance)} monedas · ${money.format(snapshot.premiumBalance)} gemas premium · **Categoría:** ${categoryLabel}\n${filtered.length} productos · página ${page + 1} de ${pageCount}\n_Las gemas premium se usan para cosméticos._${accentCategoryNote}${status}`))
+      `# 🛍️ TIENDA MANZANITA\n**Saldo:** ${money.format(snapshot.balance)} monedas · ${money.format(snapshot.premiumBalance)} gemas premium · **Categoría:** ${categoryLabel}\n${filtered.length} productos · página ${page + 1} de ${pageCount}\n_Índice económico del bot: ${((snapshot.products[0]?.globalIndexBps ?? 10_000) / 100).toFixed(2)}% · ajuste cada 24 h. Las gemas conservan su precio fijo._${accentCategoryNote}${status}`))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder().setCustomId('shop:category').setPlaceholder('Categorías de la tienda')
         .addOptions(storeCategoryOptions.map((entry) => ({ label: entry.label, value: entry.id, emoji: entry.emoji, default: entry.id === selectedCategory }))),
@@ -822,7 +879,7 @@ export async function casinoPanel(guildId: string, userId: string) {
       `## 🃏 Cartas\n**Blackjack / 21** · **a!21 100** / **a!bj 100** / **a!blackjack 100**\nJuega contra el crupier; pide cartas o plántate con los botones de la partida.`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 🐓 Retos y actividades\n**Pelea de gallos** · **a!gallo 100**\nEmpiezas con 50% de probabilidad; cada victoria suma 1% hasta 70%. Si pierdes, la racha vuelve a cero. Ponle nombre con **a!gallo nombre NOMBRE**.\n\n**Crimen** · **a!crime** · puedes ganar monedas o recibir una multa.\n**Robo** · **a!rob @persona** · intenta quitarle monedas a otra persona.\n**Pesca** · **a!fish** · necesitas una Caña de pescar de **a!shop**.`))
+      `## 🐓 Retos y actividades\n**Pelea de gallos** · **a!gallo 100**\nContra la máquina, la racha aumenta tu probabilidad. Para retar a alguien usa **a!gallo @persona 100** o **/economia duelo_gallos**; ambos arriesgan la misma cantidad y quien pierde la pelea pierde su apuesta. Ponle nombre a tu gallo con **a!gallo nombre NOMBRE**.\n\n**Crimen** · **a!crime** · puedes ganar monedas o recibir una multa.\n**Robo** · **a!rob @persona** · puedes quitarle monedas o un artículo de economía/RPG; nunca cosméticos.\n**Pesca** · **a!fish** · necesitas una Caña de pescar de **a!shop**.`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('eco:casino:fish').setLabel('Ir a pescar').setEmoji('🎣').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary),
@@ -994,12 +1051,12 @@ export async function bankInterestPanel(guildId: string, userId: string) {
       new MediaGalleryItemBuilder().setURL('attachment://bank-interest-chart.png').setDescription('TEA aplicada en los cortes guardados y objetivo estimado en vivo con la economía del bot.'),
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**Lectura de la gráfica:** azul = TEA aplicada en cada corte diario; línea ámbar = objetivo calculado ahora, no un dato histórico.\n**Política:** base ${ratePercent(BANK_BASE_APR_BPS)} APR · rango ${ratePercent(BANK_APR_FLOOR_BPS)}–${ratePercent(BANK_APR_CEILING_BPS)} · cambio máximo 10 puntos porcentuales al día · capitalización cada 5 h. El principal nunca pierde monedas.`))
+      `**Lectura de la gráfica:** azul = TEA aplicada en cada corte diario; línea ámbar = objetivo calculado ahora, no un dato histórico.\n**Política:** base ${ratePercent(BANK_BASE_APR_BPS)} APR · rango ${ratePercent(BANK_APR_FLOOR_BPS)}–${ratePercent(BANK_APR_CEILING_BPS)} · cambio máximo 1.5 puntos porcentuales al día · capitalización cada 5 h. Si la oferta crece demasiado, el APR baja; siempre se mantiene positivo y el principal nunca pierde monedas.`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## Actividad actual de la economía del bot\n**Oferta:** ${money.format(live.moneySupply)} monedas · **ahorro:** ${money.format(live.savings)} (${savingsShare} de la oferta)\n**Últimos 30 días:** creación neta ${signedAmount(live.netIssuance30d)} (${ratePercent(live.botMoneyGrowthBps)} de la oferta) · compras ${money.format(live.purchaseVolume30d)} (${ratePercent(live.purchaseVelocityBps)} del saldo monetario)\n**Proyección lineal a 30 días:** ${money.format(live.projectedMoneySupply30d)} monedas (${signedAmount(projectedChange)}) si se repite el flujo neto reciente.\n**Trabajo:** nómina ${money.format(live.payroll30d)} · ${money.format(live.workShifts30d)} turnos · ${live.activeWorkers} personas con oficio activo\n${jobLines.length ? jobLines.join('\n') : '_Sin turnos registrados en los últimos 30 días._'}\n**Banco · últimas 24 h:** depósitos ${money.format(live.deposits24h)} · retiros ${money.format(live.withdrawals24h)}\n_Es una proyección interna de la moneda del bot; no usa inflación mundial ni representa un IPC._`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## Qué mueve la tasa sugerida\n${pressure}\n_Impacto anual en puntos base de APR. Positivo sube y negativo baja el objetivo, con el rango del modelo como límite._\n${compared}`))
+      `## Qué mueve la tasa sugerida\n${pressure}\n_Impacto anual en puntos base de APR. La creación neta, las compras y la nómina altas reducen la tasa para frenar la emisión; menor presión puede elevarla. Positivo sube y negativo baja el objetivo, dentro del rango del modelo._\n${compared}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## Simulación de tu ahorro\nSaldo **${money.format(bankBalance)} monedas** · cálculo con el objetivo actual constante\n**+${fractionalMoney.format(fiveHourGain)}** en 5 h　·　**+${fractionalMoney.format(tenDayGain)}** en 10 días　·　**+${fractionalMoney.format(thirtyDayGain)}** en 30 días　·　**+${fractionalMoney.format(annualGain)}** en 1 año\n_Las fracciones se acumulan y se abonan al completar una moneda; el objetivo y la tasa aplicada pueden cambiar._${bank.interestEarned ? `\n\n📥 Se acreditaron **${money.format(bank.interestEarned)} monedas** al abrir este panel.` : ''}`))
@@ -1045,13 +1102,18 @@ export function blackjackPanel(game: BlackjackView) {
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export function purchaseConfirmPanel(itemId: string) {
+export async function purchaseConfirmPanel(itemId: string) {
   const item = storeItems.find((candidate) => candidate.id === itemId);
   if (!item) throw new Error('Artículo de tienda inválido.');
+  const category = item.category === 'jobs' ? 'economy:jobs' : 'economy';
+  const categorySize = category === 'economy:jobs'
+    ? jobProductCategorySize()
+    : storeItems.filter((candidate) => candidate.category !== 'jobs').length;
+  const quote = await getProductPriceQuote({ kind: 'economy', id: item.id, category, basePrice: item.cost, categorySize });
   const container = new ContainerBuilder()
     .setAccentColor(colors.economy)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# 🛒 CONFIRMAR COMPRA\n## ${item.emoji} ${item.name}\n${item.description}\n\nPrecio: **${money.format(item.cost)} monedas**\nSe descontará el precio y se añadirá una unidad a tu inventario.${item.repeatable ? ' Puedes acumular unidades.' : ' Solo puedes comprar una unidad.'}`))
+      `# 🛒 CONFIRMAR COMPRA\n## ${item.emoji} ${item.name}\n${item.description}\n\nPrecio dinámico: **${money.format(quote.price)} monedas** · base ${money.format(item.cost)} · mercado del bot ${(quote.globalIndexBps / 100).toFixed(2)}% · demanda ${(quote.demandIndexBps / 100).toFixed(1)}%\nSe descontará el precio y se añadirá una unidad a tu inventario.${item.repeatable ? ' Puedes acumular unidades.' : ' Solo puedes comprar una unidad.'}`))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`eco:confirm:${item.id}`).setLabel('Confirmar compra').setEmoji('✅').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:store').setLabel('Cancelar').setEmoji('↩️').setStyle(ButtonStyle.Secondary),

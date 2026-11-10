@@ -160,7 +160,7 @@ function createDailyCommand() {
 }
 function createWorkCommand() {
     return {
-        data: new SlashCommandBuilder().setName('work').setDescription('Trabaja una vez por hora según tu oficio, herramienta y nivel.'),
+        data: new SlashCommandBuilder().setName('work').setDescription('Trabaja con tu oficio; los negocios pagan más y aplican otro cooldown.'),
         async execute(interaction) {
             if (!interaction.guildId) {
                 await interaction.reply({ content: 'La economía solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
@@ -197,7 +197,7 @@ function createCrimeCommand() {
 }
 function createRobCommand() {
     return {
-        data: new SlashCommandBuilder().setName('rob').setDescription('Intenta robar monedas a otro miembro; puede salir mal.')
+        data: new SlashCommandBuilder().setName('rob').setDescription('Intenta robar monedas o un artículo no cosmético; puede salir mal.')
             .addUserOption((option) => option.setName('usuario').setDescription('Miembro al que intentar robar').setRequired(true)),
         async execute(interaction) {
             if (!interaction.guildId) {
@@ -209,15 +209,20 @@ function createRobCommand() {
                 await interaction.reply({ content: 'No puedes robarle a un bot.', flags: MessageFlags.Ephemeral });
                 return;
             }
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await robPlayer(interaction.guildId, interaction.user.id, target.id, target.username, interaction.id);
             if (!result.ok) {
                 const message = result.reason === 'self' ? 'No puedes robarte a ti mismo.'
-                    : result.reason === 'target_empty' ? `${target.username} no tiene monedas para robar.`
+                    : result.reason === 'target_empty' ? `${target.username} no tiene monedas ni artículos robables.`
                         : `Ya intentaste robar. Espera **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
-                await interaction.reply({ content: `🕵️ ${message}`, flags: MessageFlags.Ephemeral });
+                await interaction.editReply({ content: `🕵️ ${message}` });
                 return;
             }
-            await interaction.reply(economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
+            if (result.stolenItem) {
+                await interaction.editReply({ content: result.message });
+                return;
+            }
+            await interaction.editReply(componentUpdate(economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance)));
         },
     };
 }

@@ -3,6 +3,7 @@ import { randomInt } from 'node:crypto';
 import { db } from '../storage/database.js';
 import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
+import { getProductPriceQuote, recordProductSaleMysql, recordProductSaleSqlite } from './product-market.js';
 const coreRpgItems = [
     { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 100, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
     { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 85, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
@@ -1708,11 +1709,13 @@ export async function buyRpgItem(guildId, userId, itemId, reference) {
     if (!item)
         return { ok: false, reason: 'invalid_item' };
     const at = now();
+    const categorySize = rpgItems.filter((candidate) => candidate.category === item.category).length;
+    const quote = await getProductPriceQuote({ kind: 'rpg', id: itemId, category: item.category, basePrice: item.cost, categorySize });
     if (economyPool)
-        return withEconomyTransaction(async (connection) => { const payment = await changeBalanceMysql(connection, guildId, userId, -item.cost, 'rpg_shop', `${reference}:coins`, at); if (!payment.ok)
-            return { ok: false, reason: 'funds' }; await connection.execute('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId]); const [rows] = await connection.execute('SELECT quantity FROM rpg_inventory WHERE guild_id=? AND user_id=? AND item_id=?', [guildId, userId, itemId]); return { ok: true, balance: payment.balance, quantity: Number(rows[0]?.quantity ?? 1) }; });
-    const run = db.transaction(() => { const payment = changeBalanceSqlite(guildId, userId, -item.cost, 'rpg_shop', `${reference}:coins`, at); if (!payment.ok)
-        return { ok: false, reason: 'funds' }; db.prepare('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId); const inv = db.prepare('SELECT quantity FROM rpg_inventory WHERE guild_id=? AND user_id=? AND item_id=?').get(guildId, userId, itemId); return { ok: true, balance: payment.balance, quantity: inv.quantity }; });
+        return withEconomyTransaction(async (connection) => { const payment = await changeBalanceMysql(connection, guildId, userId, -quote.price, `rpg_shop:${itemId}`, `${reference}:coins`, at); if (!payment.ok)
+            return { ok: false, reason: 'funds' }; await connection.execute('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, itemId]); const [rows] = await connection.execute('SELECT quantity FROM rpg_inventory WHERE guild_id=? AND user_id=? AND item_id=?', [guildId, userId, itemId]); await recordProductSaleMysql(connection, { userId, kind: 'rpg', id: itemId, category: item.category, quantity: 1, unitPrice: quote.price, reference: `${reference}:coins`, soldAt: at }); return { ok: true, balance: payment.balance, quantity: Number(rows[0]?.quantity ?? 1), price: quote.price }; });
+    const run = db.transaction(() => { const payment = changeBalanceSqlite(guildId, userId, -quote.price, `rpg_shop:${itemId}`, `${reference}:coins`, at); if (!payment.ok)
+        return { ok: false, reason: 'funds' }; db.prepare('INSERT INTO rpg_inventory (guild_id,user_id,item_id,quantity) VALUES (?,?,?,1) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, itemId); recordProductSaleSqlite({ userId, kind: 'rpg', id: itemId, category: item.category, quantity: 1, unitPrice: quote.price, reference: `${reference}:coins`, soldAt: at }); const inv = db.prepare('SELECT quantity FROM rpg_inventory WHERE guild_id=? AND user_id=? AND item_id=?').get(guildId, userId, itemId); return { ok: true, balance: payment.balance, quantity: inv.quantity, price: quote.price }; });
     return run.immediate();
 }
 export async function useRpgItem(guildId, userId, itemId, _reference) {

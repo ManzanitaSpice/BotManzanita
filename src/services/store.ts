@@ -1,7 +1,8 @@
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { getAccountBalances, getInventory, purchaseItem, storeItems } from './economy.js';
+import { getAccountBalances, getInventory, jobProductCategorySize, purchaseItem, storeItems } from './economy.js';
 import { buyProfileItem, getProfileInventory } from './profile.js';
 import { buyRpgItem, getRpgInventory, rpgItems } from './rpg.js';
+import { getProductPriceQuotes } from './product-market.js';
 
 export type StoreKind = 'profile' | 'economy' | 'rpg';
 export type StoreCurrency = 'coins' | 'gems';
@@ -69,7 +70,7 @@ export function filterStoreCatalog(category: string): StoreProduct[] {
 export async function getStoreSnapshot(guildId: string, userId: string): Promise<{
   balance: number;
   premiumBalance: number;
-  products: Array<StoreProduct & { quantity: number }>;
+  products: Array<StoreProduct & { basePrice: number; globalIndexBps: number; demandIndexBps: number; units30d: number; quotedAt: number; quantity: number }>;
 }> {
   const [account, economyInventory, profileInventory, rpgInventory] = await Promise.all([
     getAccountBalances(guildId, userId),
@@ -81,10 +82,26 @@ export async function getStoreSnapshot(guildId: string, userId: string): Promise
   for (const item of economyInventory) quantities.set(`economy:${item.itemId}`, item.quantity);
   for (const item of profileInventory) quantities.set(`profile:${item.itemId}`, item.quantity);
   for (const item of rpgInventory) quantities.set(`rpg:${item.itemId}`, item.quantity);
+  const catalog = storeCatalog();
+  const categorySizes = new Map<string, number>();
+  for (const item of catalog) categorySizes.set(`${item.kind}:${item.category}`, (categorySizes.get(`${item.kind}:${item.category}`) ?? 0) + 1);
+  const priceQuotes = await getProductPriceQuotes(catalog.map((item) => ({
+    kind: item.kind,
+    id: item.id,
+    category: item.category,
+    basePrice: item.price,
+    categorySize: item.kind === 'economy' && item.category === 'economy:jobs'
+      ? jobProductCategorySize()
+      : categorySizes.get(`${item.kind}:${item.category}`) ?? 1,
+  })));
   return {
     balance: account.wallet,
     premiumBalance: account.premium,
-    products: storeCatalog().map((item) => ({ ...item, quantity: quantities.get(`${item.kind}:${item.id}`) ?? 0 })),
+    products: catalog.map((item) => {
+      const quote = priceQuotes.get(`${item.kind}:${item.id}`)!;
+      return { ...item, basePrice: item.price, price: quote.price, globalIndexBps: quote.globalIndexBps, demandIndexBps: quote.demandIndexBps,
+        units30d: quote.units30d, quotedAt: quote.quotedAt, quantity: quantities.get(`${item.kind}:${item.id}`) ?? 0 };
+    }),
   };
 }
 
@@ -95,13 +112,13 @@ export async function purchaseStoreProduct(
   itemId: string,
   reference: string,
   currency: StoreCurrency = 'coins',
-): Promise<{ ok: true; balance: number; quantity: number; currency: StoreCurrency } | { ok: false; reason: 'not_found' | 'already_owned' | 'insufficient_funds' | 'currency_unavailable' }> {
+): Promise<{ ok: true; balance: number; quantity: number; currency: StoreCurrency; price: number } | { ok: false; reason: 'not_found' | 'already_owned' | 'insufficient_funds' | 'currency_unavailable' }> {
   const item = findStoreProduct(kind, itemId);
   if (!item) return { ok: false, reason: 'not_found' };
   if (currency === 'gems' && (kind !== 'profile' || typeof item.premiumPrice !== 'number' || !Number.isSafeInteger(item.premiumPrice) || item.premiumPrice <= 0)) return { ok: false, reason: 'currency_unavailable' };
   if (kind === 'profile') {
     const result = await buyProfileItem(guildId, userId, itemId, reference, currency);
-    if (result.ok) { const inventory=await getProfileInventory(guildId,userId);return { ok: true, balance: result.balance, quantity: inventory.find((entry)=>entry.itemId===itemId)?.quantity??1, currency }; }
+    if (result.ok) { const inventory=await getProfileInventory(guildId,userId);return { ok: true, balance: result.balance, quantity: inventory.find((entry)=>entry.itemId===itemId)?.quantity??1, currency, price: result.price }; }
     return { ok: false, reason: result.reason === 'already_owned' ? 'already_owned' : result.reason === 'insufficient' ? 'insufficient_funds' : result.reason === 'currency_unavailable' ? 'currency_unavailable' : 'not_found' };
   }
   if (kind === 'economy') {

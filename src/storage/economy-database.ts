@@ -72,6 +72,45 @@ export async function initializeEconomyDatabase(): Promise<void> {
   `);
   await ensureIndex('economy_ledger', 'idx_economy_ledger_scope_time_reason', 'guild_id,created_at,reason');
   await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_product_price_policy (
+      policy_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+      price_index_bps SMALLINT UNSIGNED NOT NULL DEFAULT 10000,
+      last_rebalanced_at BIGINT NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.execute('INSERT IGNORE INTO economy_product_price_policy (policy_id,price_index_bps,last_rebalanced_at) VALUES (1,10000,0)');
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_product_sales (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(32) NOT NULL,
+      product_kind VARCHAR(16) NOT NULL,
+      product_id VARCHAR(64) NOT NULL,
+      category VARCHAR(96) NOT NULL,
+      quantity INT UNSIGNED NOT NULL DEFAULT 1,
+      unit_price BIGINT NOT NULL,
+      reference VARCHAR(191) NOT NULL,
+      sold_at BIGINT NOT NULL,
+      UNIQUE KEY uq_economy_product_sales_reference (reference),
+      KEY idx_economy_product_sales_market (product_kind,category,sold_at,product_id),
+      KEY idx_economy_product_sales_time (sold_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_product_price_quotes (
+      product_kind VARCHAR(16) NOT NULL,
+      product_id VARCHAR(64) NOT NULL,
+      category VARCHAR(96) NOT NULL,
+      base_price BIGINT NOT NULL,
+      current_price BIGINT NOT NULL,
+      global_index_bps SMALLINT UNSIGNED NOT NULL,
+      demand_index_bps SMALLINT UNSIGNED NOT NULL,
+      units_30d BIGINT NOT NULL DEFAULT 0,
+      category_size INT UNSIGNED NOT NULL DEFAULT 1,
+      quoted_at BIGINT NOT NULL,
+      PRIMARY KEY (product_kind,product_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
     CREATE TABLE IF NOT EXISTS saved_word_responses (
       guild_id VARCHAR(32) NOT NULL,
       trigger_key VARCHAR(64) NOT NULL,
@@ -84,13 +123,13 @@ export async function initializeEconomyDatabase(): Promise<void> {
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_bank_policy (
       policy_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-      interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 6500,
+      interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 1200,
       last_rebalanced_at BIGINT NOT NULL DEFAULT 0,
-      model_version TINYINT UNSIGNED NOT NULL DEFAULT 3
+      model_version TINYINT UNSIGNED NOT NULL DEFAULT 4
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await ensureColumn('economy_bank_policy', 'model_version', 'TINYINT UNSIGNED NOT NULL DEFAULT 1');
-  await economyPool.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,6500,0,3)');
+  await economyPool.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,1200,0,4)');
   await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_bank_rate_history (
       effective_at BIGINT NOT NULL PRIMARY KEY,
@@ -157,6 +196,18 @@ export async function initializeEconomyDatabase(): Promise<void> {
   `);
   await ensureColumn('economy_inventory', 'quantity', 'BIGINT NOT NULL DEFAULT 1');
   await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_tool_state (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      tool_id VARCHAR(64) NOT NULL,
+      durability SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      max_durability SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      upgrade_level TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id,user_id,tool_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_jobs (
       guild_id VARCHAR(32) NOT NULL,
       user_id VARCHAR(32) NOT NULL,
@@ -168,6 +219,75 @@ export async function initializeEconomyDatabase(): Promise<void> {
       updated_at BIGINT NOT NULL,
       PRIMARY KEY (guild_id, user_id, job_id),
       KEY idx_economy_jobs_active (guild_id, user_id, is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_businesses (
+      guild_id VARCHAR(32) NOT NULL,
+      owner_id VARCHAR(32) NOT NULL,
+      job_id VARCHAR(32) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'land',
+      level TINYINT UNSIGNED NOT NULL DEFAULT 1,
+      construction_complete_at BIGINT NULL,
+      debt BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id, owner_id),
+      KEY idx_economy_businesses_status (guild_id, status, job_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_business_events (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      guild_id VARCHAR(32) NOT NULL,
+      owner_id VARCHAR(32) NOT NULL,
+      event_type VARCHAR(16) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'pending',
+      amount BIGINT NOT NULL,
+      created_at BIGINT NOT NULL,
+      resolved_at BIGINT NULL,
+      reference VARCHAR(191) NOT NULL,
+      UNIQUE KEY uq_economy_business_events_reference (reference),
+      KEY idx_economy_business_events_pending (guild_id, owner_id, status, event_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_business_employees (
+      guild_id VARCHAR(32) NOT NULL,
+      owner_id VARCHAR(32) NOT NULL,
+      employee_key VARCHAR(48) NOT NULL,
+      employee_user_id VARCHAR(32) NULL,
+      employee_name VARCHAR(80) NOT NULL,
+      kind VARCHAR(8) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'active',
+      created_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id, owner_id, employee_key),
+      KEY idx_economy_business_employees_user (guild_id, employee_user_id, status),
+      UNIQUE KEY uq_economy_business_employee_contract (guild_id, employee_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_business_shifts (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      guild_id VARCHAR(32) NOT NULL,
+      owner_id VARCHAR(32) NOT NULL,
+      worker_id VARCHAR(32) NOT NULL,
+      gross BIGINT NOT NULL,
+      utilities_due BIGINT NOT NULL,
+      utilities_paid BIGINT NOT NULL,
+      wages_paid BIGINT NOT NULL,
+      net BIGINT NOT NULL,
+      worked_at BIGINT NOT NULL,
+      KEY idx_economy_business_shifts_owner_time (guild_id, owner_id, worked_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_business_buffs (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      uses TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id, user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await economyPool.query(`
@@ -194,6 +314,23 @@ export async function initializeEconomyDatabase(): Promise<void> {
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL,
       KEY idx_economy_games_owner_status (guild_id, user_id, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_rooster_duels (
+      id VARCHAR(32) NOT NULL PRIMARY KEY,
+      guild_id VARCHAR(32) NOT NULL,
+      challenger_id VARCHAR(32) NOT NULL,
+      defender_id VARCHAR(32) NOT NULL,
+      bet BIGINT UNSIGNED NOT NULL,
+      status VARCHAR(16) NOT NULL,
+      expires_at BIGINT NOT NULL,
+      state_json LONGTEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      KEY idx_economy_rooster_pending (guild_id,status,expires_at),
+      KEY idx_economy_rooster_challenger (guild_id,challenger_id,status),
+      KEY idx_economy_rooster_defender (guild_id,defender_id,status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await economyPool.query(`

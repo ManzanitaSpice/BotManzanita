@@ -2,11 +2,11 @@ import { EmbedBuilder, MessageFlags, PermissionFlagsBits, escapeMarkdown } from 
 import { randomInt } from 'node:crypto';
 import { answerEightBall } from '../services/eight-ball.js';
 import { ADMIN_OWNER_ID } from '../commands/admin.js';
-import { bankAction, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoosterFight, playRoulette, playSlots, resignJob, robPlayer, selectJob, setRoosterName, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
+import { bankAction, businessGoods, claimDaily, consumeBusinessGood, createRoosterDuel, crime, economyJobs, fish, formatCooldown, getAccountBalances, getBusinessOverview, getLeaderboard, MAX_JOB_LEVEL, payBusinessDebt, playItemRoulette, playRoosterFight, playRoulette, playSlots, removeBusinessEmployee, requestBusinessEmployee, resignJob, robPlayer, selectJob, sellBusinessGood, setRoosterName, startBlackjack, transferCoins, useShopItem, work, storeItems } from '../services/economy.js';
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, releaseRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
@@ -15,6 +15,7 @@ import { profileCardPanel, levelUpCardMessage } from '../ui/profile.js';
 import { giveReputation, recordChatActivity, recordReceivedRpgReaction } from '../services/profile.js';
 import { findSavedWordResponse } from '../services/word-responses.js';
 import { getSavedWordResponses, removeWordResponse, saveWordResponse } from '../services/word-responses.js';
+import { businessInvitePanel, businessPanel } from '../ui/business-panel.js';
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
 const adminActionAliases = {
@@ -396,6 +397,60 @@ async function routeMessage(message) {
         await sendPanel(message, await economyPanel(guildId, userId, message.author.username, message.author.displayAvatarURL({ extension: 'png', size: 256 })));
         return;
     }
+    if (['terreno', 'negocio', 'business', 'land'].includes(command)) {
+        const action = (args[0] ?? '').toLocaleLowerCase();
+        if (['contratar', 'hire'].includes(action)) {
+            const target = message.mentions.users.first();
+            if (!target || target.bot)
+                return say(message, 'Uso: a!negocio contratar @persona. La otra persona debe tener activo el mismo oficio.');
+            const result = await requestBusinessEmployee(guildId, userId, target.id, target.username);
+            if (!result.ok) {
+                const reason = result.reason === 'not_found' ? 'Primero compra y construye un terreno.'
+                    : result.reason === 'not_ready' ? 'Tu negocio todavía no está abierto.'
+                        : result.reason === 'wrong_job' ? 'Esa persona debe tener activo el mismo oficio de tu negocio.'
+                            : result.reason === 'staff_limit' ? 'Tu negocio ya alcanzó su límite de personal.'
+                                : 'Esa persona ya tiene un contrato o invitación pendiente.';
+                return say(message, '💼 ' + reason);
+            }
+            const inviteJobName = (await getBusinessOverview(guildId, userId))?.job.name ?? 'tu oficio';
+            await message.reply({ ...businessInvitePanel(userId, target.id, message.author.username, inviteJobName), allowedMentions: { users: [target.id], parse: [] } });
+            return;
+        }
+        if (['despedir', 'fire'].includes(action)) {
+            const target = message.mentions.users.first();
+            if (!target)
+                return say(message, 'Uso: a!negocio despedir @persona.');
+            const result = await removeBusinessEmployee(guildId, userId, target.id);
+            return say(message, result.ok ? result.message ?? 'Contrato terminado.' : 'No tienes a esa persona contratada en tu negocio.');
+        }
+        if (['pagar', 'pagar_deuda', 'deuda'].includes(action)) {
+            const result = await payBusinessDebt(guildId, userId, message.id);
+            return say(message, result.ok ? result.message ?? 'Deuda pagada.' : result.reason === 'not_found' ? 'Primero compra un terreno.' : result.reason === 'no_debt' ? 'Tu negocio no tiene facturas pendientes.' : result.reason === 'insufficient_funds' ? 'No tienes monedas disponibles para pagar la deuda.' : 'No se pudo procesar el pago.');
+        }
+        if (['vender', 'sell'].includes(action)) {
+            const quantityCandidate = Number(args.at(-1));
+            const hasQuantity = args.length > 2 && Number.isSafeInteger(quantityCandidate);
+            const itemQuery = args.slice(1, hasQuantity ? -1 : undefined).join(' ').trim().toLocaleLowerCase();
+            const normalized = itemQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const item = businessGoods.find((entry) => entry.id === itemQuery || entry.name.toLocaleLowerCase() === itemQuery || entry.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalized);
+            if (!item)
+                return say(message, 'Uso: a!negocio vender articulo [cantidad]. Consulta tus productos en a!inventory.');
+            const result = await sellBusinessGood(guildId, userId, item.id, hasQuantity ? quantityCandidate : 1, message.id);
+            return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
+        }
+        return sendPanel(message, await businessPanel(guildId, userId));
+    }
+    if (['vender', 'sellgood', 'vender_item'].includes(command)) {
+        const quantityCandidate = Number(args.at(-1));
+        const hasQuantity = args.length > 1 && Number.isSafeInteger(quantityCandidate);
+        const itemQuery = args.slice(0, hasQuantity ? -1 : undefined).join(' ').trim().toLocaleLowerCase();
+        const normalized = itemQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const item = businessGoods.find((entry) => entry.id === itemQuery || entry.name.toLocaleLowerCase() === itemQuery || entry.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalized);
+        if (!item)
+            return say(message, 'Uso: a!vender articulo [cantidad].');
+        const result = await sellBusinessGood(guildId, userId, item.id, hasQuantity ? quantityCandidate : 1, message.id);
+        return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
+    }
     if (['daily', 'd', 'diaria'].includes(command)) {
         const result = await claimDaily(guildId, userId, message.id);
         if (!result.ok)
@@ -435,7 +490,10 @@ async function routeMessage(message) {
                 ? 'Primero elige un trabajo con `a!jobs`.'
                 : result.reason === 'missing_tool'
                     ? `Para trabajar como **${result.job?.name ?? 'este oficio'}** necesitas **${result.job?.toolName ?? 'su herramienta'}**. Cómprala en a!shop.`
-                    : `🧰 Ya trabajaste. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+                    : result.reason === 'business_funds' ? '💼 Las ventas no cubren toda la nómina de este turno. Reduce personal o mejora el negocio; no se descontó dinero.'
+                        : result.reason === 'business_closed' ? '🚫 Tu negocio está clausurado por inactividad. Abre `a!negocio` y paga la multa para reabrirlo.'
+                            : result.reason === 'business_pest' ? '🐀 Hay una plaga activa. Abre `a!negocio` y paga el exterminio antes de trabajar.'
+                                : `🧰 Ya trabajaste. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
         return sendPanel(message, economyActionPanel('🧰 Trabajo completado', result.message, result.amount, result.balance));
     }
     if (['gallo', 'gallera', 'peleagallos'].includes(command)) {
@@ -446,9 +504,22 @@ async function routeMessage(message) {
             const result = await setRoosterName(guildId, userId, name);
             return say(message, result.ok ? `🐓 Tu gallo ahora se llama **${result.name}**. Usa \`a!gallo APUESTA\` para el duelo.` : 'El nombre debe tener 2–24 caracteres y no incluir menciones ni formato de Discord.');
         }
+        const opponent = message.mentions.users.first();
+        if (opponent) {
+            if (opponent.bot)
+                return say(message, 'Solo puedes retar a otra persona, no a un bot.');
+            const duelBet = Number(args.find((arg) => /^\d+$/.test(arg)));
+            if (!Number.isSafeInteger(duelBet) || duelBet < 1 || duelBet > 100_000)
+                return say(message, 'Uso: `a!gallo @persona apuesta` · ambos arriesgan la misma cantidad, de 1 a 100000 monedas.');
+            const duel = await createRoosterDuel(guildId, userId, message.author.username, opponent.id, opponent.username, duelBet);
+            if (!duel.ok)
+                return say(message, duel.reason === 'self' ? 'No puedes retarte a ti mismo.' : duel.reason === 'insufficient_funds' ? 'No tienes saldo suficiente para cubrir tu parte de la apuesta.' : duel.reason === 'busy' ? 'Tú o esa persona ya tienen un reto de gallos pendiente.' : 'La apuesta debe ser de 1 a 100000 monedas.');
+            await message.reply({ ...roosterDuelPanel(duel.duel), allowedMentions: { users: [opponent.id], repliedUser: false } });
+            return;
+        }
         const bet = Number(args[0]);
         if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000)
-            return say(message, 'Uso: `a!gallo apuesta` · también puedes nombrar tu gallo con `a!gallo nombre Nombre`. Apuesta entre 1 y 100000 monedas.');
+            return say(message, 'Uso: `a!gallo apuesta` contra la máquina, `a!gallo @persona apuesta` para un duelo o `a!gallo nombre Nombre` para nombrar tu gallo. Apuesta entre 1 y 100000 monedas.');
         const result = await playRoosterFight(guildId, userId, bet, message.id);
         if (!result.ok)
             return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
@@ -481,7 +552,9 @@ async function routeMessage(message) {
             return say(message, 'Uso: `a!rob @persona`.');
         const result = await robPlayer(guildId, userId, target.id, target.username, message.id);
         if (!result.ok)
-            return say(message, result.reason === 'target_empty' ? 'Esa persona no tiene monedas para robar.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+            return say(message, result.reason === 'target_empty' ? 'Esa persona no tiene monedas ni artículos robables.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+        if (result.stolenItem)
+            return say(message, result.message);
         return sendPanel(message, economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance, false));
     }
     if (['roulette', 'rl', 'ruleta'].includes(command)) {
@@ -550,11 +623,17 @@ async function routeMessage(message) {
     }
     if (command === 'use') {
         const key = args.join('_').toLocaleLowerCase();
-        const item = storeItems.find((candidate) => candidate.id === key || candidate.name.toLocaleLowerCase() === args.join(' ').toLocaleLowerCase());
+        const query = args.join(' ').toLocaleLowerCase();
+        const businessItem = businessGoods.find((candidate) => candidate.usable && (candidate.id === key || candidate.name.toLocaleLowerCase() === query));
+        if (businessItem) {
+            const result = await consumeBusinessGood(guildId, userId, businessItem.id, message.id);
+            return say(message, result.ok ? result.message ?? 'Consumible utilizado.' : result.reason === 'no_items' ? 'No tienes ese producto.' : result.reason === 'staff_limit' ? 'Ya tienes dos turnos de negocio potenciados pendientes.' : result.reason === 'not_ready' ? 'Necesitas un negocio activo de ese oficio para usarlo.' : 'Ese producto no se puede usar ahora.');
+        }
+        const item = storeItems.find((candidate) => candidate.usable && (candidate.id === key || candidate.name.toLocaleLowerCase() === query));
         if (!item)
-            return say(message, 'Uso: `a!use cebo_premium` o `a!use escudo_antirrobo`.');
+            return say(message, 'Indica el nombre o ID de un consumible que tengas, por ejemplo: `a!use escudo_acero_36h`.');
         const result = await useShopItem(guildId, userId, item.id, message.id);
-        return say(message, result.ok ? result.message : result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar** comprada en `a!shop` para usar el cebo.' : result.reason === 'cooldown' ? `Espera ${formatCooldown(result.secondsRemaining ?? 0)} para volver a pescar.` : 'No tienes ese artículo o no puedes usarlo ahora.');
+        return say(message, result.ok ? result.message : result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar** comprada en `a!shop` para usar el cebo.' : result.reason === 'cooldown' ? `Espera ${formatCooldown(result.secondsRemaining ?? 0)} para volver a pescar.` : result.reason === 'no_job' ? 'Primero elige un oficio con `a!jobs`.' : result.reason === 'missing_tool' ? 'Necesitas tener la herramienta de tu oficio para usar este artículo.' : result.reason === 'not_needed' ? item.effect?.kind === 'job_manual' ? 'Este oficio ya alcanzó el nivel máximo.' : 'Tu herramienta ya está completamente reparada.' : 'No tienes ese artículo o no puedes usarlo ahora.');
     }
     // RPG
     if (['rpg', 'pet', 'mascota'].includes(command)) {
@@ -660,7 +739,7 @@ async function routeMessage(message) {
             if (!item)
                 return say(message, 'Indica el nombre del objeto: `a!rpg buy nombre`.');
             const result = await buyRpgItem(guildId, userId, item.id, message.id);
-            return say(message, result.ok ? `🛒 Compraste **${item.name}** · mochila x${result.quantity}.` : 'No tienes monedas suficientes.');
+            return say(message, result.ok ? `🛒 Compraste **${item.name}** por ${result.price} monedas · mochila x${result.quantity}.` : 'No tienes monedas suficientes.');
         }
         if (['use', 'usar', 'item'].includes(action)) {
             const item = findRpgItem(args.join(' '));

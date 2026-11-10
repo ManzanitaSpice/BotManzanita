@@ -6,6 +6,7 @@ import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, withEconomyTransaction } from '../storage/economy-database.js';
 import { migratePlayerDataToGlobalScope } from '../storage/global-migration.js';
 import { profileShopCategories, profileShopItems, type ProfileItemType, type ProfileShopItem } from '../data/profile-shop.js';
+import { getProductPriceQuote, recordProductSaleMysql, recordProductSaleSqlite } from './product-market.js';
 
 export type ProfileSettings = { about: string; title: string; accent: string; profileBg: string | null; rankBg: string | null; walletBg: string | null; levelupBg: string | null; tag: string | null; frame: string | null; sticker: string | null };
 export type ProfileBackgroundTarget = 'profile' | 'rank' | 'wallet' | 'levelup' | 'all';
@@ -177,11 +178,12 @@ export async function getProfileInventory(guildId: string, userId: string): Prom
 }
 
 export type ProfilePurchaseCurrency = 'coins' | 'gems';
-export async function buyProfileItem(guildId: string,userId: string,itemId: string,reference: string,currency:ProfilePurchaseCurrency='coins'): Promise<{ok:true;balance:number}|{ok:false;reason:'not_found'|'free_item'|'currency_unavailable'|'already_owned'|'insufficient';balance:number}> {
+export async function buyProfileItem(guildId: string,userId: string,itemId: string,reference: string,currency:ProfilePurchaseCurrency='coins'): Promise<{ok:true;balance:number;price:number}|{ok:false;reason:'not_found'|'free_item'|'currency_unavailable'|'already_owned'|'insufficient';balance:number}> {
   guildId = GLOBAL_SCOPE_ID;
   const item=profileShopItems.find((entry)=>entry.id===itemId);
   if(!item) return {ok:false,reason:'not_found',balance:0};
-  const price=currency==='gems'?(gemPricedCosmeticTypes.has(item.type)?item.premiumPrice:undefined):item.price;
+  const priceQuote=currency==='coins'&&item.price>0?await getProductPriceQuote({kind:'profile',id:itemId,category:item.category,basePrice:item.price,categorySize:profileShopItems.filter((entry)=>entry.type!=='pet'&&entry.category===item.category).length}):undefined;
+  const price=currency==='gems'?(gemPricedCosmeticTypes.has(item.type)?item.premiumPrice:undefined):priceQuote?.price??item.price;
   if(typeof price!=='number'||!Number.isSafeInteger(price)||price<=0) return {ok:false,reason:currency==='gems'?'currency_unavailable':'free_item',balance:0};
   const balanceColumn=currency==='gems'?'premium_balance':'balance';
   const ledgerReference=`${currency==='gems'?'profile-shop-gems':'profile-shop'}:${reference}`;
@@ -197,7 +199,8 @@ export async function buyProfileItem(guildId: string,userId: string,itemId: stri
     await connection.execute(`UPDATE economy_accounts SET ${balanceColumn}=${balanceColumn}-?,updated_at=? WHERE guild_id=? AND user_id=?`,[price,at,guildId,userId]);
     await connection.execute('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)',[guildId,userId,-price,ledgerReason,ledgerReference,at]);
     await connection.execute('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON DUPLICATE KEY UPDATE quantity=quantity+1',[guildId,userId,itemId,at]);
-    return {ok:true as const,balance:balance-price};
+    if(currency==='coins') await recordProductSaleMysql(connection,{userId,kind:'profile',id:itemId,category:item.category,quantity:1,unitPrice:price,reference:ledgerReference,soldAt:at});
+    return {ok:true as const,balance:balance-price,price};
   });
   const transaction=db.transaction(()=>{
     db.prepare('INSERT OR IGNORE INTO economy_accounts(guild_id,user_id,balance) VALUES(?,?,?)').run(guildId,userId,ECONOMY_STARTING_BALANCE);
@@ -208,7 +211,8 @@ export async function buyProfileItem(guildId: string,userId: string,itemId: stri
     db.prepare(`UPDATE economy_accounts SET ${balanceColumn}=${balanceColumn}-?,updated_at=? WHERE guild_id=? AND user_id=?`).run(price,at,guildId,userId);
     db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId,userId,-price,ledgerReason,ledgerReference,at);
     db.prepare('INSERT INTO user_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId,userId,itemId,at);
-    return {ok:true as const,balance:balance-price};
+    if(currency==='coins') recordProductSaleSqlite({userId,kind:'profile',id:itemId,category:item.category,quantity:1,unitPrice:price,reference:ledgerReference,soldAt:at});
+    return {ok:true as const,balance:balance-price,price};
   }); return transaction.immediate();
 }
 

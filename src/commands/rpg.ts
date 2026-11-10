@@ -128,7 +128,7 @@ export const rpgCommand: BotCommand = {
     if (action === 'comprar') {
       const item = rpgItems.find((candidate) => candidate.id === interaction.options.getString('articulo', true))!;
       const result = await buyRpgItem(guildId, userId, item.id, interaction.id);
-      await interaction.reply({ content: result.ok ? `${item.emoji} Compraste **${item.name}**. Mochila: x${result.quantity} · saldo: **${result.balance} monedas**.` : 'No tienes suficiente saldo para esa compra.', flags: MessageFlags.Ephemeral }); return;
+      await interaction.reply({ content: result.ok ? `${item.emoji} Compraste **${item.name}** por ${result.price} monedas. Mochila: x${result.quantity} · saldo: **${result.balance} monedas**.` : 'No tienes suficiente saldo para esa compra.', flags: MessageFlags.Ephemeral }); return;
     }
     if (action === 'usar') {
       const result = await useRpgItem(guildId, userId, interaction.options.getString('articulo', true), interaction.id);

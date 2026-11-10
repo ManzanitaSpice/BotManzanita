@@ -1,7 +1,8 @@
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { getAccountBalances, getInventory, purchaseItem, storeItems } from './economy.js';
+import { getAccountBalances, getInventory, jobProductCategorySize, purchaseItem, storeItems } from './economy.js';
 import { buyProfileItem, getProfileInventory } from './profile.js';
 import { buyRpgItem, getRpgInventory, rpgItems } from './rpg.js';
+import { getProductPriceQuotes } from './product-market.js';
 export const storeCategoryOptions = [
     { id: 'all', label: 'Todo', emoji: '🛍️' },
     { id: 'profile:all', label: 'Personalización', emoji: '🎨' },
@@ -66,10 +67,27 @@ export async function getStoreSnapshot(guildId, userId) {
         quantities.set(`profile:${item.itemId}`, item.quantity);
     for (const item of rpgInventory)
         quantities.set(`rpg:${item.itemId}`, item.quantity);
+    const catalog = storeCatalog();
+    const categorySizes = new Map();
+    for (const item of catalog)
+        categorySizes.set(`${item.kind}:${item.category}`, (categorySizes.get(`${item.kind}:${item.category}`) ?? 0) + 1);
+    const priceQuotes = await getProductPriceQuotes(catalog.map((item) => ({
+        kind: item.kind,
+        id: item.id,
+        category: item.category,
+        basePrice: item.price,
+        categorySize: item.kind === 'economy' && item.category === 'economy:jobs'
+            ? jobProductCategorySize()
+            : categorySizes.get(`${item.kind}:${item.category}`) ?? 1,
+    })));
     return {
         balance: account.wallet,
         premiumBalance: account.premium,
-        products: storeCatalog().map((item) => ({ ...item, quantity: quantities.get(`${item.kind}:${item.id}`) ?? 0 })),
+        products: catalog.map((item) => {
+            const quote = priceQuotes.get(`${item.kind}:${item.id}`);
+            return { ...item, basePrice: item.price, price: quote.price, globalIndexBps: quote.globalIndexBps, demandIndexBps: quote.demandIndexBps,
+                units30d: quote.units30d, quotedAt: quote.quotedAt, quantity: quantities.get(`${item.kind}:${item.id}`) ?? 0 };
+        }),
     };
 }
 export async function purchaseStoreProduct(guildId, userId, kind, itemId, reference, currency = 'coins') {
@@ -82,7 +100,7 @@ export async function purchaseStoreProduct(guildId, userId, kind, itemId, refere
         const result = await buyProfileItem(guildId, userId, itemId, reference, currency);
         if (result.ok) {
             const inventory = await getProfileInventory(guildId, userId);
-            return { ok: true, balance: result.balance, quantity: inventory.find((entry) => entry.itemId === itemId)?.quantity ?? 1, currency };
+            return { ok: true, balance: result.balance, quantity: inventory.find((entry) => entry.itemId === itemId)?.quantity ?? 1, currency, price: result.price };
         }
         return { ok: false, reason: result.reason === 'already_owned' ? 'already_owned' : result.reason === 'insufficient' ? 'insufficient_funds' : result.reason === 'currency_unavailable' ? 'currency_unavailable' : 'not_found' };
     }

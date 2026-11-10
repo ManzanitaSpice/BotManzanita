@@ -40,14 +40,54 @@ db.exec(`
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
-  CREATE TABLE IF NOT EXISTS economy_bank_policy (
+  CREATE TABLE IF NOT EXISTS economy_product_price_policy (
     policy_id INTEGER PRIMARY KEY CHECK (policy_id = 1),
-    interest_rate_bps INTEGER NOT NULL DEFAULT 6500 CHECK (interest_rate_bps >= 1),
-    last_rebalanced_at INTEGER NOT NULL DEFAULT 0,
-    model_version INTEGER NOT NULL DEFAULT 3
+    price_index_bps INTEGER NOT NULL DEFAULT 10000,
+    last_rebalanced_at INTEGER NOT NULL DEFAULT 0
   );
 
-  INSERT OR IGNORE INTO economy_bank_policy (policy_id, interest_rate_bps, last_rebalanced_at) VALUES (1, 6500, 0);
+  INSERT OR IGNORE INTO economy_product_price_policy (policy_id, price_index_bps, last_rebalanced_at) VALUES (1, 10000, 0);
+
+  CREATE TABLE IF NOT EXISTS economy_product_sales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    product_kind TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price INTEGER NOT NULL,
+    reference TEXT NOT NULL UNIQUE,
+    sold_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_economy_product_sales_market
+    ON economy_product_sales (product_kind, category, sold_at, product_id);
+
+  CREATE INDEX IF NOT EXISTS idx_economy_product_sales_time
+    ON economy_product_sales (sold_at);
+
+  CREATE TABLE IF NOT EXISTS economy_product_price_quotes (
+    product_kind TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    base_price INTEGER NOT NULL,
+    current_price INTEGER NOT NULL,
+    global_index_bps INTEGER NOT NULL,
+    demand_index_bps INTEGER NOT NULL,
+    units_30d INTEGER NOT NULL DEFAULT 0,
+    category_size INTEGER NOT NULL DEFAULT 1,
+    quoted_at INTEGER NOT NULL,
+    PRIMARY KEY (product_kind, product_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS economy_bank_policy (
+    policy_id INTEGER PRIMARY KEY CHECK (policy_id = 1),
+    interest_rate_bps INTEGER NOT NULL DEFAULT 1200 CHECK (interest_rate_bps >= 1),
+    last_rebalanced_at INTEGER NOT NULL DEFAULT 0,
+    model_version INTEGER NOT NULL DEFAULT 4
+  );
+
+  INSERT OR IGNORE INTO economy_bank_policy (policy_id, interest_rate_bps, last_rebalanced_at, model_version) VALUES (1, 1200, 0, 4);
 
   CREATE TABLE IF NOT EXISTS economy_bank_rate_history (
     effective_at INTEGER PRIMARY KEY,
@@ -133,6 +173,17 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id, item_id)
   );
 
+  CREATE TABLE IF NOT EXISTS economy_tool_state (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    tool_id TEXT NOT NULL,
+    durability INTEGER NOT NULL DEFAULT 0 CHECK (durability >= 0),
+    max_durability INTEGER NOT NULL DEFAULT 0 CHECK (max_durability >= 0),
+    upgrade_level INTEGER NOT NULL DEFAULT 0 CHECK (upgrade_level >= 0 AND upgrade_level <= 3),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (guild_id, user_id, tool_id)
+  );
+
   CREATE TABLE IF NOT EXISTS economy_jobs (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -146,6 +197,74 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_economy_jobs_active
     ON economy_jobs (guild_id, user_id, is_active);
+
+  CREATE TABLE IF NOT EXISTS economy_businesses (
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'land',
+    level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1 AND level <= 10),
+    construction_complete_at INTEGER,
+    debt INTEGER NOT NULL DEFAULT 0 CHECK (debt >= 0),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, owner_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_economy_businesses_status
+    ON economy_businesses (guild_id, status, job_id);
+
+  CREATE TABLE IF NOT EXISTS economy_business_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    amount INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER,
+    reference TEXT NOT NULL UNIQUE
+  );
+  CREATE INDEX IF NOT EXISTS idx_economy_business_events_pending
+    ON economy_business_events (guild_id, owner_id, status, event_type);
+
+  CREATE TABLE IF NOT EXISTS economy_business_employees (
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    employee_key TEXT NOT NULL,
+    employee_user_id TEXT,
+    employee_name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, owner_id, employee_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_economy_business_employees_user
+    ON economy_business_employees (guild_id, employee_user_id, status);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_economy_business_employee_contract
+    ON economy_business_employees (guild_id, employee_user_id);
+
+  CREATE TABLE IF NOT EXISTS economy_business_shifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    worker_id TEXT NOT NULL,
+    gross INTEGER NOT NULL,
+    utilities_due INTEGER NOT NULL,
+    utilities_paid INTEGER NOT NULL,
+    wages_paid INTEGER NOT NULL,
+    net INTEGER NOT NULL,
+    worked_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_economy_business_shifts_owner_time
+    ON economy_business_shifts (guild_id, owner_id, worked_at);
+
+  CREATE TABLE IF NOT EXISTS economy_business_buffs (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0 AND uses <= 2),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  );
 
   CREATE TABLE IF NOT EXISTS music_favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,6 +342,26 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_economy_games_owner_status
     ON economy_games (guild_id, user_id, status);
+
+  CREATE TABLE IF NOT EXISTS economy_rooster_duels (
+    id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    challenger_id TEXT NOT NULL,
+    defender_id TEXT NOT NULL,
+    bet INTEGER NOT NULL CHECK (bet > 0),
+    status TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    state_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_economy_rooster_pending
+    ON economy_rooster_duels (guild_id, status, expires_at);
+  CREATE INDEX IF NOT EXISTS idx_economy_rooster_challenger
+    ON economy_rooster_duels (guild_id, challenger_id, status);
+  CREATE INDEX IF NOT EXISTS idx_economy_rooster_defender
+    ON economy_rooster_duels (guild_id, defender_id, status);
 
   CREATE TABLE IF NOT EXISTS rpg_pets (
     guild_id TEXT NOT NULL,
