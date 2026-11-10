@@ -63,7 +63,51 @@ export async function initializeEconomyDatabase() {
       reference VARCHAR(191) NULL,
       created_at BIGINT NOT NULL,
       UNIQUE KEY uq_economy_ledger_reference (reference),
-      KEY idx_economy_ledger_user (guild_id, user_id, created_at)
+      KEY idx_economy_ledger_user (guild_id, user_id, created_at),
+      KEY idx_economy_ledger_scope_time_reason (guild_id, created_at, reason)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await ensureIndex('economy_ledger', 'idx_economy_ledger_scope_time_reason', 'guild_id,created_at,reason');
+    await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_bank_policy (
+      policy_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+      interest_rate_bps SMALLINT UNSIGNED NOT NULL DEFAULT 608,
+      last_rebalanced_at BIGINT NOT NULL DEFAULT 0,
+      model_version TINYINT UNSIGNED NOT NULL DEFAULT 2
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await ensureColumn('economy_bank_policy', 'model_version', 'TINYINT UNSIGNED NOT NULL DEFAULT 1');
+    await economyPool.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,608,0,2)');
+    await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_bank_rate_history (
+      effective_at BIGINT NOT NULL PRIMARY KEY,
+      interest_rate_bps SMALLINT UNSIGNED NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_bank_market_history (
+      observed_at BIGINT NOT NULL PRIMARY KEY,
+      nominal_apr_bps SMALLINT UNSIGNED NOT NULL,
+      effective_annual_bps SMALLINT UNSIGNED NOT NULL,
+      real_yield_bps SMALLINT NOT NULL,
+      target_real_bps SMALLINT UNSIGNED NOT NULL,
+      inflation_reference_bps SMALLINT UNSIGNED NOT NULL,
+      issuance_pressure_bps SMALLINT NOT NULL,
+      purchases_pressure_bps SMALLINT NOT NULL,
+      savings_pressure_bps SMALLINT NOT NULL,
+      liquidity_pressure_bps SMALLINT NOT NULL,
+      labor_pressure_bps SMALLINT NOT NULL,
+      money_supply BIGINT NOT NULL,
+      savings BIGINT NOT NULL,
+      net_issuance_30d BIGINT NOT NULL,
+      purchase_volume_30d BIGINT NOT NULL,
+      payroll_30d BIGINT NOT NULL,
+      work_shifts_30d INT UNSIGNED NOT NULL,
+      active_workers INT UNSIGNED NOT NULL,
+      deposits_24h BIGINT NOT NULL,
+      withdrawals_24h BIGINT NOT NULL,
+      job_mix_json TEXT NOT NULL,
+      KEY idx_economy_bank_market_history_time (observed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
     await economyPool.query(`
@@ -245,6 +289,13 @@ async function ensureColumn(table, column, definition) {
     const [rows] = await economyPool.execute('SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ? LIMIT 1', [config.economyDatabase.name, table, column]);
     if (!rows.length)
         await economyPool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+}
+async function ensureIndex(table, index, definition) {
+    if (!economyPool)
+        return;
+    const [rows] = await economyPool.execute('SELECT 1 FROM information_schema.statistics WHERE table_schema=? AND table_name=? AND index_name=? LIMIT 1', [config.economyDatabase.name, table, index]);
+    if (!rows.length)
+        await economyPool.query(`CREATE INDEX \`${index}\` ON \`${table}\` (${definition})`);
 }
 async function ensureTextColumn(table, column, initialValue) {
     if (!economyPool)

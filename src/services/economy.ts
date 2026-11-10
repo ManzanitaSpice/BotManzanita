@@ -11,9 +11,19 @@ const WORK_COOLDOWN_SECONDS = 60 * 60;
 const FISH_COOLDOWN_SECONDS = 60 * 60;
 const ROB_COOLDOWN_SECONDS = 2 * 60 * 60;
 const CRIME_COOLDOWN_SECONDS = 4 * 60 * 60;
-const BANK_INTEREST_INTERVAL_SECONDS = 24 * 60 * 60;
-const BANK_INTEREST_BASIS_POINTS = 1;
-const BANK_MAX_ACCRUAL_DAYS = 30;
+const BANK_INTEREST_INTERVAL_SECONDS = 5 * 60 * 60;
+const BANK_PERIODS_PER_YEAR = (365 * 24 * 60 * 60) / BANK_INTEREST_INTERVAL_SECONDS;
+const BANK_INTEREST_REMAINDER_DENOMINATOR = 10_000 * BANK_PERIODS_PER_YEAR;
+const BANK_POLICY_REBALANCE_SECONDS = 24 * 60 * 60;
+const BANK_MODEL_VERSION = 2;
+export const BANK_MACRO_INFLATION_BPS = 470;
+export const BANK_MACRO_GROWTH_BPS = 310;
+export const BANK_REAL_YIELD_FLOOR_BPS = 25;
+export const BANK_REAL_YIELD_CEILING_BPS = 600;
+export const BANK_BASE_REAL_YIELD_BPS = 150;
+const BANK_TARGET_SAVINGS_SHARE = 0.3;
+const BANK_MAX_DAILY_REAL_RATE_STEP_BPS = 50;
+const BANK_ACTIVITY_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const ROB_SHIELD_SECONDS = 24 * 60 * 60;
 const MAX_BET = 100_000;
 export const JOB_XP_PER_SHIFT = 25;
@@ -268,27 +278,443 @@ export type BankResult = {
   balance: number;
   bankBalance: number;
   interestEarned: number;
+  interestRateBps: number;
   nextInterestAt: number;
+  nextRateRebalanceAt: number;
 };
 
-function calculateBankInterest(account: AccountRow, now: number) {
-  const lastAt = account.lastBankInterestAt ?? now;
-  const periods = Math.min(BANK_MAX_ACCRUAL_DAYS,
-    Math.max(0, Math.floor((now - lastAt) / BANK_INTEREST_INTERVAL_SECONDS)));
+type BankInterestPolicy = { rateBps: number; lastRebalancedAt: number; nextRebalanceAt: number };
+type BankInterestRateRow = { effectiveAt: number; rateBps: number };
+type BankJobMixEntry = { jobId: string; name: string; workers: number; averageLevel: number; payroll30d: number; shifts30d: number };
+type BankMarketSnapshot = {
+  totalMoney: number; savings: number; deposits: number; withdrawals: number; netIssuance30d: number;
+  purchaseVolume30d: number; payroll30d: number; workShifts30d: number; activeWorkers: number;
+  jobs: BankJobMixEntry[]; targetRealBps: number; issuancePressureBps: number; purchasesPressureBps: number;
+  savingsPressureBps: number; liquidityPressureBps: number; laborPressureBps: number;
+};
+export type BankMarketObservation = {
+  observedAt: number; nominalAprBps: number; effectiveAnnualBps: number; realYieldBps: number; targetRealBps: number;
+  inflationReferenceBps: number; moneySupply: number; savings: number; netIssuance30d: number;
+  purchaseVolume30d: number; payroll30d: number; workShifts30d: number; activeWorkers: number;
+  deposits24h: number; withdrawals24h: number; issuancePressureBps: number; purchasesPressureBps: number;
+  savingsPressureBps: number; liquidityPressureBps: number; laborPressureBps: number; jobs: BankJobMixEntry[];
+};
+export type BankInterestDashboard = { current: BankMarketObservation; history: BankMarketObservation[] };
+type BankInterestAccount = { userId: string; bankBalance: number; lastBankInterestAt: number | null; bankInterestRemainder: number };
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function effectiveAnnualYieldBps(aprBps: number): number {
+  const periodYield = Math.max(0, aprBps) / BANK_INTEREST_REMAINDER_DENOMINATOR;
+  return Math.round((Math.pow(1 + periodYield, BANK_PERIODS_PER_YEAR) - 1) * 10_000);
+}
+
+function realYieldBps(nominalBps: number, inflationBps = BANK_MACRO_INFLATION_BPS): number {
+  return Math.round(((1 + nominalBps / 10_000) / (1 + inflationBps / 10_000) - 1) * 10_000);
+}
+
+function nominalAprForRealYield(realBps: number): number {
+  const effectiveNominal = (1 + BANK_MACRO_INFLATION_BPS / 10_000) * (1 + realBps / 10_000) - 1;
+  return Math.round((Math.pow(1 + effectiveNominal, 1 / BANK_PERIODS_PER_YEAR) - 1) * BANK_PERIODS_PER_YEAR * 10_000);
+}
+
+function clampBankApr(rateBps: number): number {
+  return clamp(Math.round(rateBps), nominalAprForRealYield(BANK_REAL_YIELD_FLOOR_BPS), nominalAprForRealYield(BANK_REAL_YIELD_CEILING_BPS));
+}
+
+function buildBankMarketSnapshot(
+  moneySupply: number, savings: number, flow: { deposits: number; withdrawals: number; netIssuance30d: number; purchaseVolume30d: number; payroll30d: number; workShifts30d: number },
+  activeJobs: Array<{ jobId: string; level: number; userId?: string }>, historicalJobs: Array<{ jobId: string; payroll: number; shifts: number }>,
+): BankMarketSnapshot {
+  const jobsById = new Map<string, BankJobMixEntry>();
+  for (const job of historicalJobs) {
+    const knownJob = economyJobs.find((candidate) => candidate.id === job.jobId);
+    jobsById.set(job.jobId, { jobId: job.jobId, name: knownJob?.name ?? (job.jobId === 'legacy' ? 'Trabajo general' : job.jobId),
+      workers: 0, averageLevel: 0, payroll30d: Number(job.payroll), shifts30d: Number(job.shifts) });
+  }
+  const activeJobLevelTotals = new Map<string, { workers: number; levelTotal: number }>();
+  for (const job of activeJobs) {
+    const knownJob = economyJobs.find((candidate) => candidate.id === job.jobId);
+    if (!jobsById.has(job.jobId)) jobsById.set(job.jobId, { jobId: job.jobId, name: knownJob?.name ?? job.jobId, workers: 0, averageLevel: 0, payroll30d: 0, shifts30d: 0 });
+    const current = activeJobLevelTotals.get(job.jobId) ?? { workers: 0, levelTotal: 0 };
+    current.workers++;
+    current.levelTotal += Number(job.level);
+    activeJobLevelTotals.set(job.jobId, current);
+  }
+  for (const [jobId, totals] of activeJobLevelTotals) {
+    const entry = jobsById.get(jobId)!;
+    entry.workers = totals.workers;
+    entry.averageLevel = Math.round((totals.levelTotal / totals.workers) * 100) / 100;
+  }
+  const jobs = [...jobsById.values()].sort((a, b) => b.payroll30d - a.payroll30d || a.name.localeCompare(b.name));
+  const activeWorkers = new Set(activeJobs.map((job, index) => job.userId ?? `${job.jobId}:${index}`)).size;
+  const savingsShare = moneySupply > 0 ? savings / moneySupply : 0;
+  const issuancePressureBps = clamp(Math.round((flow.netIssuance30d / Math.max(moneySupply, 1)) * 10_000 * 0.08), -150, 150);
+  const purchasesPressureBps = clamp(Math.round((flow.purchaseVolume30d / Math.max(moneySupply, 1)) * 25), 0, 100);
+  const savingsPressureBps = clamp(Math.round((BANK_TARGET_SAVINGS_SHARE - savingsShare) * 10_000 * 0.05), -100, 100);
+  const liquidityPressureBps = clamp(Math.round(((flow.withdrawals - flow.deposits) / Math.max(moneySupply, 1)) * 10_000 * 1.5), -100, 100);
+  const activePay = activeJobs.reduce((sum, job) => {
+    const definition = economyJobs.find((candidate) => candidate.id === job.jobId);
+    return sum + (definition ? (definition.minPay + definition.maxPay) / 2 + Math.min(Math.max(job.level - 1, 0), MAX_JOB_LEVEL - 1) * 3 : 47);
+  }, 0);
+  const averageJobPay = activeJobs.length ? activePay / activeJobs.length : 47;
+  const wagePressure = clamp(Math.round(((averageJobPay / 47) - 1) * 60), -30, 30);
+  const activeJobShiftCount = jobs.reduce((sum, job) => sum + job.shifts30d, 0);
+  const jobActivityPressure = activeWorkers ? Math.round(Math.min(1, activeJobShiftCount / (activeWorkers * 12)) * 40) : 0;
+  const payrollPressure = clamp(Math.round((flow.payroll30d / Math.max(moneySupply, 1)) * 20), 0, 30);
+  const laborPressureBps = wagePressure + jobActivityPressure + payrollPressure;
+  const targetRealBps = clamp(BANK_BASE_REAL_YIELD_BPS + issuancePressureBps + purchasesPressureBps + savingsPressureBps + liquidityPressureBps + laborPressureBps,
+    BANK_REAL_YIELD_FLOOR_BPS, BANK_REAL_YIELD_CEILING_BPS);
+  return { totalMoney: moneySupply, savings, deposits: flow.deposits, withdrawals: flow.withdrawals,
+    netIssuance30d: flow.netIssuance30d, purchaseVolume30d: flow.purchaseVolume30d, payroll30d: flow.payroll30d,
+    workShifts30d: flow.workShifts30d, activeWorkers, jobs, targetRealBps, issuancePressureBps, purchasesPressureBps,
+    savingsPressureBps, liquidityPressureBps, laborPressureBps };
+}
+
+function mergeBankJobPayrollRows(rows: Array<{ reason: string; payroll: number; shifts: number }>): Array<{ jobId: string; payroll: number; shifts: number }> {
+  const byJob = new Map<string, { jobId: string; payroll: number; shifts: number }>();
+  for (const row of rows) {
+    const jobId = row.reason === 'work_reward' ? 'legacy' : row.reason.split(':')[1] ?? 'legacy';
+    const entry = byJob.get(jobId) ?? { jobId, payroll: 0, shifts: 0 };
+    entry.payroll += Number(row.payroll);
+    entry.shifts += Number(row.shifts);
+    byJob.set(jobId, entry);
+  }
+  return [...byJob.values()];
+}
+
+async function mysqlBankMarketSnapshot(connection: PoolConnection, now: number): Promise<BankMarketSnapshot> {
+  const [accounts] = await connection.execute<RowDataPacket[]>(
+    'SELECT COALESCE(SUM(balance+bank_balance),0) AS totalMoney,COALESCE(SUM(bank_balance),0) AS savings FROM economy_accounts WHERE guild_id=?', [GLOBAL_SCOPE_ID]);
+  const [flowRows] = await connection.execute<RowDataPacket[]>(`SELECT
+    COALESCE(SUM(CASE WHEN created_at>=? AND reason='bank:deposit:vault' AND amount>0 THEN amount ELSE 0 END),0) AS deposits,
+    COALESCE(SUM(CASE WHEN created_at>=? AND reason='bank:withdraw:vault' AND amount<0 THEN -amount ELSE 0 END),0) AS withdrawals,
+    COALESCE(SUM(CASE WHEN reason IN ('bank:deposit:wallet','bank:deposit:vault','bank:withdraw:wallet','bank:withdraw:vault') OR reason LIKE 'transfer:%' OR reason LIKE 'rob:from:%' OR reason LIKE 'rob:to:%' THEN 0 ELSE amount END),0) AS netIssuance30d,
+    COALESCE(SUM(CASE WHEN amount<0 AND (reason LIKE 'store:%' OR reason='rpg_shop' OR reason='rpg_training' OR reason LIKE 'profile_shop:%') THEN -amount ELSE 0 END),0) AS purchaseVolume30d,
+    COALESCE(SUM(CASE WHEN amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') THEN amount ELSE 0 END),0) AS payroll30d,
+    COALESCE(SUM(CASE WHEN amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') THEN 1 ELSE 0 END),0) AS workShifts30d
+    FROM economy_ledger WHERE guild_id=? AND created_at>=? AND created_at<=?`,
+  [now - BANK_POLICY_REBALANCE_SECONDS, now - BANK_POLICY_REBALANCE_SECONDS, GLOBAL_SCOPE_ID, now - BANK_ACTIVITY_WINDOW_SECONDS, now]);
+  const [activeRows] = await connection.execute<RowDataPacket[]>('SELECT user_id AS userId,job_id AS jobId,level FROM economy_jobs WHERE guild_id=? AND is_active=1', [GLOBAL_SCOPE_ID]);
+  const [jobPayrollRows] = await connection.execute<RowDataPacket[]>(`SELECT reason,COALESCE(SUM(amount),0) AS payroll,COUNT(*) AS shifts FROM economy_ledger
+    WHERE guild_id=? AND created_at>=? AND created_at<=? AND amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') GROUP BY reason`,
+  [GLOBAL_SCOPE_ID, now - BANK_ACTIVITY_WINDOW_SECONDS, now]);
+  const activeJobs = activeRows.map((row) => ({ userId: String(row.userId), jobId: String(row.jobId), level: Number(row.level) }));
+  const historicalJobs = mergeBankJobPayrollRows(jobPayrollRows.map((row) => ({ reason: String(row.reason), payroll: Number(row.payroll), shifts: Number(row.shifts) })));
+  const flow = flowRows[0] ?? ({} as RowDataPacket);
+  return buildBankMarketSnapshot(Number(accounts[0]?.totalMoney ?? 0), Number(accounts[0]?.savings ?? 0), {
+    deposits: Number(flow.deposits ?? 0), withdrawals: Number(flow.withdrawals ?? 0), netIssuance30d: Number(flow.netIssuance30d ?? 0),
+    purchaseVolume30d: Number(flow.purchaseVolume30d ?? 0), payroll30d: Number(flow.payroll30d ?? 0), workShifts30d: Number(flow.workShifts30d ?? 0),
+  }, activeJobs, historicalJobs);
+}
+
+function sqliteBankMarketSnapshot(now: number): BankMarketSnapshot {
+  const accounts = db.prepare('SELECT COALESCE(SUM(balance+bank_balance),0) AS totalMoney,COALESCE(SUM(bank_balance),0) AS savings FROM economy_accounts WHERE guild_id=?').get(GLOBAL_SCOPE_ID) as { totalMoney: number; savings: number };
+  const flow = db.prepare(`SELECT
+    COALESCE(SUM(CASE WHEN created_at>=? AND reason='bank:deposit:vault' AND amount>0 THEN amount ELSE 0 END),0) AS deposits,
+    COALESCE(SUM(CASE WHEN created_at>=? AND reason='bank:withdraw:vault' AND amount<0 THEN -amount ELSE 0 END),0) AS withdrawals,
+    COALESCE(SUM(CASE WHEN reason IN ('bank:deposit:wallet','bank:deposit:vault','bank:withdraw:wallet','bank:withdraw:vault') OR reason LIKE 'transfer:%' OR reason LIKE 'rob:from:%' OR reason LIKE 'rob:to:%' THEN 0 ELSE amount END),0) AS netIssuance30d,
+    COALESCE(SUM(CASE WHEN amount<0 AND (reason LIKE 'store:%' OR reason='rpg_shop' OR reason='rpg_training' OR reason LIKE 'profile_shop:%') THEN -amount ELSE 0 END),0) AS purchaseVolume30d,
+    COALESCE(SUM(CASE WHEN amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') THEN amount ELSE 0 END),0) AS payroll30d,
+    COALESCE(SUM(CASE WHEN amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') THEN 1 ELSE 0 END),0) AS workShifts30d
+    FROM economy_ledger WHERE guild_id=? AND created_at>=? AND created_at<=?`)
+    .get(now - BANK_POLICY_REBALANCE_SECONDS, now - BANK_POLICY_REBALANCE_SECONDS, GLOBAL_SCOPE_ID, now - BANK_ACTIVITY_WINDOW_SECONDS, now) as { deposits: number; withdrawals: number; netIssuance30d: number; purchaseVolume30d: number; payroll30d: number; workShifts30d: number };
+  const activeJobs = db.prepare('SELECT user_id AS userId,job_id AS jobId,level FROM economy_jobs WHERE guild_id=? AND is_active=1').all(GLOBAL_SCOPE_ID) as Array<{ userId: string; jobId: string; level: number }>;
+  const jobPayrollRows = db.prepare(`SELECT reason,COALESCE(SUM(amount),0) AS payroll,COUNT(*) AS shifts FROM economy_ledger
+    WHERE guild_id=? AND created_at>=? AND created_at<=? AND amount>0 AND (reason='work_reward' OR reason LIKE 'work_reward:%') GROUP BY reason`)
+    .all(GLOBAL_SCOPE_ID, now - BANK_ACTIVITY_WINDOW_SECONDS, now) as Array<{ reason: string; payroll: number; shifts: number }>;
+  const historicalJobs = mergeBankJobPayrollRows(jobPayrollRows.map((row) => ({ reason: String(row.reason), payroll: Number(row.payroll), shifts: Number(row.shifts) })));
+  return buildBankMarketSnapshot(Number(accounts.totalMoney), Number(accounts.savings), {
+    deposits: Number(flow.deposits), withdrawals: Number(flow.withdrawals), netIssuance30d: Number(flow.netIssuance30d),
+    purchaseVolume30d: Number(flow.purchaseVolume30d), payroll30d: Number(flow.payroll30d), workShifts30d: Number(flow.workShifts30d),
+  }, activeJobs.map((job) => ({ userId: String(job.userId), jobId: String(job.jobId), level: Number(job.level) })), historicalJobs);
+}
+
+function nextRealRate(currentRealBps: number, targetRealBps: number, firstObservation = false): number {
+  const target = clamp(targetRealBps, BANK_REAL_YIELD_FLOOR_BPS, BANK_REAL_YIELD_CEILING_BPS);
+  if (firstObservation) return target;
+  const delta = target - currentRealBps;
+  return clamp(currentRealBps + Math.sign(delta) * Math.min(Math.abs(delta), BANK_MAX_DAILY_REAL_RATE_STEP_BPS),
+    BANK_REAL_YIELD_FLOOR_BPS, BANK_REAL_YIELD_CEILING_BPS);
+}
+
+type BankPolicyRow = { rateBps: number; lastRebalancedAt: number; modelVersion: number };
+
+function observationFromSnapshot(snapshot: BankMarketSnapshot, rateBps: number, observedAt: number): BankMarketObservation {
+  const effectiveAnnualBps = effectiveAnnualYieldBps(rateBps);
+  return {
+    observedAt, nominalAprBps: rateBps, effectiveAnnualBps, realYieldBps: realYieldBps(effectiveAnnualBps),
+    targetRealBps: snapshot.targetRealBps, inflationReferenceBps: BANK_MACRO_INFLATION_BPS,
+    moneySupply: snapshot.totalMoney, savings: snapshot.savings, netIssuance30d: snapshot.netIssuance30d,
+    purchaseVolume30d: snapshot.purchaseVolume30d, payroll30d: snapshot.payroll30d, workShifts30d: snapshot.workShifts30d,
+    activeWorkers: snapshot.activeWorkers, deposits24h: snapshot.deposits, withdrawals24h: snapshot.withdrawals,
+    issuancePressureBps: snapshot.issuancePressureBps, purchasesPressureBps: snapshot.purchasesPressureBps,
+    savingsPressureBps: snapshot.savingsPressureBps, liquidityPressureBps: snapshot.liquidityPressureBps,
+    laborPressureBps: snapshot.laborPressureBps, jobs: snapshot.jobs,
+  };
+}
+
+async function mysqlInsertMarketObservation(connection: PoolConnection, observation: BankMarketObservation): Promise<void> {
+  await connection.execute(`INSERT INTO economy_bank_market_history (observed_at,nominal_apr_bps,effective_annual_bps,real_yield_bps,target_real_bps,
+    inflation_reference_bps,issuance_pressure_bps,purchases_pressure_bps,savings_pressure_bps,liquidity_pressure_bps,labor_pressure_bps,
+    money_supply,savings,net_issuance_30d,purchase_volume_30d,payroll_30d,work_shifts_30d,active_workers,deposits_24h,withdrawals_24h,job_mix_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE nominal_apr_bps=VALUES(nominal_apr_bps),effective_annual_bps=VALUES(effective_annual_bps),
+    real_yield_bps=VALUES(real_yield_bps),target_real_bps=VALUES(target_real_bps),inflation_reference_bps=VALUES(inflation_reference_bps),
+    issuance_pressure_bps=VALUES(issuance_pressure_bps),purchases_pressure_bps=VALUES(purchases_pressure_bps),savings_pressure_bps=VALUES(savings_pressure_bps),
+    liquidity_pressure_bps=VALUES(liquidity_pressure_bps),labor_pressure_bps=VALUES(labor_pressure_bps),money_supply=VALUES(money_supply),savings=VALUES(savings),
+    net_issuance_30d=VALUES(net_issuance_30d),purchase_volume_30d=VALUES(purchase_volume_30d),payroll_30d=VALUES(payroll_30d),work_shifts_30d=VALUES(work_shifts_30d),
+    active_workers=VALUES(active_workers),deposits_24h=VALUES(deposits_24h),withdrawals_24h=VALUES(withdrawals_24h),job_mix_json=VALUES(job_mix_json)`,
+  [observation.observedAt, observation.nominalAprBps, observation.effectiveAnnualBps, observation.realYieldBps, observation.targetRealBps,
+    observation.inflationReferenceBps, observation.issuancePressureBps, observation.purchasesPressureBps, observation.savingsPressureBps,
+    observation.liquidityPressureBps, observation.laborPressureBps, observation.moneySupply, observation.savings, observation.netIssuance30d,
+    observation.purchaseVolume30d, observation.payroll30d, observation.workShifts30d, observation.activeWorkers, observation.deposits24h,
+    observation.withdrawals24h, JSON.stringify(observation.jobs)]);
+}
+
+function sqliteInsertMarketObservation(observation: BankMarketObservation): void {
+  db.prepare(`INSERT INTO economy_bank_market_history (observed_at,nominal_apr_bps,effective_annual_bps,real_yield_bps,target_real_bps,
+    inflation_reference_bps,issuance_pressure_bps,purchases_pressure_bps,savings_pressure_bps,liquidity_pressure_bps,labor_pressure_bps,
+    money_supply,savings,net_issuance_30d,purchase_volume_30d,payroll_30d,work_shifts_30d,active_workers,deposits_24h,withdrawals_24h,job_mix_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observed_at) DO UPDATE SET nominal_apr_bps=excluded.nominal_apr_bps,
+    effective_annual_bps=excluded.effective_annual_bps,real_yield_bps=excluded.real_yield_bps,target_real_bps=excluded.target_real_bps,
+    inflation_reference_bps=excluded.inflation_reference_bps,issuance_pressure_bps=excluded.issuance_pressure_bps,purchases_pressure_bps=excluded.purchases_pressure_bps,
+    savings_pressure_bps=excluded.savings_pressure_bps,liquidity_pressure_bps=excluded.liquidity_pressure_bps,labor_pressure_bps=excluded.labor_pressure_bps,
+    money_supply=excluded.money_supply,savings=excluded.savings,net_issuance_30d=excluded.net_issuance_30d,purchase_volume_30d=excluded.purchase_volume_30d,
+    payroll_30d=excluded.payroll_30d,work_shifts_30d=excluded.work_shifts_30d,active_workers=excluded.active_workers,deposits_24h=excluded.deposits_24h,
+    withdrawals_24h=excluded.withdrawals_24h,job_mix_json=excluded.job_mix_json`).run(
+    observation.observedAt, observation.nominalAprBps, observation.effectiveAnnualBps, observation.realYieldBps, observation.targetRealBps,
+    observation.inflationReferenceBps, observation.issuancePressureBps, observation.purchasesPressureBps, observation.savingsPressureBps,
+    observation.liquidityPressureBps, observation.laborPressureBps, observation.moneySupply, observation.savings, observation.netIssuance30d,
+    observation.purchaseVolume30d, observation.payroll30d, observation.workShifts30d, observation.activeWorkers, observation.deposits24h,
+    observation.withdrawals24h, JSON.stringify(observation.jobs));
+}
+
+async function rebalanceBankInterestMysql(connection: PoolConnection, now: number): Promise<BankInterestPolicy> {
+  await connection.execute('INSERT IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,608,0,?)', [BANK_MODEL_VERSION]);
+  const [rows] = await connection.execute<RowDataPacket[]>('SELECT interest_rate_bps AS rateBps,last_rebalanced_at AS lastRebalancedAt,model_version AS modelVersion FROM economy_bank_policy WHERE policy_id=1 FOR UPDATE');
+  const row = rows[0] as BankPolicyRow | undefined;
+  if (!row) throw new Error('No pude cargar la política de interés del banco.');
+  const currentRate = clampBankApr(Number(row.rateBps));
+  const lastRebalancedAt = Number(row.lastRebalancedAt);
+  const modelVersion = Number(row.modelVersion);
+  if (modelVersion < BANK_MODEL_VERSION) {
+    await connection.execute('UPDATE economy_accounts SET bank_interest_remainder=LEAST(?,GREATEST(0,bank_interest_remainder)*?),last_bank_interest_at=CASE WHEN bank_balance>0 THEN ? ELSE last_bank_interest_at END WHERE bank_balance>0',
+      [BANK_INTEREST_REMAINDER_DENOMINATOR - 1, BANK_PERIODS_PER_YEAR, now]);
+    await connection.execute('DELETE FROM economy_bank_rate_history');
+    await connection.execute('DELETE FROM economy_bank_market_history');
+    const snapshot = await mysqlBankMarketSnapshot(connection, now);
+    const newReal = nextRealRate(BANK_BASE_REAL_YIELD_BPS, snapshot.targetRealBps);
+    const newRate = nominalAprForRealYield(newReal);
+    const observation = observationFromSnapshot(snapshot, newRate, now);
+    await connection.execute('UPDATE economy_bank_policy SET interest_rate_bps=?,last_rebalanced_at=?,model_version=? WHERE policy_id=1', [newRate, now, BANK_MODEL_VERSION]);
+    await connection.execute('INSERT INTO economy_bank_rate_history (effective_at,interest_rate_bps) VALUES (?,?)', [now, newRate]);
+    await mysqlInsertMarketObservation(connection, observation);
+    return { rateBps: newRate, lastRebalancedAt: now, nextRebalanceAt: now + BANK_POLICY_REBALANCE_SECONDS };
+  }
+  if (lastRebalancedAt > 0 && now - lastRebalancedAt < BANK_POLICY_REBALANCE_SECONDS) {
+    return { rateBps: currentRate, lastRebalancedAt, nextRebalanceAt: lastRebalancedAt + BANK_POLICY_REBALANCE_SECONDS };
+  }
+  const snapshot = await mysqlBankMarketSnapshot(connection, now);
+  const firstObservation = lastRebalancedAt <= 0;
+  const currentReal = firstObservation ? BANK_BASE_REAL_YIELD_BPS : realYieldBps(effectiveAnnualYieldBps(currentRate));
+  const newReal = nextRealRate(currentReal, snapshot.targetRealBps, firstObservation);
+  const newRate = nominalAprForRealYield(newReal);
+  const observation = observationFromSnapshot(snapshot, newRate, now);
+  await connection.execute('UPDATE economy_bank_policy SET interest_rate_bps=?,last_rebalanced_at=?,model_version=? WHERE policy_id=1', [newRate, now, BANK_MODEL_VERSION]);
+  await connection.execute('INSERT INTO economy_bank_rate_history (effective_at,interest_rate_bps) VALUES (?,?) ON DUPLICATE KEY UPDATE interest_rate_bps=VALUES(interest_rate_bps)', [now, newRate]);
+  await mysqlInsertMarketObservation(connection, observation);
+  return { rateBps: newRate, lastRebalancedAt: now, nextRebalanceAt: now + BANK_POLICY_REBALANCE_SECONDS };
+}
+
+function rebalanceBankInterestSqlite(now: number): BankInterestPolicy {
+  db.prepare('INSERT OR IGNORE INTO economy_bank_policy (policy_id,interest_rate_bps,last_rebalanced_at,model_version) VALUES (1,608,0,?)').run(BANK_MODEL_VERSION);
+  const row = db.prepare('SELECT interest_rate_bps AS rateBps,last_rebalanced_at AS lastRebalancedAt,model_version AS modelVersion FROM economy_bank_policy WHERE policy_id=1').get() as BankPolicyRow;
+  const currentRate = clampBankApr(Number(row.rateBps));
+  const lastRebalancedAt = Number(row.lastRebalancedAt);
+  if (Number(row.modelVersion) < BANK_MODEL_VERSION) {
+    db.prepare('UPDATE economy_accounts SET bank_interest_remainder=MIN(?,MAX(0,bank_interest_remainder)*?),last_bank_interest_at=CASE WHEN bank_balance>0 THEN ? ELSE last_bank_interest_at END WHERE bank_balance>0')
+      .run(BANK_INTEREST_REMAINDER_DENOMINATOR - 1, BANK_PERIODS_PER_YEAR, now);
+    db.prepare('DELETE FROM economy_bank_rate_history').run();
+    db.prepare('DELETE FROM economy_bank_market_history').run();
+    const snapshot = sqliteBankMarketSnapshot(now);
+    const newRate = nominalAprForRealYield(nextRealRate(BANK_BASE_REAL_YIELD_BPS, snapshot.targetRealBps));
+    const observation = observationFromSnapshot(snapshot, newRate, now);
+    db.prepare('UPDATE economy_bank_policy SET interest_rate_bps=?,last_rebalanced_at=?,model_version=? WHERE policy_id=1').run(newRate, now, BANK_MODEL_VERSION);
+    db.prepare('INSERT INTO economy_bank_rate_history (effective_at,interest_rate_bps) VALUES (?,?)').run(now, newRate);
+    sqliteInsertMarketObservation(observation);
+    return { rateBps: newRate, lastRebalancedAt: now, nextRebalanceAt: now + BANK_POLICY_REBALANCE_SECONDS };
+  }
+  if (lastRebalancedAt > 0 && now - lastRebalancedAt < BANK_POLICY_REBALANCE_SECONDS) {
+    return { rateBps: currentRate, lastRebalancedAt, nextRebalanceAt: lastRebalancedAt + BANK_POLICY_REBALANCE_SECONDS };
+  }
+  const snapshot = sqliteBankMarketSnapshot(now);
+  const firstObservation = lastRebalancedAt <= 0;
+  const currentReal = firstObservation ? BANK_BASE_REAL_YIELD_BPS : realYieldBps(effectiveAnnualYieldBps(currentRate));
+  const newRate = nominalAprForRealYield(nextRealRate(currentReal, snapshot.targetRealBps, firstObservation));
+  const observation = observationFromSnapshot(snapshot, newRate, now);
+  db.prepare('UPDATE economy_bank_policy SET interest_rate_bps=?,last_rebalanced_at=?,model_version=? WHERE policy_id=1').run(newRate, now, BANK_MODEL_VERSION);
+  db.prepare('INSERT INTO economy_bank_rate_history (effective_at,interest_rate_bps) VALUES (?,?) ON CONFLICT(effective_at) DO UPDATE SET interest_rate_bps=excluded.interest_rate_bps').run(now, newRate);
+  sqliteInsertMarketObservation(observation);
+  return { rateBps: newRate, lastRebalancedAt: now, nextRebalanceAt: now + BANK_POLICY_REBALANCE_SECONDS };
+}
+
+export async function rebalanceBankInterest(now = nowSeconds()): Promise<BankInterestPolicy> {
+  if (economyPool) return withEconomyTransaction((connection) => rebalanceBankInterestMysql(connection, now));
+  return db.transaction(() => rebalanceBankInterestSqlite(now)).immediate();
+}
+
+type BankMarketDbRow = {
+  observedAt: number; nominalAprBps: number; effectiveAnnualBps: number; realYieldBps: number; targetRealBps: number;
+  inflationReferenceBps: number; moneySupply: number; savings: number; netIssuance30d: number; purchaseVolume30d: number;
+  payroll30d: number; workShifts30d: number; activeWorkers: number; deposits24h: number; withdrawals24h: number;
+  issuancePressureBps: number; purchasesPressureBps: number; savingsPressureBps: number; liquidityPressureBps: number;
+  laborPressureBps: number; jobMixJson: string;
+};
+
+function bankObservationFromRow(row: BankMarketDbRow): BankMarketObservation {
+  let jobs: BankJobMixEntry[] = [];
+  try {
+    const parsed: unknown = JSON.parse(row.jobMixJson);
+    if (Array.isArray(parsed)) jobs = parsed as BankJobMixEntry[];
+  } catch { /* ignore malformed historical metadata and keep the financial observation */ }
+  return {
+    observedAt: Number(row.observedAt), nominalAprBps: Number(row.nominalAprBps), effectiveAnnualBps: Number(row.effectiveAnnualBps),
+    realYieldBps: Number(row.realYieldBps), targetRealBps: Number(row.targetRealBps), inflationReferenceBps: Number(row.inflationReferenceBps),
+    moneySupply: Number(row.moneySupply), savings: Number(row.savings), netIssuance30d: Number(row.netIssuance30d),
+    purchaseVolume30d: Number(row.purchaseVolume30d), payroll30d: Number(row.payroll30d), workShifts30d: Number(row.workShifts30d),
+    activeWorkers: Number(row.activeWorkers), deposits24h: Number(row.deposits24h), withdrawals24h: Number(row.withdrawals24h),
+    issuancePressureBps: Number(row.issuancePressureBps), purchasesPressureBps: Number(row.purchasesPressureBps),
+    savingsPressureBps: Number(row.savingsPressureBps), liquidityPressureBps: Number(row.liquidityPressureBps),
+    laborPressureBps: Number(row.laborPressureBps), jobs,
+  };
+}
+
+export async function getBankInterestDashboard(now = nowSeconds()): Promise<BankInterestDashboard> {
+  await rebalanceBankInterest(now);
+  const select = `SELECT observed_at AS observedAt,nominal_apr_bps AS nominalAprBps,effective_annual_bps AS effectiveAnnualBps,
+    real_yield_bps AS realYieldBps,target_real_bps AS targetRealBps,inflation_reference_bps AS inflationReferenceBps,
+    money_supply AS moneySupply,savings,net_issuance_30d AS netIssuance30d,purchase_volume_30d AS purchaseVolume30d,
+    payroll_30d AS payroll30d,work_shifts_30d AS workShifts30d,active_workers AS activeWorkers,deposits_24h AS deposits24h,
+    withdrawals_24h AS withdrawals24h,issuance_pressure_bps AS issuancePressureBps,purchases_pressure_bps AS purchasesPressureBps,
+    savings_pressure_bps AS savingsPressureBps,liquidity_pressure_bps AS liquidityPressureBps,labor_pressure_bps AS laborPressureBps,job_mix_json AS jobMixJson
+    FROM economy_bank_market_history ORDER BY observed_at DESC LIMIT 30`;
+  let rows: BankMarketDbRow[];
+  if (economyPool) {
+    const [result] = await economyPool.execute<RowDataPacket[]>(select);
+    rows = result as BankMarketDbRow[];
+  } else {
+    rows = db.prepare(select).all() as BankMarketDbRow[];
+  }
+  const history = rows.map(bankObservationFromRow).reverse();
+  const current = history.at(-1);
+  if (!current) throw new Error('Todavía no hay una observación guardada para mostrar del mercado bancario.');
+  return { current, history };
+}
+
+async function mysqlBankInterestRateHistory(connection: PoolConnection, after: number, now: number): Promise<BankInterestRateRow[]> {
+  const [earlierRows] = await connection.execute<RowDataPacket[]>('SELECT effective_at AS effectiveAt,interest_rate_bps AS rateBps FROM economy_bank_rate_history WHERE effective_at<=? ORDER BY effective_at DESC LIMIT 1', [after]);
+  const [laterRows] = await connection.execute<RowDataPacket[]>('SELECT effective_at AS effectiveAt,interest_rate_bps AS rateBps FROM economy_bank_rate_history WHERE effective_at>? AND effective_at<=? ORDER BY effective_at ASC', [after, now]);
+  const rows = [...(earlierRows as Array<{ effectiveAt: number; rateBps: number }>), ...(laterRows as Array<{ effectiveAt: number; rateBps: number }>)];
+  return rows.map((entry) => ({ effectiveAt: Number(entry.effectiveAt), rateBps: clampBankApr(Number(entry.rateBps)) }));
+}
+
+function sqliteBankInterestRateHistory(after: number, now: number): BankInterestRateRow[] {
+  const earlier = db.prepare('SELECT effective_at AS effectiveAt,interest_rate_bps AS rateBps FROM economy_bank_rate_history WHERE effective_at<=? ORDER BY effective_at DESC LIMIT 1').get(after) as BankInterestRateRow | undefined;
+  const later = db.prepare('SELECT effective_at AS effectiveAt,interest_rate_bps AS rateBps FROM economy_bank_rate_history WHERE effective_at>? AND effective_at<=? ORDER BY effective_at ASC').all(after, now) as BankInterestRateRow[];
+  return [...(earlier ? [{ effectiveAt: Number(earlier.effectiveAt), rateBps: clampBankApr(Number(earlier.rateBps)) }] : []), ...later.map((entry) => ({ effectiveAt: Number(entry.effectiveAt), rateBps: clampBankApr(Number(entry.rateBps)) }))];
+}
+
+function calculateBankInterest(account: Pick<AccountRow, 'bankBalance' | 'lastBankInterestAt' | 'bankInterestRemainder'>, now: number, rates: BankInterestRateRow[]) {
+  const rawLastAt = account.lastBankInterestAt === null ? now : Number(account.lastBankInterestAt);
+  // Older versions stored zero for untouched accounts; Discord rendered that as “57 years ago”.
+  const lastAt = !Number.isSafeInteger(rawLastAt) || rawLastAt <= 0 || rawLastAt > now + 60 ? now : rawLastAt;
+  const periods = Math.max(0, Math.floor((now - lastAt) / BANK_INTEREST_INTERVAL_SECONDS));
   let bankBalance = account.bankBalance;
-  let remainder = account.bankInterestRemainder;
-  for (let day = 0; day < periods; day++) {
-    const numerator = bankBalance * BANK_INTEREST_BASIS_POINTS + remainder;
-    const earned = Math.floor(numerator / 10_000);
-    remainder = numerator % 10_000;
+  let remainder = clamp(Math.trunc(account.bankInterestRemainder), 0, BANK_INTEREST_REMAINDER_DENOMINATOR - 1);
+  let rateIndex = 0;
+  let currentRate = rates[0]?.rateBps ?? nominalAprForRealYield(BANK_BASE_REAL_YIELD_BPS);
+  for (let period = 0; period < periods; period++) {
+    const dueAt = lastAt + (period + 1) * BANK_INTEREST_INTERVAL_SECONDS;
+    while (rateIndex + 1 < rates.length && rates[rateIndex + 1]!.effectiveAt <= dueAt) {
+      rateIndex++;
+      currentRate = rates[rateIndex]!.rateBps;
+    }
+    const numerator = bankBalance * currentRate + remainder;
+    const earned = Math.floor(numerator / BANK_INTEREST_REMAINDER_DENOMINATOR);
+    remainder = numerator % BANK_INTEREST_REMAINDER_DENOMINATOR;
     bankBalance += earned;
   }
-  const nextInterestAt = periods ? lastAt + periods * BANK_INTEREST_INTERVAL_SECONDS : lastAt;
+  const nextInterestAt = lastAt + periods * BANK_INTEREST_INTERVAL_SECONDS;
   return { periods, bankBalance, remainder, interestEarned: bankBalance - account.bankBalance, nextInterestAt };
 }
 
+function minimumInterestAnchor(accounts: BankInterestAccount[], now: number): number {
+  return accounts.reduce((earliest, account) => {
+    const value = account.lastBankInterestAt === null ? now : Number(account.lastBankInterestAt);
+    const anchor = !Number.isSafeInteger(value) || value <= 0 || value > now + 60 ? now : value;
+    return Math.min(earliest, anchor);
+  }, now);
+}
+
+export async function accrueMaturedBankInterest(now = nowSeconds()): Promise<{ accountsProcessed: number; totalInterest: number }> {
+  const dueBefore = now - BANK_INTEREST_INTERVAL_SECONDS;
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    await rebalanceBankInterestMysql(connection, now);
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT user_id AS userId,bank_balance AS bankBalance,
+      last_bank_interest_at AS lastBankInterestAt,bank_interest_remainder AS bankInterestRemainder
+      FROM economy_accounts WHERE guild_id=? AND bank_balance>0
+      AND (last_bank_interest_at IS NULL OR last_bank_interest_at<=?) ORDER BY user_id FOR UPDATE`, [GLOBAL_SCOPE_ID, dueBefore]);
+    const accounts = rows.map((row) => ({ userId: String(row.userId), bankBalance: Number(row.bankBalance),
+      lastBankInterestAt: row.lastBankInterestAt === null ? null : Number(row.lastBankInterestAt),
+      bankInterestRemainder: Number(row.bankInterestRemainder) }));
+    if (!accounts.length) return { accountsProcessed: 0, totalInterest: 0 };
+    const rates = await mysqlBankInterestRateHistory(connection, minimumInterestAnchor(accounts, now), now);
+    let totalInterest = 0;
+    for (const account of accounts) {
+      const accrued = calculateBankInterest(account, now, rates);
+      await connection.execute(`UPDATE economy_accounts SET bank_balance=?,bank_interest_remainder=?,last_bank_interest_at=?,updated_at=? WHERE guild_id=? AND user_id=?`,
+        [accrued.bankBalance, accrued.remainder, accrued.nextInterestAt, now, GLOBAL_SCOPE_ID, account.userId]);
+      if (accrued.interestEarned > 0) {
+        await mysqlAddLedger(connection, GLOBAL_SCOPE_ID, account.userId, accrued.interestEarned, 'bank:interest',
+          `bank-interest:${GLOBAL_SCOPE_ID}:${account.userId}:${accrued.nextInterestAt}`, now);
+        totalInterest += accrued.interestEarned;
+      }
+    }
+    return { accountsProcessed: accounts.length, totalInterest };
+  });
+
+  const processSqlite = db.transaction(() => {
+    rebalanceBankInterestSqlite(now);
+    const rows = db.prepare(`SELECT user_id AS userId,bank_balance AS bankBalance,
+      last_bank_interest_at AS lastBankInterestAt,bank_interest_remainder AS bankInterestRemainder
+      FROM economy_accounts WHERE guild_id=? AND bank_balance>0
+      AND (last_bank_interest_at IS NULL OR last_bank_interest_at<=?) ORDER BY user_id`)
+      .all(GLOBAL_SCOPE_ID, dueBefore) as BankInterestAccount[];
+    if (!rows.length) return { accountsProcessed: 0, totalInterest: 0 };
+    const rates = sqliteBankInterestRateHistory(minimumInterestAnchor(rows, now), now);
+    let totalInterest = 0;
+    for (const account of rows) {
+      const accrued = calculateBankInterest(account, now, rates);
+      db.prepare('UPDATE economy_accounts SET bank_balance=?,bank_interest_remainder=?,last_bank_interest_at=?,updated_at=? WHERE guild_id=? AND user_id=?')
+        .run(accrued.bankBalance, accrued.remainder, accrued.nextInterestAt, now, GLOBAL_SCOPE_ID, account.userId);
+      if (accrued.interestEarned > 0) {
+        db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
+          .run(GLOBAL_SCOPE_ID, account.userId, accrued.interestEarned, 'bank:interest',
+            `bank-interest:${GLOBAL_SCOPE_ID}:${account.userId}:${accrued.nextInterestAt}`, now);
+        totalInterest += accrued.interestEarned;
+      }
+    }
+    return { accountsProcessed: rows.length, totalInterest };
+  });
+  return processSqlite.immediate();
+}
+
 async function accrueBankInterestMysql(connection: PoolConnection, guildId: string, userId: string, account: AccountRow, now: number) {
-  const accrued = calculateBankInterest(account, now);
+  const anchor = account.lastBankInterestAt === null || Number(account.lastBankInterestAt) <= 0 || Number(account.lastBankInterestAt) > now + 60 ? now : Number(account.lastBankInterestAt);
+  const rates = await mysqlBankInterestRateHistory(connection, anchor, now);
+  const accrued = calculateBankInterest(account, now, rates);
   await connection.execute(`UPDATE economy_accounts SET bank_balance = ?, bank_interest_remainder = ?,
     last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?`,
   [accrued.bankBalance, accrued.remainder, accrued.nextInterestAt, now, guildId, userId]);
@@ -300,7 +726,8 @@ async function accrueBankInterestMysql(connection: PoolConnection, guildId: stri
 }
 
 function accrueBankInterestSqlite(guildId: string, userId: string, account: AccountRow, now: number) {
-  const accrued = calculateBankInterest(account, now);
+  const anchor = account.lastBankInterestAt === null || Number(account.lastBankInterestAt) <= 0 || Number(account.lastBankInterestAt) > now + 60 ? now : Number(account.lastBankInterestAt);
+  const accrued = calculateBankInterest(account, now, sqliteBankInterestRateHistory(anchor, now));
   db.prepare(`UPDATE economy_accounts SET bank_balance = ?, bank_interest_remainder = ?,
     last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?`)
     .run(accrued.bankBalance, accrued.remainder, accrued.nextInterestAt, now, guildId, userId);
@@ -315,65 +742,76 @@ function accrueBankInterestSqlite(guildId: string, userId: string, account: Acco
 export async function bankAction(guildId: string, userId: string, action: BankAction, amount = 0, reference = ''): Promise<BankResult> {
   guildId = GLOBAL_SCOPE_ID;
   if (action !== 'view' && (!Number.isSafeInteger(amount) || amount <= 0)) {
-    return { ok: false, reason: 'invalid_amount', balance: 0, bankBalance: 0, interestEarned: 0, nextInterestAt: nowSeconds() };
+    const now = nowSeconds();
+    return { ok: false, reason: 'invalid_amount', balance: 0, bankBalance: 0, interestEarned: 0,
+      interestRateBps: nominalAprForRealYield(BANK_BASE_REAL_YIELD_BPS), nextInterestAt: now + BANK_INTEREST_INTERVAL_SECONDS,
+      nextRateRebalanceAt: now + BANK_POLICY_REBALANCE_SECONDS };
   }
   const now = nowSeconds();
   if (economyPool) return withEconomyTransaction(async (connection) => {
+    const policy = await rebalanceBankInterestMysql(connection, now);
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
     const accrued = await accrueBankInterestMysql(connection, guildId, userId, account, now);
     const bankBalance = accrued.bankBalance;
     let balance = account.balance;
     let nextBankBalance = bankBalance;
     if (action === 'deposit') {
-      if (balance < amount) return { ok: false, reason: 'insufficient_wallet', balance, bankBalance, interestEarned: accrued.interestEarned, nextInterestAt: accrued.nextInterestAt };
+      if (balance < amount) return { ok: false, reason: 'insufficient_wallet', balance, bankBalance, interestEarned: accrued.interestEarned,
+        interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS, nextRateRebalanceAt: policy.nextRebalanceAt };
       balance -= amount;
       nextBankBalance += amount;
       await connection.execute('UPDATE economy_accounts SET balance = ?, bank_balance = ?, last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?',
-        [balance, nextBankBalance, now, now, guildId, userId]);
+        [balance, nextBankBalance, accrued.nextInterestAt, now, guildId, userId]);
       await mysqlAddLedger(connection, guildId, userId, -amount, 'bank:deposit:wallet', `${reference}:wallet`, now);
       await mysqlAddLedger(connection, guildId, userId, amount, 'bank:deposit:vault', `${reference}:vault`, now);
     } else if (action === 'withdraw') {
-      if (bankBalance < amount) return { ok: false, reason: 'insufficient_bank', balance, bankBalance, interestEarned: accrued.interestEarned, nextInterestAt: accrued.nextInterestAt };
+      if (bankBalance < amount) return { ok: false, reason: 'insufficient_bank', balance, bankBalance, interestEarned: accrued.interestEarned,
+        interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS, nextRateRebalanceAt: policy.nextRebalanceAt };
       balance += amount;
       nextBankBalance -= amount;
       await connection.execute('UPDATE economy_accounts SET balance = ?, bank_balance = ?, last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?',
-        [balance, nextBankBalance, now, now, guildId, userId]);
+        [balance, nextBankBalance, accrued.nextInterestAt, now, guildId, userId]);
       await mysqlAddLedger(connection, guildId, userId, amount, 'bank:withdraw:wallet', `${reference}:wallet`, now);
       await mysqlAddLedger(connection, guildId, userId, -amount, 'bank:withdraw:vault', `${reference}:vault`, now);
     }
     return { ok: true, balance, bankBalance: nextBankBalance, interestEarned: accrued.interestEarned,
-      nextInterestAt: (action === 'view' ? accrued.nextInterestAt : now) + BANK_INTEREST_INTERVAL_SECONDS };
+      interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS,
+      nextRateRebalanceAt: policy.nextRebalanceAt };
   });
 
   const operate = db.transaction(() => {
+    const policy = rebalanceBankInterestSqlite(now);
     const account = sqliteEnsureAccount(guildId, userId);
     const accrued = accrueBankInterestSqlite(guildId, userId, account, now);
     const bankBalance = accrued.bankBalance;
     let balance = account.balance;
     let nextBankBalance = bankBalance;
     if (action === 'deposit') {
-      if (balance < amount) return { ok: false, reason: 'insufficient_wallet' as const, balance, bankBalance, interestEarned: accrued.interestEarned, nextInterestAt: accrued.nextInterestAt };
+      if (balance < amount) return { ok: false, reason: 'insufficient_wallet' as const, balance, bankBalance, interestEarned: accrued.interestEarned,
+        interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS, nextRateRebalanceAt: policy.nextRebalanceAt };
       balance -= amount;
       nextBankBalance += amount;
       db.prepare('UPDATE economy_accounts SET balance = ?, bank_balance = ?, last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?')
-        .run(balance, nextBankBalance, now, now, guildId, userId);
+        .run(balance, nextBankBalance, accrued.nextInterestAt, now, guildId, userId);
       db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(guildId, userId, -amount, 'bank:deposit:wallet', `${reference}:wallet`, now);
       db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(guildId, userId, amount, 'bank:deposit:vault', `${reference}:vault`, now);
     } else if (action === 'withdraw') {
-      if (bankBalance < amount) return { ok: false, reason: 'insufficient_bank' as const, balance, bankBalance, interestEarned: accrued.interestEarned, nextInterestAt: accrued.nextInterestAt };
+      if (bankBalance < amount) return { ok: false, reason: 'insufficient_bank' as const, balance, bankBalance, interestEarned: accrued.interestEarned,
+        interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS, nextRateRebalanceAt: policy.nextRebalanceAt };
       balance += amount;
       nextBankBalance -= amount;
       db.prepare('UPDATE economy_accounts SET balance = ?, bank_balance = ?, last_bank_interest_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?')
-        .run(balance, nextBankBalance, now, now, guildId, userId);
+        .run(balance, nextBankBalance, accrued.nextInterestAt, now, guildId, userId);
       db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(guildId, userId, amount, 'bank:withdraw:wallet', `${reference}:wallet`, now);
       db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(guildId, userId, -amount, 'bank:withdraw:vault', `${reference}:vault`, now);
     }
     return { ok: true, balance, bankBalance: nextBankBalance, interestEarned: accrued.interestEarned,
-      nextInterestAt: (action === 'view' ? accrued.nextInterestAt : now) + BANK_INTEREST_INTERVAL_SECONDS };
+      interestRateBps: policy.rateBps, nextInterestAt: accrued.nextInterestAt + BANK_INTEREST_INTERVAL_SECONDS,
+      nextRateRebalanceAt: policy.nextRebalanceAt };
   });
   return operate.immediate();
 }

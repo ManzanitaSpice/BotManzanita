@@ -8,7 +8,7 @@ import {
   type Client,
   type Interaction,
 } from 'discord.js';
-import { bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankInterestPanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, purchaseConfirmPanel, queuePanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
 import { bankAction, claimDaily, fish, formatCooldown, playBlackjackTurn, purchaseItem, selectJob, storeItems, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgMove, trainRpgPet, useRpgItem, type PetElement, type RpgPvpAction } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
@@ -17,8 +17,8 @@ import { getFavorite, getFavorites, removeFavorite } from '../services/music-lib
 import { removePersistedMusicQueueTrack } from '../storage/music-queue-store.js';
 import { ADMIN_OWNER_ID, adminAutocomplete } from '../commands/admin.js';
 import { catalogPanel } from '../ui/catalog.js';
-import { profileCardPanel, profileCustomizePanel, profileInventoryPanel, profileProgressPanel, profileShopPanel } from '../ui/profile.js';
-import { buyProfileItem, equipProfileItem, updateProfileField, unequipProfileType } from '../services/profile.js';
+import { profileBackgroundsPanel, profileCardPanel, profileCustomizePanel, profileInventoryPanel, profileProgressPanel, profileShopPanel } from '../ui/profile.js';
+import { assignProfileBackground, buyProfileItem, equipProfileItem, updateProfileField, unequipProfileType, type ProfileBackgroundTarget } from '../services/profile.js';
 import { profileShopItems } from '../data/profile-shop.js';
 import { findStoreProduct, purchaseStoreProduct, type StoreCurrency, type StoreKind } from '../services/store.js';
 
@@ -566,14 +566,20 @@ export function registerInteractionHandler(client: Client) {
           await interaction.editReply(componentUpdate(panel)); return;
         }
         if (interaction.customId === 'eco:bank' || interaction.customId === 'eco:bank:refresh') {
+          await interaction.deferUpdate();
           const result = await bankAction(interaction.guildId, interaction.user.id, 'view');
-          await interaction.update(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
+          await interaction.editReply(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id, result)));
           if (interaction.customId === 'eco:bank:refresh') {
             const message = result.interestEarned
               ? `💹 Se acreditaron **${result.interestEarned} monedas de interés** a tu ahorro.`
-              : '🏦 Aún no se completa un día para generar el siguiente interés.';
+              : `🏦 Aún no hay monedas enteras de interés que abonar. Las fracciones se conservan en los cálculos de 5 horas. Tasa actual: **${(result.interestRateBps / 100).toFixed(2)}% APR anual**.`;
             await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
           }
+          return;
+        }
+        if ((interaction.customId === 'eco:bank:interest' || interaction.customId === 'eco:bank:interest:refresh') && interaction.isButton()) {
+          await interaction.deferUpdate();
+          await interaction.editReply(componentUpdate(await bankInterestPanel(interaction.guildId, interaction.user.id)));
           return;
         }
         if ((interaction.customId === 'eco:bank:deposit' || interaction.customId === 'eco:bank:withdraw') && interaction.isButton()) {
@@ -1024,6 +1030,21 @@ async function handleProfileInteraction(interaction: Interaction): Promise<boole
   }
   if (!interaction.isMessageComponent()) return false;
   if (interaction.isStringSelectMenu()) {
+    if (action === 'background-target') {
+      const value=interaction.values[0]??'';
+      if(!['profile','rank','wallet','levelup','all'].includes(value)){await interaction.reply({content:'Esa tarjeta no está disponible.',flags:MessageFlags.Ephemeral});return true;}
+      const target=value as ProfileBackgroundTarget; const selectedId=parts[1]||undefined;
+      await interaction.deferUpdate();
+      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,target,selectedId,'',interaction.user)));
+      return true;
+    }
+    if (action === 'background-item') {
+      const value=interaction.values[0]??''; const targetValue=parts[1]??'';
+      if(!['profile','rank','wallet','levelup','all'].includes(targetValue)){await interaction.reply({content:'El destino de ese fondo no es válido.',flags:MessageFlags.Ephemeral});return true;}
+      await interaction.deferUpdate();
+      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,value,'',interaction.user)));
+      return true;
+    }
     if (action === 'accent') {
       const accent = (interaction.values[0] ?? '#8b75dc').toLocaleLowerCase();
       if (accent === '#8b75dc') await unequipProfileType(ownerId, 'accent');
@@ -1078,10 +1099,19 @@ async function handleProfileInteraction(interaction: Interaction): Promise<boole
     await interaction.reply({content:result.message,flags:MessageFlags.Ephemeral});
     return true;
   }
+  if (action === 'background-apply' || action === 'background-clear') {
+    const targetValue=parts[1]??''; const itemId=action==='background-apply'?(parts[2]??''):null;
+    if(!['profile','rank','wallet','levelup','all'].includes(targetValue)){await interaction.reply({content:'El destino de ese fondo no es válido.',flags:MessageFlags.Ephemeral});return true;}
+    await interaction.deferUpdate();
+    const result=await assignProfileBackground(guildId,ownerId,targetValue as ProfileBackgroundTarget,itemId);
+    await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,itemId||undefined,result.message,interaction.user)));
+    return true;
+  }
   if (action === 'home') { await interaction.reply(await profileCardPanel(guildId,interaction.user)); return true; }
   if (action === 'wallet') { await interaction.reply(await economyPanel(guildId,ownerId,interaction.user.username,interaction.user.displayAvatarURL({extension:'png',size:256}))); return true; }
   if (action === 'rank') { await interaction.reply(await profileCardPanel(guildId,interaction.user,ownerId,'rank')); return true; }
   if (action === 'customize') { await interaction.reply(await profileCustomizePanel(guildId,ownerId,interaction.user)); return true; }
+  if (action === 'backgrounds') { await interaction.deferReply({flags:MessageFlags.Ephemeral}); await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,'profile',undefined,'',interaction.user))); return true; }
   if (action === 'inventory') { await interaction.reply(await profileInventoryPanel(guildId,ownerId,'all')); return true; }
   if (action === 'shop') { await interaction.deferReply({ flags: MessageFlags.Ephemeral }); await interaction.editReply(componentUpdate(await storePanel(guildId,ownerId,'all',0,undefined,'',undefined,interaction.user))); return true; }
   if (action === 'progress') { await interaction.reply(await profileProgressPanel(guildId,interaction.user)); return true; }

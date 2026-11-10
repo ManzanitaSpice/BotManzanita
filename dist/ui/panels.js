@@ -1,7 +1,8 @@
 import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, SectionBuilder, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder, } from 'discord.js';
+import { createCanvas } from '@napi-rs/canvas';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { bankAction, DAILY_AMOUNT, getAccountBalances, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
+import { BANK_BASE_REAL_YIELD_BPS, BANK_MACRO_GROWTH_BPS, BANK_MACRO_INFLATION_BPS, BANK_REAL_YIELD_CEILING_BPS, BANK_REAL_YIELD_FLOOR_BPS, bankAction, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getInventory, getJobRoster, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
@@ -9,6 +10,7 @@ import { renderProfileBackgroundPreview, renderProfileCard } from './profile-car
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, profileItem } from '../services/profile.js';
 const colors = { music: 0x8b5cf6, economy: 0x22c55e };
 const money = new Intl.NumberFormat('es-MX');
+const fractionalMoney = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function isProfileBackgroundItem(item) {
     return item?.type === 'profile_bg' || item?.type === 'rank_bg' || item?.type === 'wallet_bg' || item?.type === 'levelup_bg';
 }
@@ -654,15 +656,150 @@ export async function casinoPanel(guildId, userId) {
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:casino:fish').setLabel('Ir a pescar').setEmoji('🎣').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:casino:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:back').setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
-export async function bankPanel(guildId, userId) {
-    const bank = await bankAction(guildId, userId, 'view');
+export async function bankPanel(guildId, userId, bankSnapshot) {
+    const bank = bankSnapshot ?? await bankAction(guildId, userId, 'view');
     const next = Math.floor(bank.nextInterestAt / 1000);
+    const nextRate = Math.floor(bank.nextRateRebalanceAt / 1000);
+    const nextInterest = bank.bankBalance > 0 ? `⏳ Siguiente cálculo de interés <t:${next}:R>` : '⏳ Deposita monedas para empezar a generar interés.';
     const earned = bank.interestEarned ? `\n\nInterés acreditado al abrir el banco: **${money.format(bank.interestEarned)} monedas**.` : '';
+    const annual = (bank.interestRateBps / 100).toFixed(2);
     const container = new ContainerBuilder()
         .setAccentColor(0x0ea5e9)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 0.01% por día completo · siguiente interés <t:${next}:R>${earned}`))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:bank:deposit').setLabel('Depositar').setEmoji('📥').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:bank:withdraw').setLabel('Retirar').setEmoji('📤').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:bank:refresh').setLabel('Actualizar').setEmoji('💹').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:back').setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏦 BANCO\n💰 Billetera **${money.format(bank.balance)}** · 🏦 Ahorro **${money.format(bank.bankBalance)}**\n📈 Tasa nominal **${annual}% APR anual** · capitalización cada 5 h · ajuste <t:${nextRate}:R>\n${nextInterest}\n_Se conservan fracciones hasta completar una moneda. La tasa real objetivo nunca baja de 0.25% y el interés jamás reduce tu principal._${earned}`))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:bank:deposit').setLabel('Depositar').setEmoji('📥').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:bank:withdraw').setLabel('Retirar').setEmoji('📤').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:bank:interest').setLabel('Mercado e interés').setEmoji('📊').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:bank:refresh').setLabel('Actualizar').setEmoji('💹').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('eco:back').setLabel('Economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] };
+}
+function ratePercent(bps, decimals = 2) { return `${(bps / 100).toFixed(decimals)}%`; }
+function signedAmount(value) {
+    const formatted = money.format(Math.abs(value));
+    return value > 0 ? `+${formatted}` : value < 0 ? `−${formatted}` : formatted;
+}
+function bankInterestChart(dashboard) {
+    const width = 1080;
+    const height = 500;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#101827';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText('Curva de rendimiento anual · observaciones guardadas', 34, 42);
+    ctx.fillStyle = '#aab7c8';
+    ctx.font = '15px Arial, sans-serif';
+    ctx.fillText('TEA nominal · rendimiento real Fisher · inflación mundial de referencia', 34, 68);
+    const left = 96;
+    const right = 36;
+    const top = 106;
+    const bottom = 74;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const maxObserved = Math.max(BANK_MACRO_INFLATION_BPS, ...dashboard.history.flatMap((point) => [point.effectiveAnnualBps, point.realYieldBps]));
+    const maxBps = Math.max(800, Math.ceil(maxObserved / 200) * 200 + 200);
+    const yFor = (bps) => top + plotHeight - (bps / maxBps) * plotHeight;
+    const xFor = (index) => dashboard.history.length <= 1 ? left + plotWidth / 2 : left + (index / (dashboard.history.length - 1)) * plotWidth;
+    ctx.strokeStyle = '#2b3a4d';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#b8c6d8';
+    ctx.font = '13px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    for (let step = 0; step <= 4; step++) {
+        const value = maxBps * step / 4;
+        const y = yFor(value);
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(width - right, y);
+        ctx.stroke();
+        ctx.fillText(ratePercent(value, 1), left - 12, y + 4);
+    }
+    ctx.textAlign = 'center';
+    const ticks = dashboard.history.length <= 1 ? [0] : [...new Set([0, Math.floor((dashboard.history.length - 1) / 2), dashboard.history.length - 1])];
+    for (const index of ticks) {
+        const point = dashboard.history[index];
+        ctx.fillText(new Date(point.observedAt * 1000).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }), xFor(index), height - 34);
+    }
+    ctx.textAlign = 'left';
+    const drawSeries = (values, color, dashed = false) => {
+        if (!values.length)
+            return;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 3;
+        ctx.setLineDash(dashed ? [8, 7] : []);
+        ctx.beginPath();
+        if (dashed && values.length === 1) {
+            ctx.moveTo(left, yFor(values[0]));
+            ctx.lineTo(width - right, yFor(values[0]));
+        }
+        else
+            values.forEach((value, index) => { const x = xFor(index); const y = yFor(value); if (index === 0)
+                ctx.moveTo(x, y);
+            else
+                ctx.lineTo(x, y); });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        values.forEach((value, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(value), 4, 0, Math.PI * 2); ctx.fill(); });
+    };
+    drawSeries(dashboard.history.map((point) => point.effectiveAnnualBps), '#62c8ff');
+    drawSeries(dashboard.history.map((point) => point.realYieldBps), '#66dfa0');
+    drawSeries(dashboard.history.map((point) => point.inflationReferenceBps), '#f3bd62', true);
+    const legend = [
+        { label: 'TEA nominal', color: '#62c8ff' }, { label: 'Real Fisher', color: '#66dfa0' }, { label: `Inflación global ${ratePercent(BANK_MACRO_INFLATION_BPS)}`, color: '#f3bd62' },
+    ];
+    let legendX = left;
+    const legendY = height - 12;
+    ctx.font = '14px Arial, sans-serif';
+    for (const entry of legend) {
+        ctx.fillStyle = entry.color;
+        ctx.fillRect(legendX, legendY - 12, 20, 3);
+        ctx.fillStyle = '#d5deea';
+        ctx.fillText(entry.label, legendX + 27, legendY - 8);
+        legendX += ctx.measureText(entry.label).width + 65;
+    }
+    ctx.fillStyle = '#8292a8';
+    ctx.font = '12px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${dashboard.history.length} observación(es)`, width - right, 90);
+    return canvas.toBuffer('image/png');
+}
+export async function bankInterestPanel(guildId, userId) {
+    const dashboard = await getBankInterestDashboard();
+    const bank = await bankAction(guildId, userId, 'view');
+    const { current, history } = dashboard;
+    const previous = history.length > 1 ? history[history.length - 2] : undefined;
+    const bankBalance = bank.bankBalance;
+    const periodicRate = current.nominalAprBps / (10_000 * 1_752);
+    const fiveHourGain = bankBalance * periodicRate;
+    const thirtyDayGain = bankBalance * (Math.pow(1 + periodicRate, 144) - 1);
+    const annualGain = bankBalance * (Math.pow(1 + periodicRate, 1_752) - 1);
+    const savingsShare = current.moneySupply > 0 ? current.savings / current.moneySupply * 100 : 0;
+    const jobLines = current.jobs.filter((job) => job.workers || job.shifts30d || job.payroll30d).slice(0, 5).map((job) => `› **${job.name}** · ${job.workers} plaza(s) activa(s) · ${money.format(job.shifts30d)} turnos · ${money.format(job.payroll30d)} monedas de nómina`);
+    const coverage = history.length > 1
+        ? `<t:${history[0].observedAt}:d>–<t:${current.observedAt}:d> · ${history.length} cortes diarios`
+        : `Primera observación guardada: <t:${current.observedAt}:f>. La curva crecerá con cada corte diario.`;
+    const compared = previous
+        ? `**Variación desde el corte anterior:** TEA ${signedAmount(current.effectiveAnnualBps - previous.effectiveAnnualBps)} pb · emisión neta ${signedAmount(current.netIssuance30d - previous.netIssuance30d)} monedas · gasto en compras ${signedAmount(current.purchaseVolume30d - previous.purchaseVolume30d)} monedas.`
+        : '**Comparación histórica:** todavía no existe un corte anterior; no se inventan datos previos al sistema.';
+    const pressure = [
+        `Emisión neta **${current.issuancePressureBps >= 0 ? '+' : ''}${current.issuancePressureBps} pb**`,
+        `compras **+${current.purchasesPressureBps} pb**`,
+        `ahorro **${current.savingsPressureBps >= 0 ? '+' : ''}${current.savingsPressureBps} pb**`,
+        `liquidez **${current.liquidityPressureBps >= 0 ? '+' : ''}${current.liquidityPressureBps} pb**`,
+        `empleo **${current.laborPressureBps >= 0 ? '+' : ''}${current.laborPressureBps} pb**`,
+    ].join(' · ');
+    const container = new ContainerBuilder().setAccentColor(0x38bdf8)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📊 MERCADO E INTERÉS DEL BANCO\nSerie: ${coverage}`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Modelo de tasa real\nRendimiento real base del juego **${ratePercent(BANK_BASE_REAL_YIELD_BPS)}**, combinado por Fisher con inflación global de referencia **${ratePercent(BANK_MACRO_INFLATION_BPS)}**. La actividad del servidor modifica un objetivo real de **${ratePercent(BANK_REAL_YIELD_FLOOR_BPS)}–${ratePercent(BANK_REAL_YIELD_CEILING_BPS)}**: emisión neta, compras, proporción ahorrada, retiros frente a depósitos, nómina y mezcla/actividad de oficios. El crecimiento mundial sirve como contexto macroeconómico; no se equipara directamente al retorno bancario. El ajuste se suaviza a **±0.50 puntos** por día; el saldo solo recibe interés positivo.`))
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://bank-interest-chart.png').setDescription('Serie diaria guardada de TEA nominal, rendimiento real Fisher e inflación global de referencia.')))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Tasa vigente al corte\n**APR nominal ${ratePercent(current.nominalAprBps)}** · **TEA ${ratePercent(current.effectiveAnnualBps)}** · **real Fisher ${ratePercent(current.realYieldBps)}**\nObjetivo real del modelo ${ratePercent(current.targetRealBps)}; se reajusta cada 24 h con un cambio máximo de 0.50 puntos porcentuales por día. Capitaliza el APR en períodos de 5 h.\n\n## Referencias macroeconómicas\nInflación mundial de referencia **${ratePercent(BANK_MACRO_INFLATION_BPS)}** y crecimiento real mundial **${ratePercent(BANK_MACRO_GROWTH_BPS)}**, proyecciones globales 2026 del [FMI WEO de octubre de 2026](https://www.imf.org/en/Publications/WEO/Issues/2026/10/13/world-economic-outlook-october-2026). El real Fisher compara la TEA nominal con esa inflación: (1 + TEA) / (1 + inflación) − 1. El FMI es referencia externa; los movimientos de moneda del bot no se etiquetan como IPC.`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Actividad monetaria observada\nOferta monetaria **${money.format(current.moneySupply)}** · ahorro **${money.format(current.savings)} (${savingsShare.toFixed(1)}%)**\nEmisión neta de 30 días **${signedAmount(current.netIssuance30d)}** · gasto registrado en compras **${money.format(current.purchaseVolume30d)}**\nNómina **${money.format(current.payroll30d)}** en ${money.format(current.workShifts30d)} turnos · ${current.activeWorkers} trabajador(es) con empleo activo\nDepósitos 24 h **${money.format(current.deposits24h)}** · retiros **${money.format(current.withdrawals24h)}**\n${jobLines.length ? jobLines.join('\n') : '_Sin turnos de trabajo registrados en la ventana de 30 días._'}\n\n**Ajuste del objetivo real:** ${pressure}\n${compared}`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Simulación con tu ahorro actual\nSaldo **${money.format(bankBalance)}** · interés teórico a 5 h **+${fractionalMoney.format(fiveHourGain)}** · 30 días **+${fractionalMoney.format(thirtyDayGain)}** · 1 año **+${fractionalMoney.format(annualGain)}** monedas.\n_Proyección con APR vigente constante y saldo compuesto; el banco conserva fracciones y solo abona monedas enteras al saldo. La tasa puede cambiar en futuros reajustes._`))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:bank').setLabel('Volver al banco').setEmoji('🏦').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:bank:interest:refresh').setLabel('Actualizar datos').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
+    if (bank.interestEarned > 0)
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`📥 Al abrir este panel se abonaron **${money.format(bank.interestEarned)} monedas** de fracciones acumuladas.`));
+    const chart = new AttachmentBuilder(bankInterestChart(dashboard)).setName('bank-interest-chart.png');
+    return { components: [container], files: [chart], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export function blackjackPanel(game) {
     const active = game.status === 'active';

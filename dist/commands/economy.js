@@ -1,6 +1,6 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { adjustPremiumCurrency, claimDaily, crime, economyJobs, fish, formatCooldown, getAccountBalances, getActiveJob, getLeaderboard, MAX_JOB_LEVEL, playItemRoulette, playRoulette, robPlayer, selectJob, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel } from '../ui/panels.js';
 export const economyCommand = {
     data: new SlashCommandBuilder()
         .setName('economia')
@@ -68,7 +68,8 @@ export const economyCommand = {
             return;
         }
         if (action === 'banco') {
-            await interaction.reply(await bankPanel(interaction.guildId, interaction.user.id));
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            await interaction.editReply(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
             return;
         }
         if (action === 'saldo') {

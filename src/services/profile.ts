@@ -8,6 +8,7 @@ import { migratePlayerDataToGlobalScope } from '../storage/global-migration.js';
 import { profileShopCategories, profileShopItems, type ProfileItemType, type ProfileShopItem } from '../data/profile-shop.js';
 
 export type ProfileSettings = { about: string; title: string; accent: string; profileBg: string | null; rankBg: string | null; walletBg: string | null; levelupBg: string | null; tag: string | null; frame: string | null; sticker: string | null };
+export type ProfileBackgroundTarget = 'profile' | 'rank' | 'wallet' | 'levelup' | 'all';
 export type ProfileProgress = { xp: number; level: number; messages: number; reputation: number; hugsReceived: number; patsReceived: number; dailyXp: number; serverXp: number; serverLevel: number; serverMessages: number; globalRank: number; serverRank: number };
 export type ProfileInventoryEntry = { itemId: string; quantity: number; acquiredAt: number };
 const messageCooldown = new Map<string, number>();
@@ -16,6 +17,9 @@ const CHAT_XP_COOLDOWN_MS = 60_000;
 export const PROFILE_CHAT_XP_DAILY_CAP = 1_200;
 const DEFAULT_SETTINGS: ProfileSettings = { about: '', title: 'Aventurero/a', accent: '#8b75dc', profileBg: null, rankBg: null, walletBg: null, levelupBg: null, tag: null, frame: null, sticker: null };
 const equipColumns: Partial<Record<ProfileItemType, keyof ProfileSettings>> = { profile_bg: 'profileBg', rank_bg: 'rankBg', wallet_bg: 'walletBg', levelup_bg: 'levelupBg', tag: 'tag', frame: 'frame', sticker: 'sticker', accent: 'accent' };
+const profileBackgroundColumns: Record<Exclude<ProfileBackgroundTarget, 'all'>, string> = {
+  profile: 'profile_bg', rank: 'rank_bg', wallet: 'wallet_bg', levelup: 'levelup_bg',
+};
 const gemPricedCosmeticTypes = new Set<ProfileItemType>(['profile_bg', 'rank_bg', 'wallet_bg', 'levelup_bg', 'badge', 'tag', 'frame', 'sticker', 'accent']);
 
 function normalizeProfileSettings(row: Record<string, unknown> | undefined): ProfileSettings {
@@ -222,6 +226,45 @@ export async function equipProfileItem(guildId: string,userId: string,itemId: st
   if(economyPool) { await economyPool.execute('INSERT IGNORE INTO user_profiles(user_id,updated_at) VALUES(?,?)',[userId,Math.floor(Date.now()/1000)]); await economyPool.execute(`UPDATE user_profiles SET ${sqlColumn}=?,updated_at=? WHERE user_id=?`,[itemId,Math.floor(Date.now()/1000),userId]); }
   else { db.prepare('INSERT OR IGNORE INTO user_profiles(user_id) VALUES(?)').run(userId); db.prepare(`UPDATE user_profiles SET ${sqlColumn}=?,updated_at=? WHERE user_id=?`).run(itemId,Math.floor(Date.now()/1000),userId); }
   return {ok:true,message:`${item.emoji} **${item.name}** equipado.`};
+}
+
+export async function assignProfileBackground(guildId: string,userId: string,target:ProfileBackgroundTarget,itemId:string|null):Promise<{ok:boolean;message:string}> {
+  guildId = GLOBAL_SCOPE_ID;
+  const item = itemId ? profileShopItems.find((entry) => entry.id === itemId) : undefined;
+  if (itemId && (!item || !['profile_bg','rank_bg','wallet_bg','levelup_bg'].includes(item.type))) {
+    return { ok: false, message: 'Selecciona un fondo válido.' };
+  }
+  if (itemId) {
+    const inventory = await getProfileInventory(guildId,userId);
+    if (!inventory.some((entry) => entry.itemId === itemId)) return { ok: false, message: 'Primero consigue ese fondo en la tienda.' };
+  }
+
+  const at = Math.floor(Date.now() / 1000);
+  if (economyPool) {
+    await withEconomyTransaction(async (connection) => {
+      await connection.execute('INSERT IGNORE INTO user_profiles(user_id,updated_at) VALUES(?,?)', [userId,at]);
+      if (target === 'all') {
+        await connection.execute('UPDATE user_profiles SET profile_bg=?,rank_bg=?,wallet_bg=?,levelup_bg=?,updated_at=? WHERE user_id=?', [itemId,itemId,itemId,itemId,at,userId]);
+      } else {
+        const column = profileBackgroundColumns[target];
+        await connection.execute(`UPDATE user_profiles SET ${column}=?,updated_at=? WHERE user_id=?`, [itemId,at,userId]);
+      }
+    });
+  } else {
+    const update = db.transaction(() => {
+      db.prepare('INSERT OR IGNORE INTO user_profiles(user_id) VALUES(?)').run(userId);
+      if (target === 'all') {
+        db.prepare('UPDATE user_profiles SET profile_bg=?,rank_bg=?,wallet_bg=?,levelup_bg=?,updated_at=? WHERE user_id=?').run(itemId,itemId,itemId,itemId,at,userId);
+      } else {
+        const column = profileBackgroundColumns[target];
+        db.prepare(`UPDATE user_profiles SET ${column}=?,updated_at=? WHERE user_id=?`).run(itemId,at,userId);
+      }
+    });
+    update.immediate();
+  }
+
+  const targetName = target === 'all' ? 'todas las tarjetas' : target === 'levelup' ? 'la tarjeta de subida de nivel' : target === 'rank' ? 'la tarjeta de rango' : target === 'wallet' ? 'la wallet' : 'el perfil';
+  return { ok: true, message: item ? `Fondo **${item.name}** aplicado a ${targetName}.` : `Fondo retirado de ${targetName}.` };
 }
 
 export async function unequipProfileType(userId:string,type:string):Promise<{ok:boolean;message:string}> {

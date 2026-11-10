@@ -272,7 +272,8 @@ function createBankCommand(): BotCommand {
         await interaction.reply({ content: 'El banco solo está disponible dentro de un servidor.', flags: MessageFlags.Ephemeral });
         return;
       }
-      await interaction.reply(await bankPanel(interaction.guildId, interaction.user.id));
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.editReply(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
     },
   };
 }

@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, StringSelectMenuBuilder, TextDisplayBuilder } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SectionBuilder, StringSelectMenuBuilder, TextDisplayBuilder, ThumbnailBuilder } from 'discord.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { getAccountBalances } from '../services/economy.js';
 import { equippedProfileBadges, getProfileInventory, getProfileProgress, getProfileSettings, PROFILE_CHAT_XP_DAILY_CAP } from '../services/profile.js';
@@ -22,7 +22,7 @@ export async function profileCardPanel(guildId, user, viewerId = user.id, mode =
     const rows = [];
     if (own) {
         rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(viewerId, 'customize')).setLabel('Personalizar').setEmoji('🎨').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(viewerId, 'inventory')).setLabel('Inventario').setEmoji('🎒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'shop')).setLabel('Tienda').setEmoji('🛒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'progress')).setLabel('Progreso').setEmoji('📈').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'wallet')).setLabel('Wallet').setEmoji('💰').setStyle(ButtonStyle.Secondary)));
-        rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(viewerId, 'rank')).setLabel('Rank card').setEmoji('🏆').setStyle(ButtonStyle.Secondary)));
+        rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(viewerId, 'rank')).setLabel('Rank card').setEmoji('🏆').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(viewerId, 'backgrounds')).setLabel('Fondos de tarjetas').setEmoji('🖼️').setStyle(ButtonStyle.Secondary)));
     }
     const title = mode === 'wallet' ? 'BILLETERA' : mode === 'rank' ? 'TARJETA DE RANGO' : mode === 'levelup' ? 'NUEVO NIVEL' : 'TARJETA DE PERFIL';
     const description = mode === 'wallet' ? 'Monedas y gemas premium' : mode === 'rank' ? 'Rango global y actividad de usuario' : 'Tarjeta de comunidad de Manzanita';
@@ -36,8 +36,53 @@ export async function profileCustomizePanel(guildId, userId, user) {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🎨 PERSONALIZAR PERFIL\n**Estilo activo:** ${activeStyle}\nEdita tu título y descripción gratis. Lavanda es el estilo predeterminado; los demás estilos y cosméticos se compran en la tienda.`))
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://custom-profile.png').setDescription('Vista previa del perfil')))
         .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(userId, 'edit:about')).setLabel('Editar about').setEmoji('📝').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(userId, 'edit:title')).setLabel('Cambiar título').setEmoji('🏷️').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(userId, 'shop')).setLabel('Tienda por categorías').setEmoji('🛍️').setStyle(ButtonStyle.Success)))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(userId, 'inventory')).setLabel('Equipar cosméticos').setEmoji('🎒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(userId, 'wallet')).setLabel('Vista de wallet').setEmoji('💳').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(userId, 'home')).setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(userId, 'inventory')).setLabel('Equipar cosméticos').setEmoji('🎒').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(pid(userId, 'backgrounds')).setLabel('Fondos de tarjetas').setEmoji('🖼️').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(pid(userId, 'wallet')).setLabel('Vista de wallet').setEmoji('💳').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(userId, 'home')).setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
     return { components: [container], files: [png(buffer, 'custom-profile.png')], flags: ['IsComponentsV2', 'Ephemeral'] };
+}
+const backgroundTargetOptions = [
+    { id: 'profile', label: 'Perfil', setting: 'profileBg' },
+    { id: 'rank', label: 'Rango', setting: 'rankBg' },
+    { id: 'wallet', label: 'Wallet', setting: 'walletBg' },
+    { id: 'levelup', label: 'Subida de nivel', setting: 'levelupBg' },
+];
+const backgroundTargetLabel = (target) => target === 'all'
+    ? 'Todas las tarjetas' : backgroundTargetOptions.find((entry) => entry.id === target)?.label ?? 'Perfil';
+export async function profileBackgroundsPanel(guildId, userId, target = 'profile', selectedId, notice = '', user) {
+    const [inventory, settings] = await Promise.all([getProfileInventory(guildId, userId), getProfileSettings(userId)]);
+    const ownedIds = new Set(inventory.map((entry) => entry.itemId));
+    const backgrounds = profileShopItems.filter((item) => ['profile_bg', 'rank_bg', 'wallet_bg', 'levelup_bg'].includes(item.type) && ownedIds.has(item.id));
+    const targetSetting = target === 'all' ? 'profileBg' : backgroundTargetOptions.find((entry) => entry.id === target)?.setting ?? 'profileBg';
+    const currentId = target === 'all' ? settings.profileBg ?? settings.rankBg ?? settings.walletBg ?? settings.levelupBg : settings[targetSetting];
+    const selected = backgrounds.find((item) => item.id === selectedId);
+    const previewMode = target === 'all' ? 'profile' : target;
+    const previewSetting = backgroundTargetOptions.find((entry) => entry.id === previewMode)?.setting ?? 'profileBg';
+    const currentlyEquipped = profileShopItems.find((item) => item.id === settings[previewSetting] && ['profile_bg', 'rank_bg', 'wallet_bg', 'levelup_bg'].includes(item.type));
+    const hasCurrent = target === 'all' ? Boolean(settings.profileBg || settings.rankBg || settings.walletBg || settings.levelupBg) : Boolean(currentId);
+    const previewSettings = selected ? { ...settings, [previewSetting]: selected.id } : settings;
+    const buffer = await selfCard(guildId, userId, previewMode, previewSettings, user);
+    const filename = 'profile-background-manager.png';
+    const assignments = backgroundTargetOptions.map((entry) => {
+        const item = profileShopItems.find((candidate) => candidate.id === settings[entry.setting]);
+        return `**${entry.label}:** ${item ? `${item.emoji} ${item.name}` : 'Predeterminado'}`;
+    }).join(' · ');
+    const description = selected
+        ? `Previsualización de **${selected.name}** en la tarjeta de ${previewMode === 'profile' ? 'perfil' : previewMode === 'rank' ? 'rango' : previewMode === 'wallet' ? 'wallet' : 'subida de nivel'}.`
+        : currentlyEquipped ? `Fondo equipado: **${currentlyEquipped.name}**.`
+            : backgrounds.length ? 'Fondo predeterminado. Selecciona uno del inventario para ver cómo quedaría.'
+                : 'Fondo predeterminado. No tienes fondos en el inventario; puedes conseguir uno en la tienda.';
+    const status = notice ? `\n\n${notice}` : '';
+    const container = new ContainerBuilder().setAccentColor(Number.parseInt(settings.accent.slice(1), 16) || 0x8b75dc)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🖼️ FONDOS DE TARJETAS\nElige una tarjeta y un fondo de tu inventario. Puedes asignar uno distinto a cada tarjeta o aplicar el mismo a todas.\n\n**Fondos equipados:** ${assignments}\n**Destino:** ${backgroundTargetLabel(target)} · **Selección:** ${selected ? `${selected.emoji} ${selected.name}` : 'ninguna'}${target === 'all' ? '\nAl aplicar, se actualizarán perfil, rango, wallet y subida de nivel.' : ''}${status}`))
+        .addSectionComponents(new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa\n${description}`))
+        .setThumbnailAccessory(new ThumbnailBuilder().setURL(`attachment://${filename}`).setDescription('Vista previa de tu tarjeta con tus datos y el fondo seleccionado.')))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(pid(userId, `background-target:${selected?.id ?? ''}`)).setPlaceholder('¿Qué tarjeta quieres personalizar?')
+        .addOptions([{ label: 'Todas las tarjetas', value: 'all', emoji: '🪄', default: target === 'all' }, ...backgroundTargetOptions.map((entry) => ({ label: entry.label, value: entry.id, emoji: entry.id === 'profile' ? '👤' : entry.id === 'rank' ? '🏆' : entry.id === 'wallet' ? '💰' : '⬆️', default: target === entry.id }))])));
+    if (backgrounds.length)
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(pid(userId, `background-item:${target}`)).setPlaceholder('Escoge un fondo de tu inventario')
+            .addOptions(backgrounds.slice(0, 25).map((item) => ({ label: item.name, value: item.id, description: `${item.rarity} · ${item.description}`.slice(0, 100), emoji: item.emoji, default: selected?.id === item.id })))));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(pid(userId, `background-apply:${target}:${selected?.id ?? ''}`)).setLabel('Aplicar fondo').setEmoji('✅').setStyle(ButtonStyle.Success).setDisabled(!selected), new ButtonBuilder().setCustomId(pid(userId, `background-clear:${target}`)).setLabel('Quitar fondo').setEmoji('➖').setStyle(ButtonStyle.Secondary).setDisabled(!hasCurrent), new ButtonBuilder().setCustomId(pid(userId, 'shop')).setLabel('Tienda').setEmoji('🛒').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(pid(userId, 'customize')).setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
+    return { components: [container], files: [png(buffer, filename)], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function profileProgressPanel(guildId, user) {
     const [settings, progress] = await Promise.all([getProfileSettings(user.id), getProfileProgress(guildId, user.id)]);

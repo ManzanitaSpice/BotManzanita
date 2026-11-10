@@ -7,6 +7,7 @@ import { registerMessageCommandHandler } from './events/message-create.js';
 import type { BotCommand } from './types.js';
 import './storage/database.js';
 import { initializeEconomyDatabase } from './storage/economy-database.js';
+import { accrueMaturedBankInterest, rebalanceBankInterest } from './services/economy.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
 import { initializeProfileStorage } from './services/profile.js';
 import { pruneExpiredFavorites, pruneExpiredMusicHistory, recordMusicHistory } from './services/music-library.js';
@@ -86,6 +87,33 @@ process.on('uncaughtException', (error) => {
 });
 
 await initializeEconomyDatabase();
+const scheduleBankInterestRebalance = async (): Promise<void> => {
+  try {
+    const policy = await rebalanceBankInterest();
+    const delay = Math.max(1_000, (policy.nextRebalanceAt - Math.floor(Date.now() / 1000)) * 1000);
+    const timer = setTimeout(() => void scheduleBankInterestRebalance(), delay);
+    timer.unref();
+  } catch (error) {
+    console.error('No se pudo reajustar la tasa global del banco; se reintentará en 5 minutos:', error);
+    const retryTimer = setTimeout(() => void scheduleBankInterestRebalance(), 5 * 60_000);
+    retryTimer.unref();
+  }
+};
+void scheduleBankInterestRebalance();
+const scheduleBankInterestPayouts = async (): Promise<void> => {
+  try {
+    const result = await accrueMaturedBankInterest();
+    if (result.totalInterest > 0) console.log(`Interés bancario acreditado automáticamente: ${result.totalInterest} monedas.`);
+    // Check each user's own 5-hour maturity instead of anchoring payouts to bot uptime.
+    const timer = setTimeout(() => void scheduleBankInterestPayouts(), 15 * 60_000);
+    timer.unref();
+  } catch (error) {
+    console.error('No se pudieron acreditar los intereses bancarios; se reintentará en 5 minutos:', error);
+    const retryTimer = setTimeout(() => void scheduleBankInterestPayouts(), 5 * 60_000);
+    retryTimer.unref();
+  }
+};
+void scheduleBankInterestPayouts();
 await initializeProfileStorage();
 pruneExpiredFavorites();
 pruneExpiredMusicHistory();
