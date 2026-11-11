@@ -206,16 +206,6 @@ const categories = {
         "• `a!jobs elegir minero` · elegir un oficio",
         "• `a!work` / `a!w` · trabajar con tu oficio (el negocio usa un cooldown mayor)",
         "Cada oficio requiere una herramienta de la tienda. Los turnos dan XP y suben el nivel del oficio hasta 20; el nivel aumenta el pago.",
-        "• `a!terreno` / `/economia terreno` · abrir terreno o negocio; también está en la categoría de `a!eco`",
-        "• `a!negocio contratar @persona` / `/economia contratar` · invitar a una persona con el mismo oficio activo",
-        "• `a!negocio pagar` · abonar facturas pendientes · `a!negocio despedir @persona` · terminar un contrato",
-        "• `a!vender articulo [cantidad]` / `/economia vender_producto` · vender productos generados por tu negocio",
-        "Cada uno de los 8 oficios produce 20 artículos distintos; puedes venderlos desde tu inventario o usar los consumibles propios de tu negocio.",
-        "Los oficios nuevos son Ladrón (Casa de empeño La Sombra) y Detective / Policía (Agencia de investigación), cada uno con herramienta durable y mercancía propia.",
-        "Al vender, el Banco Central calcula una comisión según el precio, la demanda del artículo y el índice económico vigente. Se descuenta del total bruto y siempre recibes al menos 1 moneda neta.",
-        "Un terreno cuesta inversión inicial; construir tarda 6 horas. Los negocios tienen 10 niveles, generan un producto por turno y exigen tres gastos del oficio. El trabajo de negocio paga más y su cooldown baja de 3 horas a 2 h 15 min con mejoras. Los productos quedan en tu inventario; algunos preparan un turno con +20% de ingreso.",
-        "Las nóminas se pagan completas con las ventas del turno. El personal recomendado depende del nivel: contratar de más reduce el rendimiento, puede dejar al dueño sin beneficio y pausa el trabajo si los ingresos no alcanzan para el sueldo. Los gastos de operación nunca descuentan el saldo personal; las facturas de servicios pendientes quedan como deuda.",
-        "El negocio puede sufrir robos inesperados y plagas que requieren pagar exterminación. Si pasa 14 días sin actividad, se clausura y debes pagar una multa desde el panel del terreno para reabrirlo.",
         "• `a!fish` / `a!f` · pescar una vez por hora; requiere una **Caña de pescar**",
         "• `a!crime` / `a!c` · intentar un delito",
         "• `a!rob @persona` / `a!r @persona` · intentar robar monedas o un artículo no cosmético",
@@ -243,6 +233,26 @@ const categories = {
         "La billetera muestra monedas, ahorros del banco y gemas premium.",
         "",
         "Los paneles incluyen botones para abrir el banco, la tienda y el inventario.",
+      ].join('\n'),
+  },
+  negocios: {
+    label: "Negocios", description: "Terrenos, personal y producción", emoji: "🏪",
+      body: [
+        "# 🏪 NEGOCIOS",
+        "Compra un terreno, abre un negocio y administra sus turnos, productos y personal.",
+        "",
+        "## 🏗️ Terrenos y operaciones",
+        "• `a!terreno` / `/economia terreno` · abrir terreno o negocio; también está en la categoría de `a!eco`",
+        "• `a!negocio contratar @persona` / `/economia contratar` · invitar a una persona con el mismo oficio activo",
+        "• `a!negocio pagar` · abonar facturas pendientes · `a!negocio despedir @persona` · terminar un contrato",
+        "• `a!vender articulo [cantidad]` / `/economia vender_producto` · vender productos generados por tu negocio",
+        "",
+        "Cada uno de los 8 oficios produce 20 artículos distintos; puedes venderlos desde tu inventario o usar los consumibles propios de tu negocio.",
+        "Los oficios nuevos son Ladrón (Casa de empeño La Sombra) y Detective / Policía (Agencia de investigación), cada uno con herramienta durable y mercancía propia.",
+        "Al vender, el Banco Central calcula una comisión según el precio, la demanda del artículo y el índice económico vigente. Se descuenta del total bruto y siempre recibes al menos 1 moneda neta.",
+        "Un terreno cuesta inversión inicial; construir tarda 6 horas. Los negocios tienen 10 niveles, generan un producto por turno y exigen tres gastos del oficio. El trabajo de negocio paga más y su cooldown baja de 3 horas a 2 h 15 min con mejoras. Los productos quedan en tu inventario; algunos preparan un turno con +20% de ingreso.",
+        "Las nóminas se pagan completas con las ventas del turno. El personal recomendado depende del nivel: contratar de más reduce el rendimiento, puede dejar al dueño sin beneficio y pausa el trabajo si los ingresos no alcanzan para el sueldo. Los gastos de operación nunca descuentan el saldo personal; las facturas de servicios pendientes quedan como deuda.",
+        "El negocio puede sufrir robos inesperados y plagas que requieren pagar exterminación. Si pasa 14 días sin actividad, se clausura y debes pagar una multa desde el panel del terreno para reabrirlo.",
       ].join('\n'),
   },
   rpg: {
@@ -361,7 +371,7 @@ const categories = {
 } as const;
 
 export type CatalogCategory = keyof typeof categories;
-const categoryOrder: CatalogCategory[] = ["inicio", "musica", "economia", "rpg", "expresiones", "utilidades", "admin"];
+const categoryOrder: CatalogCategory[] = ["inicio", "musica", "economia", "negocios", "rpg", "expresiones", "utilidades", "admin"];
 
 export function catalogPanel(selected: string = 'inicio') {
   const key: CatalogCategory = selected in categories ? selected as CatalogCategory : 'inicio';
