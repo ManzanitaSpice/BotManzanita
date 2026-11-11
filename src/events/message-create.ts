@@ -61,6 +61,11 @@ async function routeMessage(message: Message): Promise<void> {
   if (!command || ['help', 'ayuda', 'h', 'catalog', 'catalogo', 'comandos'].includes(command)) { await sendPanel(message, catalogPanel(args[0])); return; }
   if (command === 'say' || command === 'embed') { await relayMessageCommand(message, command); return; }
   if (['palabra', 'palabras'].includes(command)) { await manageSavedWordMessageCommand(message, userId, args); return; }
+  if (['terreno', 'negocio', 'business', 'land'].includes(command) && args.length === 0) {
+    if (!message.guildId) { await say(message, 'Este comando funciona dentro de un servidor.'); return; }
+    await sendPanel(message, await businessPanel(message.guildId, userId));
+    return;
+  }
   if (await routeUtilityMessage(message, command, args)) return;
   if (adminActionAliases[command]) { args.unshift(adminActionAliases[command]!); command = 'admin'; }
   if (command === 'admin') {

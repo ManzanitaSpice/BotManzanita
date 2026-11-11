@@ -189,6 +189,16 @@ export function registerInteractionHandler(client) {
                     await interaction.editReply(componentUpdate(businessInviteResultPanel(text)));
                     return;
                 }
+                if (interaction.customId.startsWith('biz:eco:') && interaction.isButton()) {
+                    const ownerId = interaction.customId.slice('biz:eco:'.length);
+                    if (interaction.user.id !== ownerId) {
+                        await interaction.reply({ content: 'Este acceso a economía pertenece a otra persona.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await economyPanel(interaction.guildId, ownerId, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 }))));
+                    return;
+                }
                 if (interaction.customId === 'biz:jobs' && interaction.isButton()) {
                     await interaction.deferUpdate();
                     await interaction.editReply(componentUpdate(await jobsPanel(interaction.guildId, interaction.user.id)));
@@ -828,7 +838,8 @@ export function registerInteractionHandler(client) {
                     const panel = section === 'inventory' ? await inventoryPanel(interaction.guildId, interaction.user.id)
                         : section === 'bank' ? await bankPanel(interaction.guildId, interaction.user.id)
                             : section === 'casino' ? await casinoPanel(interaction.guildId, interaction.user.id)
-                                : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user) : undefined;
+                                : section === 'business' ? await businessPanel(interaction.guildId, interaction.user.id)
+                                    : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user) : undefined;
                     if (!panel) {
                         await interaction.followUp({ content: 'Esa sección ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;

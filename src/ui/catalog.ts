@@ -206,7 +206,7 @@ const categories = {
         "• `a!jobs elegir minero` · elegir un oficio",
         "• `a!work` / `a!w` · trabajar con tu oficio (el negocio usa un cooldown mayor)",
         "Cada oficio requiere una herramienta de la tienda. Los turnos dan XP y suben el nivel del oficio hasta 20; el nivel aumenta el pago.",
-        "• `a!terreno` / `/economia terreno` · comprar un terreno, construir tu negocio, ver ingresos, gastos, deudas y personal",
+        "• `a!terreno` / `/economia terreno` · abrir terreno o negocio; también está en la categoría de `a!eco`",
         "• `a!negocio contratar @persona` / `/economia contratar` · invitar a una persona con el mismo oficio activo",
         "• `a!negocio pagar` · abonar facturas pendientes · `a!negocio despedir @persona` · terminar un contrato",
         "• `a!vender articulo [cantidad]` / `/economia vender_producto` · vender productos generados por tu negocio",

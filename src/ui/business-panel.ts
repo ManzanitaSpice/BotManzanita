@@ -30,9 +30,14 @@ export async function businessPanel(guildId: string, userId: string, selectedJob
   const artJobId = overview?.job.id ?? chosen?.job.id;
   const artStatus = overview?.status ?? 'land';
   const artLevel = overview?.level ?? 1;
+  const heading = !overview ? '# 🏡 TERRENO'
+    : overview.status === 'land' ? '# 🏡 TERRENO · ' + overview.job.emoji + ' ' + overview.name
+      : overview.status === 'construction' ? '# 🏗️ NEGOCIO EN CONSTRUCCIÓN · ' + overview.name
+        : overview.status === 'closed' ? '# 🚫 NEGOCIO CLAUSURADO · ' + overview.name
+          : '# ' + overview.job.emoji + ' NEGOCIO · ' + overview.name;
   const container = new ContainerBuilder().setAccentColor(overview?.status === 'active' ? 0x22c55e : overview?.status === 'closed' ? 0xef4444 : 0x75a8d8)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      (overview ? '# ' + overview.job.emoji + ' ' + overview.name + (isOwner ? '' : ' · empleo') : '# 🏡 TERRENO Y NEGOCIOS')
+      heading + (overview && !isOwner ? ' · empleo' : '')
       + '\nPropiedad conectada a tu oficio y a la economía del banco.' + (notice ? '\n\n' + notice : '')))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://business-terrain.png').setDescription('Ilustración de ' + (overview?.name ?? 'tu terreno'))));
 
@@ -130,6 +135,9 @@ export async function businessPanel(guildId: string, userId: string, selectedJob
       ? 'Cada turno liquida primero las nóminas completas con sus ventas; los tres servicios se pagan con el sobrante y cualquier factura pendiente se acumula como deuda. Los gastos operativos nunca descuentan el saldo personal del dueño. Los eventos y pagos extraordinarios se muestran arriba.'
       : 'Las ventas del turno cubren nómina y servicios antes de entregar el beneficio al dueño. Tu salario reducido se acredita completo y los productos de tu jornada se guardan en tu inventario.'));
   }
+  container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('biz:eco:' + userId).setLabel('Volver a economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  ));
   const backdrop = new AttachmentBuilder(renderBusinessBackdrop(artJobId, artStatus, artLevel)).setName('business-terrain.png');
   return { components: [container], files: [backdrop], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }

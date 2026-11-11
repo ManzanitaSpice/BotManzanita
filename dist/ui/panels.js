@@ -2,7 +2,7 @@ import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Contai
 import { createCanvas } from '@napi-rs/canvas';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
+import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
 import { getProductPriceQuote, getProductPriceQuotes } from '../services/product-market.js';
@@ -100,18 +100,22 @@ export function componentUpdate(panel) {
     return { components: panel.components, attachments: [], ...(panel.files ? { files: panel.files } : {}), flags: ['IsComponentsV2'] };
 }
 export async function economyPanel(guildId, userId, username = `Usuario ${userId.slice(-4)}`, avatarUrl = '') {
-    const [account, settings, progress, badges] = await Promise.all([
-        getAccountBalances(guildId, userId), getProfileSettings(userId), getProfileProgress(guildId, userId), equippedProfileBadges(userId),
+    const [account, settings, progress, badges, business] = await Promise.all([
+        getAccountBalances(guildId, userId), getProfileSettings(userId), getProfileProgress(guildId, userId), equippedProfileBadges(userId), getBusinessOverviewForUser(guildId, userId),
     ]);
     const walletCard = await renderProfileCard({ mode: 'wallet', userId, username, avatarUrl, settings, progress,
         wallet: account.wallet, bank: account.bank, premium: account.premium, badges });
     const walletTheme = profileItem(settings.walletBg)?.color ?? (settings.accent.toLocaleLowerCase() === '#8b75dc' ? '#0876d8' : settings.accent);
+    const businessSection = business?.status === 'land' || !business ? 'Terreno'
+        : business.status === 'construction' ? 'Negocio en construcción' : 'Negocio';
+    const businessDescription = business?.status === 'land' ? 'Construir el terreno de tu oficio'
+        : business ? 'Ver operaciones, personal y estado del negocio' : 'Comprar terreno y construir un negocio';
     const container = new ContainerBuilder()
         .setAccentColor(Number.parseInt(walletTheme.slice(1), 16) || 0x0876d8)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 💰 ECONOMÍA\nMonedas y gemas premium\n🎁 Recompensa diaria: **+${money.format(DAILY_AMOUNT)} monedas**`))
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://economy-wallet.png').setDescription(`Wallet de ${username}`)))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:daily').setLabel('Reclamar diaria').setEmoji('🎁').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:business').setLabel('Terreno y negocio').setEmoji('🏡').setStyle(ButtonStyle.Secondary)))
-        .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más opciones de economía').addOptions({ label: 'Inventario', value: 'inventory', emoji: '🎒', description: 'Revisar y usar tus objetos' }, { label: 'Banco de monedas', value: 'bank', emoji: '🏦', description: 'Guardar o retirar tus monedas' }, { label: 'Casino', value: 'casino', emoji: '🎰', description: 'Juegos y apuestas' }, { label: 'Tienda completa', value: 'store', emoji: '🛍️', description: 'Herramientas, consumibles, personalización y RPG' })));
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('eco:daily').setLabel('Reclamar diaria').setEmoji('🎁').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('eco:store').setLabel('Tienda').setEmoji('🛍️').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('eco:business').setLabel(businessSection).setEmoji(business && business.status !== 'land' ? '🏪' : '🏡').setStyle(ButtonStyle.Secondary)))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más opciones de economía').addOptions({ label: 'Inventario', value: 'inventory', emoji: '🎒', description: 'Revisar y usar tus objetos' }, { label: 'Banco de monedas', value: 'bank', emoji: '🏦', description: 'Guardar o retirar tus monedas' }, { label: 'Casino', value: 'casino', emoji: '🎰', description: 'Juegos y apuestas' }, { label: 'Tienda completa', value: 'store', emoji: '🛍️', description: 'Herramientas, consumibles, personalización y RPG' }, { label: businessSection, value: 'business', emoji: business && business.status !== 'land' ? '🏪' : '🏡', description: businessDescription })));
     return { components: [container], files: [new AttachmentBuilder(walletCard).setName('economy-wallet.png')], flags: ['IsComponentsV2', 'Ephemeral'] };
 }
 export async function jobsPanel(guildId, userId, notice = '', requestedToolId) {
