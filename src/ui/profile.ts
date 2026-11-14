@@ -70,10 +70,12 @@ const backgroundTargetOptions: { id: ProfileBackgroundTarget; label: string; set
 const backgroundTargetLabel = (target: ProfileBackgroundTarget) => target === 'all'
   ? 'Todas las tarjetas' : backgroundTargetOptions.find((entry) => entry.id === target)?.label ?? 'Perfil';
 
-export async function profileBackgroundsPanel(guildId:string,userId:string,target:ProfileBackgroundTarget='profile',selectedId?:string,notice='',user?:User){
+export async function profileBackgroundsPanel(guildId:string,userId:string,target:ProfileBackgroundTarget='profile',selectedId?:string,notice='',user?:User,page=0){
   const [inventory,settings]=await Promise.all([getProfileInventory(guildId,userId),getProfileSettings(userId)]);
   const ownedIds=new Set(inventory.map((entry)=>entry.itemId));
   const backgrounds=profileShopItems.filter((item)=>['profile_bg','rank_bg','wallet_bg','levelup_bg'].includes(item.type)&&ownedIds.has(item.id));
+  const pageSize=25; const pageCount=Math.max(1,Math.ceil(backgrounds.length/pageSize)); const currentPage=Math.max(0,Math.min(Number.isFinite(page)?Math.trunc(page):0,pageCount-1));
+  const pageBackgrounds=backgrounds.slice(currentPage*pageSize,(currentPage+1)*pageSize);
   const targetSetting=target==='all'?'profileBg':backgroundTargetOptions.find((entry)=>entry.id===target)?.setting??'profileBg';
   const currentId=target==='all'?settings.profileBg??settings.rankBg??settings.walletBg??settings.levelupBg:settings[targetSetting];
   const selected=backgrounds.find((item)=>item.id===selectedId);
@@ -95,21 +97,26 @@ export async function profileBackgroundsPanel(guildId:string,userId:string,targe
         :'Fondo predeterminado. No tienes fondos en el inventario; puedes conseguir uno en la tienda.';
   const status=notice?`\n\n${notice}`:'';
   const container=new ContainerBuilder().setAccentColor(Number.parseInt(settings.accent.slice(1),16)||0x8b75dc)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🖼️ FONDOS DE TARJETAS\nElige una tarjeta y un fondo de tu inventario. Puedes asignar uno distinto a cada tarjeta o aplicar el mismo a todas.\n\n**Fondos equipados:** ${assignments}\n**Destino:** ${backgroundTargetLabel(target)} · **Selección:** ${selected?`${selected.emoji} ${selected.name}`:'ninguna'}${target==='all'?'\nAl aplicar, se actualizarán perfil, rango, wallet y subida de nivel.':''}${status}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🖼️ FONDOS DE TARJETAS\nElige una tarjeta y un fondo de tu inventario. Puedes asignar uno distinto a cada tarjeta o aplicar el mismo a todas.\n\n**Fondos equipados:** ${assignments}\n**Destino:** ${backgroundTargetLabel(target)} · **Selección:** ${selected?`${selected.emoji} ${selected.name}`:'ninguna'}${pageCount>1?` · **Página:** ${currentPage+1}/${pageCount}`:''}${target==='all'?'\nAl aplicar, se actualizarán perfil, rango, wallet y subida de nivel.':''}${status}`))
     .addSectionComponents(new SectionBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Vista previa\n${description}`))
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(`attachment://${filename}`).setDescription('Vista previa de tu tarjeta con tus datos y el fondo seleccionado.')))
     .addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder().setCustomId(pid(userId,`background-target:${selected?.id??''}`)).setPlaceholder('¿Qué tarjeta quieres personalizar?')
+      new StringSelectMenuBuilder().setCustomId(pid(userId,`background-target:${currentPage}:${selected?.id??''}`)).setPlaceholder('¿Qué tarjeta quieres personalizar?')
         .addOptions([{label:'Todas las tarjetas',value:'all',emoji:'🪄',default:target==='all'},...backgroundTargetOptions.map((entry)=>({label:entry.label,value:entry.id,emoji:entry.id==='profile'?'👤':entry.id==='rank'?'🏆':entry.id==='wallet'?'💰':'⬆️',default:target===entry.id}))]),
     ));
   if(backgrounds.length) container.addActionRowComponents(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId(pid(userId,`background-item:${target}`)).setPlaceholder('Escoge un fondo de tu inventario')
-      .addOptions(backgrounds.slice(0,25).map((item)=>({label:item.name,value:item.id,description:`${item.rarity} · ${item.description}`.slice(0,100),emoji:item.emoji,default:selected?.id===item.id}))),
+    new StringSelectMenuBuilder().setCustomId(pid(userId,`background-item:${target}:${currentPage}`)).setPlaceholder(`Escoge un fondo (${currentPage+1}/${pageCount})`)
+      .addOptions(pageBackgrounds.map((item)=>({label:item.name,value:item.id,description:`${item.rarity} · ${item.description}`.slice(0,100),emoji:item.emoji,default:selected?.id===item.id}))),
+  ));
+  if(pageCount>1) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(pid(userId,`background-page:${target}:${currentPage-1}:${selected?.id??''}`)).setLabel('Anterior').setEmoji('⬅️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage===0),
+    new ButtonBuilder().setCustomId(pid(userId,`background-page:${target}:${currentPage}:${selected?.id??''}`)).setLabel(`Página ${currentPage+1}/${pageCount}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+    new ButtonBuilder().setCustomId(pid(userId,`background-page:${target}:${currentPage+1}:${selected?.id??''}`)).setLabel('Siguiente').setEmoji('➡️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage===pageCount-1),
   ));
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(pid(userId,`background-apply:${target}:${selected?.id??''}`)).setLabel('Aplicar fondo').setEmoji('✅').setStyle(ButtonStyle.Success).setDisabled(!selected),
-    new ButtonBuilder().setCustomId(pid(userId,`background-clear:${target}`)).setLabel('Quitar fondo').setEmoji('➖').setStyle(ButtonStyle.Secondary).setDisabled(!hasCurrent),
+    new ButtonBuilder().setCustomId(pid(userId,`background-apply:${target}:${selected?.id??''}:${currentPage}`)).setLabel('Aplicar fondo').setEmoji('✅').setStyle(ButtonStyle.Success).setDisabled(!selected),
+    new ButtonBuilder().setCustomId(pid(userId,`background-clear:${target}:${currentPage}`)).setLabel('Quitar fondo').setEmoji('➖').setStyle(ButtonStyle.Secondary).setDisabled(!hasCurrent),
     new ButtonBuilder().setCustomId(pid(userId,'shop')).setLabel('Tienda').setEmoji('🛒').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(pid(userId,'customize')).setLabel('Volver').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));

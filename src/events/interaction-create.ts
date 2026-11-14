@@ -9,7 +9,7 @@ import {
   type Interaction,
 } from 'discord.js';
 import { bankInterestPanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, personalLoanPanel, purchaseConfirmPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
-import { bankAction, buyBusinessLand, businessGoods, claimDaily, consumeBusinessGood, fish, formatCooldown, getInventory, getPersonalLoanOverview, hireBusinessNpc, payBusinessDebt, playBlackjackTurn, purchaseItem, repayPersonalLoan, requestPersonalLoan, removeBusinessNpc, respondBusinessEmployment, respondRoosterDuel, resolveBusinessEvent, selectJob, startBusinessConstruction, storeItems, upgradeBusiness, upgradeJobTool, useShopItem } from '../services/economy.js';
+import { bankAction, buyBusinessLand, businessGoods, calculateBusinessSaleQuote, claimDaily, consumeBusinessGood, fish, formatCooldown, getBusinessOverview, getInventory, getPersonalLoanOverview, hireBusinessNpc, payBusinessDebt, playBlackjackTurn, purchaseItem, repayPersonalLoan, requestPersonalLoan, removeBusinessNpc, respondBusinessEmployment, respondRoosterDuel, resolveBusinessEvent, selectJob, sellBusinessProperty, startBusinessConstruction, storeItems, upgradeBusiness, upgradeJobTool, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgMove, trainRpgPet, useRpgItem, type PetElement, type RpgPvpAction } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack, type MusicEffect } from '../services/music.js';
@@ -21,7 +21,7 @@ import { profileBackgroundsPanel, profileCardPanel, profileCustomizePanel, profi
 import { assignProfileBackground, buyProfileItem, equipProfileItem, updateProfileField, unequipProfileType, type ProfileBackgroundTarget } from '../services/profile.js';
 import { profileShopItems } from '../data/profile-shop.js';
 import { findStoreProduct, purchaseStoreProduct, type StoreCurrency, type StoreKind } from '../services/store.js';
-import { businessInviteResultPanel, businessPanel } from '../ui/business-panel.js';
+import { businessInviteResultPanel, businessPanel, businessSaleConfirmPanel } from '../ui/business-panel.js';
 
 export function registerInteractionHandler(client: Client) {
   client.on('interactionCreate', async (interaction: Interaction) => {
@@ -247,8 +247,23 @@ export function registerInteractionHandler(client: Client) {
             return;
           }
           await interaction.deferUpdate();
+          if (action === 'sell') {
+            const overview = await getBusinessOverview(interaction.guildId, ownerId);
+            if (!overview) {
+              await interaction.editReply(componentUpdate(await businessPanel(interaction.guildId, ownerId, undefined, 'Ya no tienes una propiedad para vender.')));
+              return;
+            }
+            const pendingEventDebt = overview.events.reduce((sum, event) => sum + event.amount, 0);
+            await interaction.editReply(componentUpdate(businessSaleConfirmPanel(ownerId, overview.name, calculateBusinessSaleQuote({ ...overview, pendingEventDebt }))));
+            return;
+          }
+          if (action === 'sell-cancel') {
+            await interaction.editReply(componentUpdate(await businessPanel(interaction.guildId, ownerId, undefined, 'Venta cancelada; conservas la propiedad.')));
+            return;
+          }
           let result: Awaited<ReturnType<typeof buyBusinessLand>> | undefined;
           if (action === 'buy' && jobId) result = await buyBusinessLand(interaction.guildId, ownerId, jobId, interaction.id);
+          else if (action === 'sell-confirm') result = await sellBusinessProperty(interaction.guildId, ownerId, interaction.id);
           else if (action === 'build') result = await startBusinessConstruction(interaction.guildId, ownerId, interaction.id);
           else if (action === 'upgrade') result = await upgradeBusiness(interaction.guildId, ownerId, interaction.id);
           else if (action === 'npc') result = await hireBusinessNpc(interaction.guildId, ownerId, interaction.id);
@@ -1285,16 +1300,16 @@ async function handleProfileInteraction(interaction: Interaction): Promise<boole
     if (action === 'background-target') {
       const value=interaction.values[0]??'';
       if(!['profile','rank','wallet','levelup','all'].includes(value)){await interaction.reply({content:'Esa tarjeta no está disponible.',flags:MessageFlags.Ephemeral});return true;}
-      const target=value as ProfileBackgroundTarget; const selectedId=parts[1]||undefined;
+      const target=value as ProfileBackgroundTarget; const page=Number.parseInt(parts[1]??'0',10)||0; const selectedId=parts[2]||undefined;
       await interaction.deferUpdate();
-      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,target,selectedId,'',interaction.user)));
+      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,target,selectedId,'',interaction.user,page)));
       return true;
     }
     if (action === 'background-item') {
-      const value=interaction.values[0]??''; const targetValue=parts[1]??'';
+      const value=interaction.values[0]??''; const targetValue=parts[1]??''; const page=Number.parseInt(parts[2]??'0',10)||0;
       if(!['profile','rank','wallet','levelup','all'].includes(targetValue)){await interaction.reply({content:'El destino de ese fondo no es válido.',flags:MessageFlags.Ephemeral});return true;}
       await interaction.deferUpdate();
-      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,value,'',interaction.user)));
+      await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,value,'',interaction.user,page)));
       return true;
     }
     if (action === 'accent') {
@@ -1352,11 +1367,18 @@ async function handleProfileInteraction(interaction: Interaction): Promise<boole
     return true;
   }
   if (action === 'background-apply' || action === 'background-clear') {
-    const targetValue=parts[1]??''; const itemId=action==='background-apply'?(parts[2]??''):null;
+    const targetValue=parts[1]??''; const itemId=action==='background-apply'?(parts[2]??''):null; const page=Number.parseInt(action==='background-apply'?(parts[3]??'0'):(parts[2]??'0'),10)||0;
     if(!['profile','rank','wallet','levelup','all'].includes(targetValue)){await interaction.reply({content:'El destino de ese fondo no es válido.',flags:MessageFlags.Ephemeral});return true;}
     await interaction.deferUpdate();
     const result=await assignProfileBackground(guildId,ownerId,targetValue as ProfileBackgroundTarget,itemId);
-    await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,itemId||undefined,result.message,interaction.user)));
+    await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,itemId||undefined,result.message,interaction.user,page)));
+    return true;
+  }
+  if (action === 'background-page') {
+    const targetValue=parts[1]??''; const page=Number.parseInt(parts[2]??'0',10)||0; const selectedId=parts[3]||undefined;
+    if(!['profile','rank','wallet','levelup','all'].includes(targetValue)){await interaction.reply({content:'El destino de ese fondo no es válido.',flags:MessageFlags.Ephemeral});return true;}
+    await interaction.deferUpdate();
+    await interaction.editReply(componentUpdate(await profileBackgroundsPanel(guildId,ownerId,targetValue as ProfileBackgroundTarget,selectedId,'',interaction.user,page)));
     return true;
   }
   if (action === 'home') { await interaction.reply(await profileCardPanel(guildId,interaction.user)); return true; }

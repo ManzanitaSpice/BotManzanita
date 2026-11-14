@@ -434,8 +434,13 @@ function formatMessage(template: string, values: Record<string, string | number>
   return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ''));
 }
 
-function robFailureMessage(targetName: string, amount: number, robberBalance: number, robberBankBalance: number, victimWallet: number): string {
-  if (amount > 0) return `${formatMessage(pick(robFailLines), { amount, target: targetName })}\n\n💸 La multa de **${money.format(amount)} monedas** salió solo de tu billetera; los saldos del banco no se tocan.\n\n🫠 ${moneyLossRemark(robberBalance + robberBankBalance)}`;
+function robFailureMessage(targetName: string, amount: number, robberBalance: number, robberBankBalance: number, victimWallet: number, bankrupt: boolean): string {
+  if (amount > 0) {
+    const fineText = bankrupt
+      ? `💸 La multa completa de **${money.format(amount)} monedas** se cargó a tu billetera. Saldo actual: **${money.format(robberBalance)} monedas**; los ahorros del banco no se tocaron.`
+      : `💸 La multa de **${money.format(amount)} monedas** salió solo de tu billetera; los saldos del banco no se tocan.`;
+    return `${formatMessage(pick(robFailLines), { amount, target: targetName })}\n\n${fineText}\n\n🫠 ${moneyLossRemark(robberBalance + robberBankBalance)}`;
+  }
   const reason = victimWallet <= 0
     ? `La billetera de ${targetName} estaba vacía; no se cobró multa. Los fondos del banco están protegidos.`
     : 'Tu billetera estaba vacía; no se cobró multa ni se tocaron los saldos del banco.';
@@ -1981,6 +1986,7 @@ export type BusinessOverview = {
   name: string;
   status: 'land' | 'construction' | 'active' | 'closed';
   level: number;
+  createdAt: number;
   constructionCompleteAt: number | null;
   debt: number;
   investmentValue: number;
@@ -1998,6 +2004,55 @@ export type BusinessOverview = {
   recommendedStaff: number;
   staffLimit: number;
 };
+export type BusinessSaleQuote = {
+  investedValue: number;
+  basisValue: number;
+  marketValue: number;
+  appreciation: number;
+  ageDays: number;
+  mortgagePayoff: number;
+  operatingDebt: number;
+  netProceeds: number;
+};
+const BUSINESS_PROPERTY_APPRECIATION_RATE = 0.04;
+const BUSINESS_YEAR_SECONDS = 365.25 * 24 * 60 * 60;
+export function calculateBusinessSaleQuote(overview: Pick<BusinessOverview, 'job' | 'status' | 'level' | 'investmentValue' | 'createdAt' | 'debt' | 'mortgagedAt' | 'loanBalanceDue'> & { pendingEventDebt?: number }, now = businessNow()): BusinessSaleQuote {
+  const config = businessJobs.find((entry) => entry.jobId === overview.job.id);
+  const fallbackValue = fallbackBusinessInvestment(overview.job.id, overview.level, overview.status);
+  const investedValue = Math.max(0, Number(overview.investmentValue) || fallbackValue);
+  const landBasis = Math.min(investedValue, config?.landPrice ?? investedValue);
+  const basisValue = overview.status === 'construction'
+    ? landBasis + Math.round(Math.max(0, investedValue - landBasis) * 0.65)
+    : investedValue;
+  const ageSeconds = Math.max(0, now - overview.createdAt);
+  const marketValue = Math.max(0, Math.round(basisValue * (1 + BUSINESS_PROPERTY_APPRECIATION_RATE) ** (ageSeconds / BUSINESS_YEAR_SECONDS)));
+  const mortgagePayoff = overview.mortgagedAt === null ? 0 : Math.min(marketValue, Math.max(0, overview.loanBalanceDue ?? 0));
+  const operatingDebt = Math.max(0, overview.debt) + Math.max(0, overview.pendingEventDebt ?? 0);
+  return {
+    investedValue,
+    basisValue,
+    marketValue,
+    appreciation: Math.max(0, marketValue - basisValue),
+    ageDays: Math.floor(ageSeconds / (24 * 60 * 60)),
+    mortgagePayoff,
+    operatingDebt,
+    netProceeds: marketValue - mortgagePayoff - operatingDebt,
+  };
+}
+function businessPropertySaleMessage(name: string, quote: BusinessSaleQuote, remainingMortgage: number | null): string {
+  const mortgageText = quote.mortgagePayoff
+    ? remainingMortgage === 0
+      ? ` El banco recibió **${money.format(quote.mortgagePayoff)} monedas** y la hipoteca quedó liquidada.`
+      : ` Se aplicaron **${money.format(quote.mortgagePayoff)} monedas** al préstamo; aún debes **${money.format(remainingMortgage ?? 0)} monedas**.`
+    : '';
+  const debtText = quote.operatingDebt ? ` Se liquidaron **${money.format(quote.operatingDebt)} monedas** de facturas y multas pendientes del negocio.` : '';
+  const proceedsText = quote.netProceeds > 0
+    ? ` Recibiste **${money.format(quote.netProceeds)} monedas netas** en tu billetera.`
+    : quote.netProceeds < 0
+      ? ` Las facturas superaron el efectivo de la venta; **${money.format(-quote.netProceeds)} monedas** quedaron como saldo negativo en tu billetera.`
+      : ' El precio de venta se absorbió entre las deudas y no quedó efectivo libre.';
+  return `Vendiste **${name}** por **${money.format(quote.marketValue)} monedas**. La propiedad acumuló **${money.format(quote.appreciation)} monedas** de plusvalía.${mortgageText}${debtText}${proceedsText} El negocio, sus contratos y eventos pendientes se cerraron; tus productos ya obtenidos siguen en tu inventario.`;
+}
 export type BusinessActionResult =
   | { ok: true; price?: number; grossPrice?: number; commission?: number; commissionRateBps?: number; balance: number; message?: string; debt?: number }
   | { ok: false; reason: 'no_job' | 'already_owned' | 'not_found' | 'not_ready' | 'max_level' | 'staff_limit' | 'employee_busy' | 'wrong_job' | 'insufficient_funds' | 'no_debt' | 'no_items' | 'invalid_item' | 'quantity' | 'no_event' | 'loan_active' | 'mortgaged' | 'bankrupt'; balance: number; debt?: number };
@@ -2346,7 +2401,7 @@ export async function getBusinessOverview(guildId: string, ownerId: string): Pro
   const now = businessNow();
   await refreshBusinessLifecycle(guildId, ownerId, now);
   if (economyPool) {
-    const [rows] = await economyPool.execute<RowDataPacket[]>(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.construction_complete_at AS constructionCompleteAt,b.debt,
+    const [rows] = await economyPool.execute<RowDataPacket[]>(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.created_at AS createdAt,b.construction_complete_at AS constructionCompleteAt,b.debt,
       b.investment_value AS investmentValue,b.mortgaged_at AS mortgagedAt,l.foreclosure_at AS foreclosureAt,l.collateral_value AS collateralValue,l.balance_due AS loanBalanceDue
       FROM economy_businesses b LEFT JOIN economy_loans l ON l.guild_id=b.guild_id AND l.user_id=b.owner_id WHERE b.guild_id=? AND b.owner_id=?`, [guildId, ownerId]);
     const row = rows[0];
@@ -2360,7 +2415,7 @@ export async function getBusinessOverview(guildId: string, ownerId: string): Pro
     const [eventRows] = await economyPool.execute<RowDataPacket[]>("SELECT event_type AS type,amount,created_at AS createdAt FROM economy_business_events WHERE guild_id=? AND owner_id=? AND status='pending' ORDER BY created_at", [guildId, ownerId]);
     const job = economyJobs.find((entry) => entry.id === String(row.jobId));
     if (!job) return undefined;
-    return { ownerId, job, name: businessName(job.id), status: String(row.status) as BusinessOverview['status'], level: Number(row.level),
+    return { ownerId, job, name: businessName(job.id), status: String(row.status) as BusinessOverview['status'], level: Number(row.level), createdAt: Number(row.createdAt),
       constructionCompleteAt: row.constructionCompleteAt === null ? null : Number(row.constructionCompleteAt), debt: Number(row.debt),
       investmentValue: Number(row.investmentValue ?? 0), mortgagedAt: row.mortgagedAt === null || row.mortgagedAt === undefined ? null : Number(row.mortgagedAt),
       foreclosureAt: row.foreclosureAt === null || row.foreclosureAt === undefined ? null : Number(row.foreclosureAt), collateralValue: Number(row.collateralValue ?? 0),
@@ -2371,10 +2426,10 @@ export async function getBusinessOverview(guildId: string, ownerId: string): Pro
       events: eventRows.map((entry) => ({ type: String(entry.type) as BusinessEventType, amount: Number(entry.amount), createdAt: Number(entry.createdAt) })),
       recommendedStaff: businessRecommendedStaff(Number(row.level)), staffLimit: businessStaffLimit(Number(row.level)) };
   }
-  const row = db.prepare(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.construction_complete_at AS constructionCompleteAt,b.debt,
+  const row = db.prepare(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.created_at AS createdAt,b.construction_complete_at AS constructionCompleteAt,b.debt,
     b.investment_value AS investmentValue,b.mortgaged_at AS mortgagedAt,l.foreclosure_at AS foreclosureAt,l.collateral_value AS collateralValue,l.balance_due AS loanBalanceDue
     FROM economy_businesses b LEFT JOIN economy_loans l ON l.guild_id=b.guild_id AND l.user_id=b.owner_id WHERE b.guild_id=? AND b.owner_id=?`).get(guildId, ownerId) as {
-      ownerId: string; jobId: string; status: string; level: number; constructionCompleteAt: number | null; debt: number; investmentValue: number;
+      ownerId: string; jobId: string; status: string; level: number; createdAt: number; constructionCompleteAt: number | null; debt: number; investmentValue: number;
       mortgagedAt: number | null; foreclosureAt: number | null; collateralValue: number; loanBalanceDue: number | null;
     } | undefined;
   if (!row) return undefined;
@@ -2387,7 +2442,7 @@ export async function getBusinessOverview(guildId: string, ownerId: string): Pro
   const events = db.prepare("SELECT event_type AS type,amount,created_at AS createdAt FROM economy_business_events WHERE guild_id=? AND owner_id=? AND status='pending' ORDER BY created_at").all(guildId, ownerId) as Array<{ type: string; amount: number; createdAt: number }>;
   const job = economyJobs.find((entry) => entry.id === row.jobId);
   if (!job) return undefined;
-  return { ownerId, job, name: businessName(job.id), status: row.status as BusinessOverview['status'], level: Number(row.level), constructionCompleteAt: row.constructionCompleteAt === null ? null : Number(row.constructionCompleteAt), debt: Number(row.debt),
+  return { ownerId, job, name: businessName(job.id), status: row.status as BusinessOverview['status'], level: Number(row.level), createdAt: Number(row.createdAt), constructionCompleteAt: row.constructionCompleteAt === null ? null : Number(row.constructionCompleteAt), debt: Number(row.debt),
     investmentValue: Number(row.investmentValue ?? 0), mortgagedAt: row.mortgagedAt === null ? null : Number(row.mortgagedAt), foreclosureAt: row.foreclosureAt === null ? null : Number(row.foreclosureAt),
     collateralValue: Number(row.collateralValue ?? 0), loanBalanceDue: row.loanBalanceDue === null ? null : Number(row.loanBalanceDue),
     employees: staff.map((entry) => ({ ...entry, userId: entry.userId ?? null, kind: entry.kind as BusinessEmployee['kind'], status: entry.status as BusinessEmployee['status'], lastWorkAt: entry.lastWorkAt ?? null })), income30d: Number(stats.income30d), expenses30d: Number(stats.expenses30d), wages30d: Number(stats.wages30d), profit30d: Number(stats.profit30d), lastWorkAt: activity.lastWorkAt ?? null,
@@ -2463,6 +2518,83 @@ export async function buyBusinessLand(guildId: string, userId: string, jobId: st
     return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Compraste el terreno para **${business.name}**.` };
   });
   return purchase.immediate();
+}
+
+export async function sellBusinessProperty(guildId: string, userId: string, reference: string): Promise<BusinessActionResult> {
+  guildId = GLOBAL_SCOPE_ID;
+  const now = businessNow();
+  await refreshBusinessLifecycle(guildId, userId, now);
+  if (economyPool) return withEconomyTransaction(async (connection) => {
+    const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT job_id AS jobId,status,level,debt,investment_value AS investmentValue,
+      mortgaged_at AS mortgagedAt,created_at AS createdAt FROM economy_businesses WHERE guild_id=? AND owner_id=? FOR UPDATE`, [guildId, userId]);
+    const row = rows[0];
+    if (!row) return { ok: false as const, reason: 'not_found' as const, balance: account.balance };
+    const job = economyJobs.find((entry) => entry.id === String(row.jobId));
+    if (!job) return { ok: false as const, reason: 'not_found' as const, balance: account.balance };
+    const mortgagedAt = row.mortgagedAt === null || row.mortgagedAt === undefined ? null : Number(row.mortgagedAt);
+    const loan = mortgagedAt === null ? null : await mysqlLoadPersonalLoan(connection, guildId, userId, true);
+    const [pendingEvents] = await connection.execute<RowDataPacket[]>("SELECT amount FROM economy_business_events WHERE guild_id=? AND owner_id=? AND status='pending' FOR UPDATE", [guildId, userId]);
+    const pendingEventDebt = pendingEvents.reduce((sum, event) => sum + Number(event.amount), 0);
+    const quote = calculateBusinessSaleQuote({
+      job, status: String(row.status) as BusinessOverview['status'], level: Number(row.level), investmentValue: Number(row.investmentValue ?? 0),
+      createdAt: Number(row.createdAt), debt: Number(row.debt), mortgagedAt, loanBalanceDue: loan?.balanceDue ?? null, pendingEventDebt,
+    }, now);
+    const remainingMortgage = loan && mortgagedAt !== null ? Math.max(0, loan.balanceDue - quote.mortgagePayoff) : null;
+    const balance = account.balance + quote.netProceeds;
+    await connection.execute('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?', [quote.netProceeds, now, guildId, userId]);
+    await mysqlAddLedger(connection, guildId, userId, quote.marketValue, 'business:property_sale', `${reference}:sale`, now);
+    if (quote.mortgagePayoff) {
+      await mysqlAddLedger(connection, guildId, userId, -quote.mortgagePayoff, 'loan:property_sale_repayment', `${reference}:mortgage`, now);
+      if (remainingMortgage === 0) await connection.execute('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?', [guildId, userId]);
+      else if (loan) await connection.execute('UPDATE economy_loans SET balance_due=?,foreclosure_at=NULL,collateral_value=0 WHERE guild_id=? AND user_id=?', [remainingMortgage, guildId, userId]);
+    } else if (loan && mortgagedAt !== null) {
+      await connection.execute('UPDATE economy_loans SET foreclosure_at=NULL,collateral_value=0 WHERE guild_id=? AND user_id=?', [guildId, userId]);
+    }
+    if (quote.operatingDebt) await mysqlAddLedger(connection, guildId, userId, -quote.operatingDebt, 'business:property_sale_debt', `${reference}:business-debt`, now);
+    await connection.execute('DELETE FROM economy_business_events WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+    await connection.execute('DELETE FROM economy_business_employees WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+    await connection.execute('DELETE FROM economy_business_buffs WHERE guild_id=? AND user_id=?', [guildId, userId]);
+    await connection.execute('DELETE FROM economy_businesses WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+    return { ok: true as const, price: quote.marketValue, balance, message: businessPropertySaleMessage(businessName(job.id), quote, remainingMortgage) };
+  });
+
+  const sale = db.transaction((): BusinessActionResult => {
+    const account = sqliteEnsureAccount(guildId, userId);
+    const row = db.prepare(`SELECT job_id AS jobId,status,level,debt,investment_value AS investmentValue,mortgaged_at AS mortgagedAt,created_at AS createdAt
+      FROM economy_businesses WHERE guild_id=? AND owner_id=?`).get(guildId, userId) as {
+        jobId: string; status: string; level: number; debt: number; investmentValue: number; mortgagedAt: number | null; createdAt: number;
+      } | undefined;
+    if (!row) return { ok: false, reason: 'not_found', balance: account.balance };
+    const job = economyJobs.find((entry) => entry.id === row.jobId);
+    if (!job) return { ok: false, reason: 'not_found', balance: account.balance };
+    const loan = row.mortgagedAt === null ? null : sqliteLoadPersonalLoan(guildId, userId);
+    const pendingEvents = db.prepare("SELECT amount FROM economy_business_events WHERE guild_id=? AND owner_id=? AND status='pending'").all(guildId, userId) as Array<{ amount: number }>;
+    const pendingEventDebt = pendingEvents.reduce((sum, event) => sum + Number(event.amount), 0);
+    const quote = calculateBusinessSaleQuote({
+      job, status: row.status as BusinessOverview['status'], level: Number(row.level), investmentValue: Number(row.investmentValue ?? 0),
+      createdAt: Number(row.createdAt), debt: Number(row.debt), mortgagedAt: row.mortgagedAt === null ? null : Number(row.mortgagedAt), loanBalanceDue: loan?.balanceDue ?? null, pendingEventDebt,
+    }, now);
+    const remainingMortgage = loan && row.mortgagedAt !== null ? Math.max(0, loan.balanceDue - quote.mortgagePayoff) : null;
+    const balance = account.balance + quote.netProceeds;
+    db.prepare('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?').run(quote.netProceeds, now, guildId, userId);
+    const ledger = db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)');
+    ledger.run(guildId, userId, quote.marketValue, 'business:property_sale', `${reference}:sale`, now);
+    if (quote.mortgagePayoff) {
+      ledger.run(guildId, userId, -quote.mortgagePayoff, 'loan:property_sale_repayment', `${reference}:mortgage`, now);
+      if (remainingMortgage === 0) db.prepare('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?').run(guildId, userId);
+      else if (loan) db.prepare('UPDATE economy_loans SET balance_due=?,foreclosure_at=NULL,collateral_value=0 WHERE guild_id=? AND user_id=?').run(remainingMortgage, guildId, userId);
+    } else if (loan && row.mortgagedAt !== null) {
+      db.prepare('UPDATE economy_loans SET foreclosure_at=NULL,collateral_value=0 WHERE guild_id=? AND user_id=?').run(guildId, userId);
+    }
+    if (quote.operatingDebt) ledger.run(guildId, userId, -quote.operatingDebt, 'business:property_sale_debt', `${reference}:business-debt`, now);
+    db.prepare('DELETE FROM economy_business_events WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+    db.prepare('DELETE FROM economy_business_employees WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+    db.prepare('DELETE FROM economy_business_buffs WHERE guild_id=? AND user_id=?').run(guildId, userId);
+    db.prepare('DELETE FROM economy_businesses WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+    return { ok: true, price: quote.marketValue, balance, message: businessPropertySaleMessage(businessName(job.id), quote, remainingMortgage) };
+  });
+  return sale.immediate();
 }
 
 export async function startBusinessConstruction(guildId: string, userId: string, reference: string): Promise<BusinessActionResult> {
@@ -2872,16 +3004,17 @@ export async function crime(guildId: string, userId: string, reference: string):
   const now = nowSeconds();
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const account = await mysqlEnsureAccount(connection, guildId, userId, true);
-    if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId)) return { ok: false as const, reason: 'bankrupt' as const, secondsRemaining: 0 };
+    const bankrupt = await mysqlIsPersonalLoanBankrupt(connection, guildId, userId);
     const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
     if (now < nextCrimeAt) return { ok: false as const, secondsRemaining: nextCrimeAt - now };
-    const amount = success
-      ? 40 + randomInt(41)
-      : Math.min(account.balance, 10 + randomInt(21));
+    const rawAmount = success ? 40 + randomInt(41) : 10 + randomInt(21);
+    const amount = success ? rawAmount : bankrupt ? rawAmount : Math.min(Math.max(0, account.balance), rawAmount);
     const signedAmount = success ? amount : -amount;
     const balance = account.balance + signedAmount;
-    const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount })
-      + (success ? '' : `\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`);
+    const failureRemark = bankrupt
+      ? `\n\n💸 La multa completa de **${money.format(amount)} monedas** se cargó a tu billetera. Saldo actual: **${money.format(balance)} monedas**; los ahorros del banco no se tocaron.\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`
+      : `\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`;
+    const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount }) + (success ? '' : failureRemark);
     await connection.execute('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?',
       [signedAmount, now, now, guildId, userId]);
     if (signedAmount) await mysqlAddLedger(connection, guildId, userId, signedAmount, success ? 'crime_reward' : 'crime_fine', reference, now);
@@ -2890,16 +3023,17 @@ export async function crime(guildId: string, userId: string, reference: string):
 
   const commitCrime = db.transaction(() => {
     const account = sqliteEnsureAccount(guildId, userId);
-    if (sqliteIsPersonalLoanBankrupt(guildId, userId)) return { ok: false as const, reason: 'bankrupt' as const, secondsRemaining: 0 };
+    const bankrupt = sqliteIsPersonalLoanBankrupt(guildId, userId);
     const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
     if (now < nextCrimeAt) return { ok: false as const, secondsRemaining: nextCrimeAt - now };
-    const amount = success
-      ? 40 + randomInt(41)
-      : Math.min(account.balance, 10 + randomInt(21));
+    const rawAmount = success ? 40 + randomInt(41) : 10 + randomInt(21);
+    const amount = success ? rawAmount : bankrupt ? rawAmount : Math.min(Math.max(0, account.balance), rawAmount);
     const signedAmount = success ? amount : -amount;
     const balance = account.balance + signedAmount;
-    const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount })
-      + (success ? '' : `\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`);
+    const failureRemark = bankrupt
+      ? `\n\n💸 La multa completa de **${money.format(amount)} monedas** se cargó a tu billetera. Saldo actual: **${money.format(balance)} monedas**; los ahorros del banco no se tocaron.\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`
+      : `\n\n🫠 ${moneyLossRemark(balance + account.bankBalance)}`;
+    const message = formatMessage(pick(success ? crimeSuccessLines : crimeFailLines), { amount }) + (success ? '' : failureRemark);
     db.prepare('UPDATE economy_accounts SET balance = balance + ?, last_crime_at = ?, updated_at = ? WHERE guild_id = ? AND user_id = ?')
       .run(signedAmount, now, now, guildId, userId);
     if (signedAmount) db.prepare('INSERT INTO economy_ledger (guild_id, user_id, amount, reason, reference, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -3063,11 +3197,14 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
     const ids = [userId, targetId].sort();
     const accounts = new Map<string, AccountRow>();
     for (const id of ids) accounts.set(id, await mysqlEnsureAccount(connection, guildId, id, true));
-    for (const id of ids) if (await mysqlLoadPersonalLoan(connection, guildId, id, true)) return { ok: false as const, reason: 'loan_active' as const };
+    const now = nowSeconds();
     const robber = accounts.get(userId)!;
     const victim = accounts.get(targetId)!;
+    const robberLoan = await reconcilePersonalLoanMysql(connection, guildId, userId, now, robber);
+    const victimLoan = await mysqlLoadPersonalLoan(connection, guildId, targetId, true);
+    const bankrupt = isPersonalLoanBankrupt(robberLoan);
+    if (victimLoan || (robberLoan && !bankrupt)) return { ok: false as const, reason: 'loan_active' as const };
     const victimWallet = Math.max(0, Math.floor(victim.balance));
-    const now = nowSeconds();
     const nextRobAt = (robber.lastRobAt ?? 0) + ROB_COOLDOWN_SECONDS;
     if (now < nextRobAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextRobAt - now };
     if ((victim.robProtectedUntil ?? 0) > now) {
@@ -3105,9 +3242,11 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       await mysqlAddLedger(connection, guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
       return { ok: true as const, success: true, amount, balance: robber.balance + amount, message };
     }
-    const amount = victimWallet > 0 ? Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05))) : 0;
+    const amount = bankrupt
+      ? 10 + randomInt(21)
+      : victimWallet > 0 ? Math.min(Math.max(0, robber.balance), Math.max(1, Math.floor(Math.max(0, robber.balance) * 0.05))) : 0;
     const balance = robber.balance - amount;
-    const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet);
+    const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet, bankrupt);
     await connection.execute('UPDATE economy_accounts SET balance=balance-?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
     if (amount) await mysqlAddLedger(connection, guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
     return { ok: true as const, success: false, amount, balance, message };
@@ -3116,11 +3255,14 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
   const attempt = db.transaction(() => {
     const accounts = new Map<string, AccountRow>();
     for (const id of [userId, targetId].sort()) accounts.set(id, sqliteEnsureAccount(guildId, id));
-    for (const id of [userId, targetId].sort()) if (sqliteLoadPersonalLoan(guildId, id)) return { ok: false as const, reason: 'loan_active' as const };
+    const now = nowSeconds();
     const robber = accounts.get(userId)!;
     const victim = accounts.get(targetId)!;
+    const robberLoan = reconcilePersonalLoanSqlite(guildId, userId, now, robber);
+    const victimLoan = sqliteLoadPersonalLoan(guildId, targetId);
+    const bankrupt = isPersonalLoanBankrupt(robberLoan);
+    if (victimLoan || (robberLoan && !bankrupt)) return { ok: false as const, reason: 'loan_active' as const };
     const victimWallet = Math.max(0, Math.floor(victim.balance));
-    const now = nowSeconds();
     const nextRobAt = (robber.lastRobAt ?? 0) + ROB_COOLDOWN_SECONDS;
     if (now < nextRobAt) return { ok: false as const, reason: 'cooldown' as const, secondsRemaining: nextRobAt - now };
     if ((victim.robProtectedUntil ?? 0) > now) {
@@ -3159,9 +3301,11 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       ledger.run(guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
       return { ok: true as const, success: true, amount, balance: robber.balance + amount, message };
     }
-    const amount = victimWallet > 0 ? Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05))) : 0;
+    const amount = bankrupt
+      ? 10 + randomInt(21)
+      : victimWallet > 0 ? Math.min(Math.max(0, robber.balance), Math.max(1, Math.floor(Math.max(0, robber.balance) * 0.05))) : 0;
     const balance = robber.balance - amount;
-    const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet);
+    const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet, bankrupt);
     db.prepare('UPDATE economy_accounts SET balance=balance-?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(amount, now, now, guildId, userId);
     if (amount) db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
     return { ok: true as const, success: false, amount, balance, message };

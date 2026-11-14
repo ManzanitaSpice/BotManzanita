@@ -52,7 +52,7 @@ type RpgItem = { id: string; name: string; emoji: string; rarity: PetRarity; cat
 const coreRpgItems: RpgItem[] = [
   { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 100, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
   { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 85, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
-  { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 60, description: 'Recupera 15 PV y energía, +35 saciedad y cariño.', effect: 'snack', power: 15 },
+  { id: 'rpg_berries', name: 'Bayas silvestres', emoji: '🫐', rarity: 'Común', category: 'Alimento', cost: 40, description: 'Recupera 15 PV y energía, +35 saciedad y cariño.', effect: 'snack', power: 15 },
   { id: 'rpg_super_potion', name: 'Poción solar', emoji: '☀️', rarity: 'Poco común', category: 'Curación', cost: 240, description: 'Recupera 75 PV.', effect: 'heal', power: 75 },
   { id: 'rpg_energy_crystal', name: 'Cristal de energía', emoji: '💠', rarity: 'Poco común', category: 'Energía', cost: 220, description: 'Restaura toda la energía.', effect: 'full_energy', power: 100 },
   { id: 'rpg_revive', name: 'Polvo de renacer', emoji: '✨', rarity: 'Raro', category: 'Reanimación', cost: 480, description: 'Levanta a una mascota debilitada con 35 PV.', effect: 'revive', power: 35 },
@@ -98,7 +98,7 @@ for (let tier = 0; tier < raritySets.length; tier++) {
     const name = `${baseName} ${rarity.labels[position % rarity.labels.length]}`;
     const category = group.category;
     if (groupIndex === 0) add(suffix, category, name, group.emoji, 'heal', heal + position * 12, 1 + position * 0.35);
-    else if (groupIndex === 1) add(suffix, category, name, group.emoji, position ? 'snack' : 'energy', position ? 12 + tier * 4 : energy, 0.9 + position * 0.2);
+    else if (groupIndex === 1) add(suffix, position ? 'Alimento' : category, name, group.emoji, position ? 'snack' : 'energy', position ? 12 + tier * 4 : energy, position ? (0.9 + position * 0.2) * 0.65 : 0.9);
     else if (groupIndex === 2) add(suffix, category, name, group.emoji, 'xp', xp + position * 45, 1.1 + position * 0.4);
     else if (groupIndex === 3) add(suffix, category, name, group.emoji, (['stat_strength', 'stat_defense', 'stat_agility'] as const)[position]!, statPower, 1.2);
     else if (groupIndex === 4) add(suffix, category, name, group.emoji, (['equip_strength', 'equip_defense', 'equip_agility'] as const)[position]!, gearPower, 2.1);
@@ -134,14 +134,14 @@ const elementalFoodDefinitions: ElementalFoodDefinition[] = [
   { element: 'Astral', key: 'astral', emoji: '🥧', names: ['Arándano de constelación', 'Tartaleta de polvo estelar', 'Sorbete de nebulosa', 'Galleta lunar', 'Pastel de meteorito', 'Té de nebulosa', 'Tartaleta de cometa', 'Banquete de constelación'], affinityBonus: 'expedition_xp', bonusPower: [6, 10, 14, 18, 22, 26, 30, 36] },
 ];
 const elementalFoodTiers = [
-  { key: 'comun', rarity: 'Común' as const, cost: 75, hp: 8, energy: 10, hunger: 25, affection: 1 },
-  { key: 'inusual', rarity: 'Poco común' as const, cost: 175, hp: 13, energy: 15, hunger: 34, affection: 2 },
-  { key: 'raro', rarity: 'Raro' as const, cost: 340, hp: 18, energy: 20, hunger: 42, affection: 3 },
-  { key: 'epico', rarity: 'Épico' as const, cost: 620, hp: 25, energy: 28, hunger: 52, affection: 4 },
-  { key: 'epico_aurora', rarity: 'Épico' as const, cost: 900, hp: 30, energy: 34, hunger: 62, affection: 5 },
-  { key: 'legendario', rarity: 'Legendario' as const, cost: 1200, hp: 38, energy: 42, hunger: 72, affection: 6 },
-  { key: 'legendario_aurora', rarity: 'Legendario' as const, cost: 1550, hp: 45, energy: 50, hunger: 84, affection: 7 },
-  { key: 'legendario_primordial', rarity: 'Legendario' as const, cost: 1950, hp: 55, energy: 58, hunger: 95, affection: 8 },
+  { key: 'comun', rarity: 'Común' as const, cost: 50, hp: 8, energy: 10, hunger: 25, affection: 1 },
+  { key: 'inusual', rarity: 'Poco común' as const, cost: 115, hp: 13, energy: 15, hunger: 34, affection: 2 },
+  { key: 'raro', rarity: 'Raro' as const, cost: 225, hp: 18, energy: 20, hunger: 42, affection: 3 },
+  { key: 'epico', rarity: 'Épico' as const, cost: 410, hp: 25, energy: 28, hunger: 52, affection: 4 },
+  { key: 'epico_aurora', rarity: 'Épico' as const, cost: 600, hp: 30, energy: 34, hunger: 62, affection: 5 },
+  { key: 'legendario', rarity: 'Legendario' as const, cost: 800, hp: 38, energy: 42, hunger: 72, affection: 6 },
+  { key: 'legendario_aurora', rarity: 'Legendario' as const, cost: 1035, hp: 45, energy: 50, hunger: 84, affection: 7 },
+  { key: 'legendario_primordial', rarity: 'Legendario' as const, cost: 1300, hp: 55, energy: 58, hunger: 95, affection: 8 },
 ];
 function foodAffinityDescription(effect: RpgFoodBonus, power: number): string {
   if (effect === 'heal') return `recupera +${power} PV`;

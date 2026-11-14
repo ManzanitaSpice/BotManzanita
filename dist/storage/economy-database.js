@@ -40,8 +40,7 @@ export async function initializeEconomyDatabase() {
       premium_balance BIGINT NOT NULL DEFAULT 0,
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL,
-      PRIMARY KEY (guild_id, user_id),
-      CONSTRAINT chk_economy_balance_nonnegative CHECK (balance >= 0)
+      PRIMARY KEY (guild_id, user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
     await ensureColumn('economy_accounts', 'last_work_at', 'BIGINT NULL');
@@ -53,6 +52,9 @@ export async function initializeEconomyDatabase() {
     await ensureColumn('economy_accounts', 'bank_interest_remainder', 'INT NOT NULL DEFAULT 0');
     await ensureColumn('economy_accounts', 'rob_protected_until', 'BIGINT NULL');
     await ensureColumn('economy_accounts', 'premium_balance', 'BIGINT NOT NULL DEFAULT 0');
+    const [balanceChecks] = await economyPool.execute('SELECT CONSTRAINT_NAME AS constraintName FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_NAME=? AND CONSTRAINT_TYPE=? LIMIT 1', [config.economyDatabase.name, 'economy_accounts', 'chk_economy_balance_nonnegative', 'CHECK']);
+    if (balanceChecks.length)
+        await economyPool.query('ALTER TABLE economy_accounts DROP CHECK chk_economy_balance_nonnegative');
     await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_ledger (
       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

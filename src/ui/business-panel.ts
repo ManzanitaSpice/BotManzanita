@@ -11,7 +11,7 @@ import {
   StringSelectMenuBuilder,
   TextDisplayBuilder,
 } from 'discord.js';
-import { businessCooldownSeconds, businessJobs, formatCooldown, getBalance, getBusinessOverviewForUser, getJobRoster, getPersonalLoanOverview } from '../services/economy.js';
+import { businessCooldownSeconds, businessJobs, calculateBusinessSaleQuote, formatCooldown, getBalance, getBusinessOverviewForUser, getJobRoster, getPersonalLoanOverview, type BusinessSaleQuote } from '../services/economy.js';
 import { getProductPriceQuote } from '../services/product-market.js';
 import { renderBusinessBackdrop } from './business-art.js';
 
@@ -28,6 +28,7 @@ export async function businessPanel(guildId: string, userId: string, selectedJob
   const config = overview ? businessJobs.find((entry) => entry.jobId === overview.job.id) : undefined;
   const selectedConfig = chosen ? businessJobs.find((entry) => entry.jobId === chosen.job.id) : undefined;
   const isOwner = overview?.ownerId === userId;
+  const saleQuote = overview && isOwner ? calculateBusinessSaleQuote({ ...overview, pendingEventDebt: overview.events.reduce((sum, event) => sum + event.amount, 0) }) : undefined;
   const artJobId = overview?.job.id ?? chosen?.job.id;
   const artStatus = overview?.status ?? 'land';
   const artLevel = overview?.level ?? 1;
@@ -56,6 +57,14 @@ export async function businessPanel(guildId: string, userId: string, selectedJob
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(isOwner
       ? `## 🏦 Propiedad hipotecada por mora\nValor de liquidación estimado: **${money.format(overview.collateralValue)} monedas** · deuda actual: **${money.format(overview.loanBalanceDue ?? 0)} monedas**. Si no se liquida el préstamo, el banco ejecutará la propiedad ${foreclosure}. Puedes seguir trabajando y cada ingreso del trabajo se abona primero a la deuda. Al pagarla por completo, la hipoteca se libera.`
       : `## 🏦 Propiedad hipotecada\nEl negocio sigue operando durante el plazo de regularización. Los ingresos del trabajo del dueño se aplican primero a su préstamo; fecha límite de la propiedad: ${foreclosure}.`));
+  }
+
+  if (saleQuote && overview) {
+    const assetNote = overview.status === 'land' ? 'Terreno sin construir.'
+      : overview.status === 'construction' ? 'La obra sin terminar se valora al 65% de su costo.'
+        : 'Incluye terreno, estructura y mejoras.';
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## Valor inmobiliario estimado\n**Mercado:** ${money.format(saleQuote.marketValue)} monedas · **inversión reconocida:** ${money.format(saleQuote.investedValue)} · **plusvalía:** +${money.format(saleQuote.appreciation)} monedas.\n${assetNote} La propiedad aumenta **4% anual compuesto** desde su compra (${saleQuote.ageDays} días).\n**Efecto estimado en tu billetera al vender:** ${money.format(saleQuote.netProceeds)} monedas, después de hipoteca y facturas del negocio.`));
   }
 
   if (!overview && !chosen) {
@@ -154,11 +163,27 @@ export async function businessPanel(guildId: string, userId: string, selectedJob
       ? 'Cada turno liquida primero las nóminas completas con sus ventas; los tres servicios se pagan con el sobrante y cualquier factura pendiente se acumula como deuda. Los gastos operativos nunca descuentan el saldo personal del dueño. Los eventos y pagos extraordinarios se muestran arriba.'
       : 'Las ventas del turno cubren nómina y servicios antes de entregar el beneficio al dueño. Tu salario reducido se acredita completo y los productos de tu jornada se guardan en tu inventario.'));
   }
+  if (overview && isOwner && saleQuote) {
+    container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('biz:sell:' + userId).setLabel('Vender propiedad · ' + money.format(saleQuote.marketValue)).setEmoji('🏷️').setStyle(ButtonStyle.Danger),
+    ));
+  }
   container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId('biz:eco:' + userId).setLabel('Volver a economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));
   const backdrop = new AttachmentBuilder(renderBusinessBackdrop(artJobId, artStatus, artLevel)).setName('business-terrain.png');
   return { components: [container], files: [backdrop], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export function businessSaleConfirmPanel(ownerId: string, propertyName: string, quote: BusinessSaleQuote) {
+  const container = new ContainerBuilder().setAccentColor(0xef4444)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `# 🏠 Confirmar venta\nVas a vender **${propertyName}** completo.\n\n**Precio de mercado:** ${money.format(quote.marketValue)} monedas\n**Plusvalía acumulada:** +${money.format(quote.appreciation)} monedas (${quote.ageDays} días; 4% anual compuesto)\n**Pago hipotecario estimado:** ${money.format(quote.mortgagePayoff)} monedas\n**Facturas y multas pendientes:** ${money.format(quote.operatingDebt)} monedas\n**Cambio estimado en tu billetera:** ${money.format(quote.netProceeds)} monedas\n\nLa operación es definitiva: se cierra el negocio y terminan sus contratos. Tus productos ya obtenidos permanecen en tu inventario.`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('biz:sell-confirm:' + ownerId).setLabel('Confirmar venta').setEmoji('✅').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('biz:sell-cancel:' + ownerId).setLabel('Conservar propiedad').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
 export function businessInvitePanel(ownerId: string, employeeId: string, ownerName: string, jobName: string) {

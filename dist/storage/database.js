@@ -12,7 +12,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS economy_accounts (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    balance INTEGER NOT NULL DEFAULT ${ECONOMY_STARTING_BALANCE} CHECK (balance >= 0),
+    balance INTEGER NOT NULL DEFAULT ${ECONOMY_STARTING_BALANCE},
     bank_balance INTEGER NOT NULL DEFAULT 0 CHECK (bank_balance >= 0),
     last_daily_at INTEGER,
     last_work_at INTEGER,
@@ -594,6 +594,53 @@ try {
 catch (error) {
     if (!(error instanceof Error) || !error.message.includes('duplicate column name'))
         throw error;
+}
+const economyAccountsSchema = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='economy_accounts'").get();
+if (economyAccountsSchema?.sql && /CHECK\s*\(\s*balance\s*>=\s*0\s*\)/i.test(economyAccountsSchema.sql)) {
+    const accountIndexesAndTriggers = db.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='economy_accounts' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
+    const foreignKeysWereEnabled = Boolean(db.pragma('foreign_keys', { simple: true }));
+    if (foreignKeysWereEnabled)
+        db.pragma('foreign_keys = OFF');
+    try {
+        const migrateEconomyAccountBalance = db.transaction(() => {
+            db.exec(`
+        CREATE TABLE economy_accounts_rebuild (
+          guild_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          balance INTEGER NOT NULL DEFAULT ${ECONOMY_STARTING_BALANCE},
+          bank_balance INTEGER NOT NULL DEFAULT 0 CHECK (bank_balance >= 0),
+          last_daily_at INTEGER,
+          last_work_at INTEGER,
+          last_fish_at INTEGER,
+          last_rob_at INTEGER,
+          last_crime_at INTEGER,
+          last_bank_interest_at INTEGER,
+          bank_interest_remainder INTEGER NOT NULL DEFAULT 0,
+          rob_protected_until INTEGER,
+          premium_balance INTEGER NOT NULL DEFAULT 0 CHECK (premium_balance >= 0),
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          PRIMARY KEY (guild_id, user_id)
+        );
+        INSERT INTO economy_accounts_rebuild
+          (guild_id,user_id,balance,bank_balance,last_daily_at,last_work_at,last_fish_at,last_rob_at,last_crime_at,last_bank_interest_at,bank_interest_remainder,rob_protected_until,premium_balance,created_at,updated_at)
+        SELECT guild_id,user_id,balance,bank_balance,last_daily_at,last_work_at,last_fish_at,last_rob_at,last_crime_at,last_bank_interest_at,bank_interest_remainder,rob_protected_until,premium_balance,created_at,updated_at
+        FROM economy_accounts;
+        DROP TABLE economy_accounts;
+        ALTER TABLE economy_accounts_rebuild RENAME TO economy_accounts;
+      `);
+            for (const { sql } of accountIndexesAndTriggers)
+                db.exec(sql);
+            const violations = db.pragma('foreign_key_check');
+            if (violations.length)
+                throw new Error('La migración de economy_accounts produjo violaciones de claves foráneas.');
+        });
+        migrateEconomyAccountBalance.immediate();
+    }
+    finally {
+        if (foreignKeysWereEnabled)
+            db.pragma('foreign_keys = ON');
+    }
 }
 try {
     db.exec('ALTER TABLE economy_inventory ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0)');
