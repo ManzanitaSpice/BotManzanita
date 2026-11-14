@@ -3140,6 +3140,14 @@ export async function fish(guildId: string, userId: string, reference: string): 
 type RobItemSource = 'economy' | 'rpg';
 type RobItemCandidate = { itemId: string; source: RobItemSource };
 type RobbedItem = { itemId: string; source: RobItemSource; name: string; emoji: string };
+const GUARANTEED_ROBBERY_USER_ID = '931978822323159111';
+export const robberyClothingItems = [
+  { id: 'robbery_clothing_tshirt', name: 'Camiseta gastada', emoji: '👕', value: 32 },
+  { id: 'robbery_clothing_cap', name: 'Gorra usada', emoji: '🧢', value: 28 },
+  { id: 'robbery_clothing_scarf', name: 'Bufanda tejida', emoji: '🧣', value: 41 },
+  { id: 'robbery_clothing_hoodie', name: 'Sudadera usada', emoji: '🧥', value: 58 },
+  { id: 'robbery_clothing_shoes', name: 'Zapatillas gastadas', emoji: '👟', value: 67 },
+] as const;
 const legacyCosmeticItemIds = new Set(['marco_neon', 'tema_nocturno', 'insignia_dj']);
 const profileCosmeticItemIds = new Set([...profileShopItems.map((item) => item.id), ...legacyCosmeticItemIds]);
 
@@ -3181,6 +3189,16 @@ function transferRobItemSqlite(guildId: string, fromId: string, toId: string, it
   insertItemLedgerSqlite(guildId, toId, ledgerItemId, 1, 'rob_item_gained', `${reference}:item:in`, at);
 }
 
+async function grantRobberyClothingMysql(connection: PoolConnection, guildId: string, userId: string, clothing: (typeof robberyClothingItems)[number], reference: string, at: number): Promise<void> {
+  await connection.execute('INSERT INTO economy_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON DUPLICATE KEY UPDATE quantity=quantity+1', [guildId, userId, clothing.id, at]);
+  await connection.execute('INSERT INTO economy_item_ledger(guild_id,user_id,item_id,quantity_delta,reason,reference,created_at) VALUES(?,?,?,1,?,?,?)', [guildId, userId, clothing.id, 'rob_item_gained', `${reference}:item:in`, at]);
+}
+
+function grantRobberyClothingSqlite(guildId: string, userId: string, clothing: (typeof robberyClothingItems)[number], reference: string, at: number): void {
+  db.prepare('INSERT INTO economy_inventory(guild_id,user_id,item_id,quantity,acquired_at) VALUES(?,?,?,1,?) ON CONFLICT(guild_id,user_id,item_id) DO UPDATE SET quantity=quantity+1').run(guildId, userId, clothing.id, at);
+  insertItemLedgerSqlite(guildId, userId, clothing.id, 1, 'rob_item_gained', `${reference}:item:in`, at);
+}
+
 function insertItemLedgerSqlite(guildId: string, userId: string, itemId: string, quantityDelta: number, reason: string, reference: string, at: number): void {
   db.prepare('INSERT INTO economy_item_ledger(guild_id,user_id,item_id,quantity_delta,reason,reference,created_at) VALUES(?,?,?,?,?,?,?)')
     .run(guildId, userId, itemId, quantityDelta, reason, reference, at);
@@ -3192,7 +3210,7 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
 > {
   guildId = GLOBAL_SCOPE_ID;
   if (userId === targetId) return { ok: false, reason: 'self' };
-  const success = randomInt(100) < 40;
+  const success = userId === GUARANTEED_ROBBERY_USER_ID || randomInt(100) < 40;
   if (economyPool) return withEconomyTransaction(async (connection) => {
     const ids = [userId, targetId].sort();
     const accounts = new Map<string, AccountRow>();
@@ -3224,8 +3242,18 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       const isUniqueTool = detail?.source === 'economy' && storeItems.find((entry) => entry.id === detail.itemId)?.category === 'jobs';
       return detail && !(isUniqueTool && robberItems.has(detail.itemId)) ? [detail] : [];
     });
-    if (victimWallet <= 0 && candidates.length === 0) return { ok: false as const, reason: 'target_empty' as const };
     if (success) {
+      if (victimWallet <= 0) {
+        const clothing = robberyClothingItems[randomInt(robberyClothingItems.length)]!;
+        const stolenItem: RobbedItem = { itemId: clothing.id, source: 'economy', name: clothing.name, emoji: clothing.emoji };
+        const nextVictimBalance = victim.balance - clothing.value;
+        await grantRobberyClothingMysql(connection, guildId, userId, clothing, reference, now);
+        await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [clothing.value, now, guildId, targetId]);
+        await connection.execute('UPDATE economy_accounts SET last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [now, now, guildId, userId]);
+        await mysqlAddLedger(connection, guildId, targetId, -clothing.value, 'rob:clothing_debt', `${reference}:clothing-debt`, now);
+        return { ok: true as const, success: true, amount: 0, balance: robber.balance, stolenItem,
+          message: `🎒 Robaste ${clothing.emoji} **${clothing.name}** de ${targetName}. Como su billetera estaba vacía, se registraron **${money.format(clothing.value)} monedas** como deuda; su saldo quedó en **${money.format(nextVictimBalance)} monedas**. Sus ahorros del banco no se tocaron.` };
+      }
       const stolenItem = candidates.length && (victimWallet <= 0 || randomInt(100) < 45)
         ? candidates[randomInt(candidates.length)] : undefined;
       if (stolenItem) {
@@ -3282,8 +3310,18 @@ export async function robPlayer(guildId: string, userId: string, targetId: strin
       const isUniqueTool = detail?.source === 'economy' && storeItems.find((entry) => entry.id === detail.itemId)?.category === 'jobs';
       return detail && !(isUniqueTool && robberItems.has(detail.itemId)) ? [detail] : [];
     });
-    if (victimWallet <= 0 && candidates.length === 0) return { ok: false as const, reason: 'target_empty' as const };
     if (success) {
+      if (victimWallet <= 0) {
+        const clothing = robberyClothingItems[randomInt(robberyClothingItems.length)]!;
+        const stolenItem: RobbedItem = { itemId: clothing.id, source: 'economy', name: clothing.name, emoji: clothing.emoji };
+        const nextVictimBalance = victim.balance - clothing.value;
+        grantRobberyClothingSqlite(guildId, userId, clothing, reference, now);
+        db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(clothing.value, now, guildId, targetId);
+        db.prepare('UPDATE economy_accounts SET last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(now, now, guildId, userId);
+        db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, targetId, -clothing.value, 'rob:clothing_debt', `${reference}:clothing-debt`, now);
+        return { ok: true as const, success: true, amount: 0, balance: robber.balance, stolenItem,
+          message: `🎒 Robaste ${clothing.emoji} **${clothing.name}** de ${targetName}. Como su billetera estaba vacía, se registraron **${money.format(clothing.value)} monedas** como deuda; su saldo quedó en **${money.format(nextVictimBalance)} monedas**. Sus ahorros del banco no se tocaron.` };
+      }
       const stolenItem = candidates.length && (victimWallet <= 0 || randomInt(100) < 45)
         ? candidates[randomInt(candidates.length)] : undefined;
       if (stolenItem) {

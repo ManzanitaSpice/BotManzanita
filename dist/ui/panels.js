@@ -2,7 +2,7 @@ import { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Contai
 import { createCanvas } from '@napi-rs/canvas';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, getPersonalLoanOverview, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems } from '../services/economy.js';
+import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, getPersonalLoanOverview, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, robberyClothingItems, storeItems } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgEggPrice, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions } from '../services/store.js';
 import { getProductPriceQuote, getProductPriceQuotes } from '../services/product-market.js';
@@ -541,10 +541,12 @@ export async function inventoryPanel(guildId, userId, requestedPage = 0, request
     const economyRows = economyInventory.map((entry) => {
         const item = storeItems.find((candidate) => candidate.id === entry.itemId);
         const good = businessGoods.find((candidate) => candidate.id === entry.itemId);
+        const clothing = robberyClothingItems.find((candidate) => candidate.id === entry.itemId);
         return item
             ? { kind: 'economy', itemId: entry.itemId, name: item.name, emoji: item.emoji, description: item.description, quantity: entry.quantity, section: item.category === 'jobs' ? 'Herramientas de oficio' : 'Economía', filter: 'economy', usable: item.usable }
             : good ? { kind: 'economy', itemId: good.id, name: good.name, emoji: good.emoji, description: good.description, quantity: entry.quantity, section: 'Productos del negocio', filter: 'economy', usable: good.usable }
-                : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Artículo anterior', quantity: entry.quantity, section: 'Otros objetos', filter: 'economy', usable: false };
+                : clothing ? { kind: 'economy', itemId: clothing.id, name: clothing.name, emoji: clothing.emoji, description: `Prenda obtenida en un robo · valor ${money.format(clothing.value)} monedas.`, quantity: entry.quantity, section: 'Ropa robada', filter: 'economy', usable: false }
+                    : { kind: 'legacy', itemId: entry.itemId, name: legacyNames.get(entry.itemId) ?? entry.itemId, emoji: '📦', description: 'Artículo anterior', quantity: entry.quantity, section: 'Otros objetos', filter: 'economy', usable: false };
     });
     const rpgRows = rpgInventory.flatMap((entry) => {
         const item = rpgItems.find((candidate) => candidate.id === entry.itemId);
