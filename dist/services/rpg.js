@@ -1,9 +1,10 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { db } from '../storage/database.js';
 import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
 import { economyPool, insertLedger, withEconomyTransaction } from '../storage/economy-database.js';
 import { getProductPriceQuote, recordProductSaleMysql, recordProductSaleSqlite } from './product-market.js';
+const RPG_REPLACEMENT_EGG_COST = 50;
 const coreRpgItems = [
     { id: 'rpg_potion', name: 'Poción menor', emoji: '🧪', rarity: 'Común', category: 'Curación', cost: 100, description: 'Recupera 30 PV.', effect: 'heal', power: 30 },
     { id: 'rpg_ether', name: 'Éter de viaje', emoji: '🔹', rarity: 'Común', category: 'Energía', cost: 85, description: 'Recupera 35 de energía.', effect: 'energy', power: 35 },
@@ -866,6 +867,10 @@ async function changeBalanceMysql(connection, guildId, userId, amount, reason, r
         await insertLedger(connection, { guildId, userId, amount, reason, reference: ref, createdAt: at });
     return { ok: true, balance: balance + amount };
 }
+async function lockEconomyAccountMysql(connection, guildId, userId, at = now()) {
+    await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
+    await connection.execute('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
+}
 function changeBalanceSqlite(guildId, userId, amount, reason, ref, at = now()) {
     db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE, at, at);
     const account = db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId);
@@ -898,6 +903,20 @@ export async function getRpgPet(guildId, userId) {
         }
     }
     return sqlitePet(guildId, userId);
+}
+export async function getRpgEggPrice(guildId, userId) {
+    guildId = GLOBAL_SCOPE_ID;
+    if (economyPool) {
+        const connection = await economyPool.getConnection();
+        try {
+            const [rows] = await connection.execute('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+            return rows.length ? RPG_REPLACEMENT_EGG_COST : 0;
+        }
+        finally {
+            connection.release();
+        }
+    }
+    return db.prepare('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1').get(guildId, userId) ? RPG_REPLACEMENT_EGG_COST : 0;
 }
 export async function renameRpgPet(guildId, userId, requestedName) {
     guildId = GLOBAL_SCOPE_ID;
@@ -978,15 +997,37 @@ export async function adoptRpgPet(guildId, userId, name, element) {
     const at = now();
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
+            const [existingPet] = await connection.execute('SELECT 1 FROM rpg_pets WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+            if (existingPet.length)
+                return { ok: false, reason: 'already_has_pet' };
+            await lockEconomyAccountMysql(connection, guildId, userId, at);
+            if (await mysqlPet(connection, guildId, userId, true))
+                return { ok: false, reason: 'already_has_pet' };
+            const [history] = await connection.execute('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
+            const pricePaid = history.length ? RPG_REPLACEMENT_EGG_COST : 0;
+            if (pricePaid) {
+                const payment = await changeBalanceMysql(connection, guildId, userId, -RPG_REPLACEMENT_EGG_COST, 'rpg_replacement_egg', `rpg-egg:${userId}:${randomUUID()}`, at);
+                if (!payment.ok)
+                    return { ok: false, reason: 'insufficient_funds' };
+            }
             const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)', [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
             if (result.affectedRows === 0)
                 return { ok: false, reason: 'already_has_pet' };
-            return { ok: true, pet };
+            return { ok: true, pet, pricePaid };
         });
     const adopt = db.transaction(() => {
+        if (sqlitePet(guildId, userId))
+            return { ok: false, reason: 'already_has_pet' };
+        const hasReleasedPet = Boolean(db.prepare('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1').get(guildId, userId));
+        const pricePaid = hasReleasedPet ? RPG_REPLACEMENT_EGG_COST : 0;
+        if (pricePaid) {
+            const payment = changeBalanceSqlite(guildId, userId, -RPG_REPLACEMENT_EGG_COST, 'rpg_replacement_egg', `rpg-egg:${userId}:${randomUUID()}`, at);
+            if (!payment.ok)
+                return { ok: false, reason: 'insufficient_funds' };
+        }
         const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
-        return result.changes ? { ok: true, pet } : { ok: false, reason: 'already_has_pet' };
+        return result.changes ? { ok: true, pet, pricePaid } : { ok: false, reason: 'already_has_pet' };
     });
     return adopt.immediate();
 }
@@ -1079,17 +1120,38 @@ export async function adminEditRpgPet(guildId, userId, edit) {
     });
     return run.immediate();
 }
-export async function releaseRpgPet(guildId, userId) {
+async function removeRpgPet(guildId, userId, recordRelease) {
     guildId = GLOBAL_SCOPE_ID;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
+            if (recordRelease) {
+                const [existingPet] = await connection.execute('SELECT 1 FROM rpg_pets WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+                if (!existingPet.length)
+                    return false;
+                await lockEconomyAccountMysql(connection, guildId, userId);
+                if (!await mysqlPet(connection, guildId, userId, true))
+                    return false;
+            }
             const [result] = await connection.execute('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?', [guildId, userId]);
-            return Number(result.affectedRows) > 0;
+            const released = Number(result.affectedRows) > 0;
+            if (released && recordRelease)
+                await connection.execute('INSERT IGNORE INTO rpg_pet_history (guild_id,user_id,released_at) VALUES (?,?,?)', [guildId, userId, now()]);
+            return released;
         });
-    return db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+    const at = now();
+    const remove = db.transaction(() => {
+        const deleted = db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+        if (deleted && recordRelease)
+            db.prepare('INSERT OR IGNORE INTO rpg_pet_history (guild_id,user_id,released_at) VALUES (?,?,?)').run(guildId, userId, at);
+        return deleted;
+    });
+    return remove.immediate();
+}
+export async function releaseRpgPet(guildId, userId) {
+    return removeRpgPet(guildId, userId, true);
 }
 export async function adminRemoveRpgPet(guildId, userId) {
-    return releaseRpgPet(guildId, userId);
+    return removeRpgPet(guildId, userId, false);
 }
 const rollBetween = (range) => range[0] + randomInt(range[1] - range[0] + 1);
 const replacePetName = (line, petName) => line.replaceAll('{name}', petName);

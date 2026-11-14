@@ -20,7 +20,7 @@ import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js'
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
 import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, getPersonalLoanOverview, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BankInterestDashboard, type BankResult, type BlackjackView, type PersonalLoanOverview, type RoosterDuelView } from '../services/economy.js';
-import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
+import { getExpeditionLogPage, getLearnableRpgMoves, getRpgEggPrice, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { getProductPriceQuote, getProductPriceQuotes } from '../services/product-market.js';
 import { renderEggCard, renderPetCard, renderPvpDuelCard, rpgEggOptions } from './rpg-art.js';
@@ -254,7 +254,7 @@ function statBar(value: number, max: number, width = 10): string {
 export async function rpgPanel(guildId: string, userId: string, username: string, foodPage = 0) {
   const pet = await getRpgPet(guildId, userId);
   const container = new ContainerBuilder().setAccentColor(pet ? ({ 'Común': 0x94a3b8, 'Poco común': 0x22c55e, 'Raro': 0x3b82f6, 'Épico': 0xa855f7, 'Legendario': 0xf59e0b } as const)[pet.rarity] : 0x14b8a6);
-  if (!pet) return rpgAdoptionPanel(username, 'Fuego');
+  if (!pet) return rpgAdoptionPanel(guildId, userId, username, 'Fuego');
   const inventory = await getRpgInventory(guildId, userId);
   const foods = inventory.flatMap((entry) => {
     const item = rpgItems.find((candidate) => candidate.id === entry.itemId && candidate.effect === 'snack');
@@ -288,7 +288,7 @@ export async function rpgPanel(guildId: string, userId: string, username: string
 
 export async function rpgExplorePanel(guildId: string, userId: string, username: string, requestedZoneId?: string) {
   const pet = await getRpgPet(guildId, userId);
-  if (!pet) return rpgAdoptionPanel(username, 'Fuego');
+  if (!pet) return rpgAdoptionPanel(guildId, userId, username, 'Fuego');
   const zone = rpgZones.find((candidate) => candidate.id === requestedZoneId) ?? rpgZones[0]!;
   const xpNext = 100 + (pet.level - 1) * 45;
   const now = Math.floor(Date.now() / 1000);
@@ -591,11 +591,12 @@ export async function rpgMissionsPanel(guildId: string, userId: string) {
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }
 
-export async function rpgAdoptionPanel(username: string, selectedElement: PetElement = 'Fuego', notice = '') {
+export async function rpgAdoptionPanel(guildId: string, userId: string, username: string, selectedElement: PetElement = 'Fuego', notice = '') {
   const option = rpgEggOptions.find((entry) => entry.element === selectedElement) ?? rpgEggOptions[0]!;
+  const eggPrice = await getRpgEggPrice(guildId, userId);
   const card = await renderEggCard(username, option.element);
   const container = new ContainerBuilder().setAccentColor(0x14b8a6)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥚 INCUBADORA DEL GREMIO\n${notice ? `${notice}\n\n` : ''}Elige una afinidad. La mascota sale al azar entre las especies de ese elemento.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🥚 INCUBADORA DEL GREMIO\n${notice ? `${notice}\n\n` : ''}Elige una afinidad. La mascota sale al azar entre las especies de ese elemento.\n${eggPrice ? `🥚 Huevo de reemplazo: **${money.format(eggPrice)} monedas**.` : '✨ Tu primera adopción es gratuita.'}`))
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL('attachment://rpg-egg-selection.png').setDescription(`${option.title} · afinidad ${option.element}`),
     ))
@@ -604,7 +605,7 @@ export async function rpgAdoptionPanel(username: string, selectedElement: PetEle
         .addOptions(rpgEggOptions.map((entry) => ({ label: `${entry.title} · ${entry.element}`, value: entry.element, emoji: entry.emoji, description: entry.flavor, default: entry.element === option.element }))),
     ))
     .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`rpg:hatch:${option.element}`).setLabel(`Eclosionar · ${option.element}`).setEmoji('🐾').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`rpg:hatch:${option.element}`).setLabel(eggPrice ? `Eclosionar · ${money.format(eggPrice)} monedas` : `Eclosionar gratis · ${option.element}`).setEmoji('🐾').setStyle(ButtonStyle.Success),
     ));
   return { components: [container], files: [card], flags: ['IsComponentsV2', 'Ephemeral'] as const };
 }

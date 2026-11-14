@@ -90,8 +90,11 @@ export const rpgCommand: BotCommand = {
     if (action === 'adoptar') {
       const element = interaction.options.getString('elemento', true) as PetElement;
       const result = await adoptRpgPet(guildId, userId, interaction.options.getString('nombre') ?? '', element);
-      if (result.ok) await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username));
-      else await interaction.reply({ content: result.reason === 'invalid_name' ? 'El nombre debe tener de 2 a 24 caracteres y no puede incluir menciones ni formato de Discord.' : 'Ya tienes una mascota. Puedes verla con `/rpg panel` desde cualquier servidor.', flags: MessageFlags.Ephemeral });
+      if (result.ok) {
+        await interaction.reply(await rpgPanel(guildId, userId, interaction.user.username));
+        if (result.pricePaid) await interaction.followUp({ content: `🥚 Huevo conseguido. Se descontaron **${result.pricePaid} monedas**.`, flags: MessageFlags.Ephemeral });
+      }
+      else await interaction.reply({ content: result.reason === 'invalid_name' ? 'El nombre debe tener de 2 a 24 caracteres y no puede incluir menciones ni formato de Discord.' : result.reason === 'insufficient_funds' ? 'Necesitas 50 monedas para conseguir otro huevo.' : 'Ya tienes una mascota. Puedes verla con `/rpg panel` desde cualquier servidor.', flags: MessageFlags.Ephemeral });
       return;
     }
     if (action === 'explorar') {

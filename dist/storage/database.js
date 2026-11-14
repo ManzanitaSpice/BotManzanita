@@ -432,6 +432,13 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
+  CREATE TABLE IF NOT EXISTS rpg_pet_history (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    released_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
   CREATE TABLE IF NOT EXISTS rpg_inventory (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,

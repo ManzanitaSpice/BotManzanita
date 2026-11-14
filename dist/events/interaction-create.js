@@ -762,7 +762,7 @@ export function registerInteractionHandler(client) {
                 }
                 if (interaction.customId === 'rpg:egg:element' && interaction.isStringSelectMenu()) {
                     const selected = rpgEggOptions.find((entry) => entry.element === interaction.values[0]);
-                    await interaction.update(componentUpdate(await rpgAdoptionPanel(interaction.user.username, selected?.element ?? 'Fuego')));
+                    await interaction.update(componentUpdate(await rpgAdoptionPanel(guildId, interaction.user.id, interaction.user.username, selected?.element ?? 'Fuego')));
                     return;
                 }
                 if (interaction.customId.startsWith('rpg:hatch:') && interaction.isButton()) {
@@ -773,10 +773,15 @@ export function registerInteractionHandler(client) {
                     }
                     const adopted = await adoptRpgPet(guildId, interaction.user.id, '', element);
                     if (!adopted.ok) {
-                        await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
+                        const panel = adopted.reason === 'insufficient_funds'
+                            ? await rpgAdoptionPanel(guildId, interaction.user.id, interaction.user.username, element, '❌ Necesitas 50 monedas para conseguir este huevo de reemplazo.')
+                            : await rpgPanel(guildId, interaction.user.id, interaction.user.username);
+                        await interaction.update(componentUpdate(panel));
                         return;
                     }
                     await interaction.update(componentUpdate(await rpgPanel(guildId, interaction.user.id, interaction.user.username)));
+                    if (adopted.pricePaid)
+                        await interaction.followUp({ content: `🥚 Huevo conseguido. Se descontaron **${adopted.pricePaid} monedas**.`, flags: MessageFlags.Ephemeral });
                     return;
                 }
                 if (interaction.customId === 'rpg:shop') {

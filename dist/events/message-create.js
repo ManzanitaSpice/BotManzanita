@@ -664,7 +664,7 @@ async function routeMessage(message) {
             const released = await releaseRpgPet(guildId, userId);
             if (!released)
                 return say(message, 'No tienes una mascota para liberar. Usa `a!pet` para abrir la incubadora.');
-            await sendPanel(message, await rpgAdoptionPanel(message.author.username, 'Fuego', '✅ Mascota liberada. Tu nueva adopción empezará desde nivel 1.'));
+            await sendPanel(message, await rpgAdoptionPanel(guildId, userId, message.author.username, 'Fuego', '✅ Mascota liberada. La nueva adopción empezará desde nivel 1 y costará 50 monedas.'));
             return;
         }
         if (['bitacora', 'bitácora', 'log', 'logs', 'historial'].includes(action)) {
@@ -700,14 +700,16 @@ async function routeMessage(message) {
         if (['adopt', 'adoptar'].includes(action)) {
             const element = rpgEggOptions.find((entry) => entry.element.toLocaleLowerCase() === (args[0] ?? '').toLocaleLowerCase());
             if (!element) {
-                await sendPanel(message, await rpgAdoptionPanel(message.author.username));
+                await sendPanel(message, await rpgAdoptionPanel(guildId, userId, message.author.username));
                 return;
             }
             const { adoptRpgPet } = await import('../services/rpg.js');
             const result = await adoptRpgPet(guildId, userId, args.slice(1).join(' '), element.element);
             if (!result.ok)
-                return say(message, result.reason === 'invalid_name' ? 'Nombre inválido.' : 'Ya tienes mascota.');
+                return say(message, result.reason === 'invalid_name' ? 'Nombre inválido.' : result.reason === 'insufficient_funds' ? 'Necesitas 50 monedas para conseguir otro huevo.' : 'Ya tienes mascota.');
             await sendPanel(message, await rpgPanel(guildId, userId, message.author.username));
+            if (result.pricePaid)
+                await say(message, `🥚 Huevo conseguido. Se descontaron **${result.pricePaid} monedas**.`);
             return;
         }
         if (['name', 'nombrar'].includes(action)) {

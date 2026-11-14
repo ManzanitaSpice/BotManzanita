@@ -421,6 +421,14 @@ export async function initializeEconomyDatabase(): Promise<void> {
       KEY idx_rpg_pets_ranking (guild_id, level, xp)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS rpg_pet_history (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      released_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id,user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   await ensureColumn('rpg_pets', 'element', "VARCHAR(16) NOT NULL DEFAULT 'Neutral'");
   await ensureColumn('rpg_pets', 'specialization', "VARCHAR(24) NOT NULL DEFAULT 'Explorador'");
   await ensureColumn('rpg_pets', 'hunger', 'TINYINT UNSIGNED NOT NULL DEFAULT 80');

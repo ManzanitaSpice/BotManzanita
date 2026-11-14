@@ -1,5 +1,5 @@
 import { GLOBAL_SCOPE_ID } from '../storage/global-scope.js';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../storage/database.js';
 import { ECONOMY_STARTING_BALANCE } from '../storage/economy-defaults.js';
@@ -23,6 +23,7 @@ export type RpgPet = {
   equipment: Record<string, string>; expeditionEffects: { safety: number; luck: number; haste: number; bonusXp: number }; expeditionMemory: ExpeditionMemory;
   knownMoves: string[]; equippedMoves: string[]; moveProgress: Record<string, { level: number; xp: number }>; movePoints: number; freeNameUsed: boolean;
 };
+const RPG_REPLACEMENT_EGG_COST = 50;
 type PetData = {
   name: string; species: string; rarity: PetRarity; element: PetElement | 'Neutral'; specialization: PetSpecialization; level: number; xp: number;
   strength: number; defense: number; agility: number; hp: number; maxHp: number;
@@ -833,6 +834,10 @@ async function changeBalanceMysql(connection: PoolConnection, guildId: string, u
   if (amount) await insertLedger(connection, { guildId, userId, amount, reason, reference: ref, createdAt: at });
   return { ok: true as const, balance: balance + amount };
 }
+async function lockEconomyAccountMysql(connection: PoolConnection, guildId: string, userId: string, at = now()) {
+  await connection.execute('INSERT IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)', [guildId, userId, ECONOMY_STARTING_BALANCE, at, at]);
+  await connection.execute<RowDataPacket[]>('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
+}
 function changeBalanceSqlite(guildId: string, userId: string, amount: number, reason: string, ref: string, at = now()) {
   db.prepare('INSERT OR IGNORE INTO economy_accounts (guild_id,user_id,balance,created_at,updated_at) VALUES (?,?,?,?,?)').run(guildId, userId, ECONOMY_STARTING_BALANCE, at, at);
   const account = db.prepare('SELECT balance FROM economy_accounts WHERE guild_id=? AND user_id=?').get(guildId, userId) as { balance: number };
@@ -856,6 +861,17 @@ export async function getRpgPet(guildId: string, userId: string): Promise<RpgPet
   guildId = GLOBAL_SCOPE_ID;
   if (economyPool) { const connection = await economyPool.getConnection(); try { return await mysqlPet(connection, guildId, userId); } finally { connection.release(); } }
   return sqlitePet(guildId, userId);
+}
+export async function getRpgEggPrice(guildId: string, userId: string): Promise<number> {
+  guildId = GLOBAL_SCOPE_ID;
+  if (economyPool) {
+    const connection = await economyPool.getConnection();
+    try {
+      const [rows] = await connection.execute<RowDataPacket[]>('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+      return rows.length ? RPG_REPLACEMENT_EGG_COST : 0;
+    } finally { connection.release(); }
+  }
+  return db.prepare('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1').get(guildId, userId) ? RPG_REPLACEMENT_EGG_COST : 0;
 }
 export async function renameRpgPet(guildId: string, userId: string, requestedName: string): Promise<
   | { ok: true; pet: RpgPet }
@@ -903,7 +919,7 @@ export async function careForRpgPet(guildId: string, userId: string): Promise<
   return run.immediate();
 }
 
-export async function adoptRpgPet(guildId: string, userId: string, name: string, element?: PetElement): Promise<{ ok: true; pet: RpgPet } | { ok: false; reason: 'already_has_pet' | 'invalid_name' }> {
+export async function adoptRpgPet(guildId: string, userId: string, name: string, element?: PetElement): Promise<{ ok: true; pet: RpgPet; pricePaid: number } | { ok: false; reason: 'already_has_pet' | 'invalid_name' | 'insufficient_funds' }> {
   guildId = GLOBAL_SCOPE_ID;
   const normalizedName = name.trim().replace(/\s+/g, ' ');
   if (normalizedName && (normalizedName.length < 2 || normalizedName.length > 24 || /[\r\n@<>`*_~|]/.test(normalizedName))) return { ok: false, reason: 'invalid_name' };
@@ -917,15 +933,32 @@ export async function adoptRpgPet(guildId: string, userId: string, name: string,
     knownMoves: starterMoves(chosen.element), equippedMoves: starterMoves(chosen.element), moveProgress: {}, movePoints: 0, freeNameUsed: Boolean(normalizedName) };
   const at = now();
   if (economyPool) return withEconomyTransaction(async (connection) => {
+    const [existingPet] = await connection.execute<RowDataPacket[]>('SELECT 1 FROM rpg_pets WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+    if (existingPet.length) return { ok: false as const, reason: 'already_has_pet' as const };
+    await lockEconomyAccountMysql(connection, guildId, userId, at);
+    if (await mysqlPet(connection, guildId, userId, true)) return { ok: false as const, reason: 'already_has_pet' as const };
+    const [history] = await connection.execute<RowDataPacket[]>('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? FOR UPDATE', [guildId, userId]);
+    const pricePaid = history.length ? RPG_REPLACEMENT_EGG_COST : 0;
+    if (pricePaid) {
+      const payment = await changeBalanceMysql(connection, guildId, userId, -RPG_REPLACEMENT_EGG_COST, 'rpg_replacement_egg', `rpg-egg:${userId}:${randomUUID()}`, at);
+      if (!payment.ok) return { ok: false as const, reason: 'insufficient_funds' as const };
+    }
     const [result] = await connection.execute('INSERT IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,last_explore_at,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,NULL,?,?,?,?,?,0,?,?,?)',
       [guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, '{}', '{}', JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at]);
     if ((result as { affectedRows: number }).affectedRows === 0) return { ok: false as const, reason: 'already_has_pet' as const };
-    return { ok: true as const, pet };
+    return { ok: true as const, pet, pricePaid };
   });
   const adopt = db.transaction(() => {
+    if (sqlitePet(guildId, userId)) return { ok: false as const, reason: 'already_has_pet' as const };
+    const hasReleasedPet = Boolean(db.prepare('SELECT 1 FROM rpg_pet_history WHERE guild_id=? AND user_id=? LIMIT 1').get(guildId, userId));
+    const pricePaid = hasReleasedPet ? RPG_REPLACEMENT_EGG_COST : 0;
+    if (pricePaid) {
+      const payment = changeBalanceSqlite(guildId, userId, -RPG_REPLACEMENT_EGG_COST, 'rpg_replacement_egg', `rpg-egg:${userId}:${randomUUID()}`, at);
+      if (!payment.ok) return { ok: false as const, reason: 'insufficient_funds' as const };
+    }
     const result = db.prepare(`INSERT OR IGNORE INTO rpg_pets (guild_id,user_id,name,species,rarity,element,specialization,level,xp,strength,defense,agility,hp,max_hp,energy,max_energy,equipment_json,expedition_effects_json,expedition_memory_json,known_moves_json,equipped_moves_json,move_points,free_name_used,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,1,0,?,?,?,?,?,100,100,'{}','{}',?,?,?,0,?,?,?)`).run(guildId, userId, pet.name, pet.species, pet.rarity, pet.element, pet.specialization, pet.strength, pet.defense, pet.agility, pet.hp, pet.maxHp, JSON.stringify(pet.expeditionMemory), serializeKnownMoveData(pet), JSON.stringify(pet.equippedMoves), Number(pet.freeNameUsed), at, at);
-    return result.changes ? { ok: true as const, pet } : { ok: false as const, reason: 'already_has_pet' as const };
+    return result.changes ? { ok: true as const, pet, pricePaid } : { ok: false as const, reason: 'already_has_pet' as const };
   });
   return adopt.immediate();
 }
@@ -996,17 +1029,35 @@ export async function adminEditRpgPet(
   return run.immediate();
 }
 
-export async function releaseRpgPet(guildId: string, userId: string): Promise<boolean> {
+async function removeRpgPet(guildId: string, userId: string, recordRelease: boolean): Promise<boolean> {
   guildId = GLOBAL_SCOPE_ID;
   if (economyPool) return withEconomyTransaction(async (connection) => {
+    if (recordRelease) {
+      const [existingPet] = await connection.execute<RowDataPacket[]>('SELECT 1 FROM rpg_pets WHERE guild_id=? AND user_id=? LIMIT 1', [guildId, userId]);
+      if (!existingPet.length) return false;
+      await lockEconomyAccountMysql(connection, guildId, userId);
+      if (!await mysqlPet(connection, guildId, userId, true)) return false;
+    }
     const [result] = await connection.execute('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?', [guildId, userId]);
-    return Number((result as { affectedRows: number }).affectedRows) > 0;
+    const released = Number((result as { affectedRows: number }).affectedRows) > 0;
+    if (released && recordRelease) await connection.execute('INSERT IGNORE INTO rpg_pet_history (guild_id,user_id,released_at) VALUES (?,?,?)', [guildId, userId, now()]);
+    return released;
   });
-  return db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+  const at = now();
+  const remove = db.transaction(() => {
+    const deleted = db.prepare('DELETE FROM rpg_pets WHERE guild_id=? AND user_id=?').run(guildId, userId).changes > 0;
+    if (deleted && recordRelease) db.prepare('INSERT OR IGNORE INTO rpg_pet_history (guild_id,user_id,released_at) VALUES (?,?,?)').run(guildId, userId, at);
+    return deleted;
+  });
+  return remove.immediate();
+}
+
+export async function releaseRpgPet(guildId: string, userId: string): Promise<boolean> {
+  return removeRpgPet(guildId, userId, true);
 }
 
 export async function adminRemoveRpgPet(guildId: string, userId: string): Promise<boolean> {
-  return releaseRpgPet(guildId, userId);
+  return removeRpgPet(guildId, userId, false);
 }
 
 type ExpeditionSimulation = {
