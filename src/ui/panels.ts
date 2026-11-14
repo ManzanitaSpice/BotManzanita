@@ -19,7 +19,7 @@ import type { Player, Track } from 'lavalink-client';
 import type { FavoriteTrack, SavedPlaylist } from '../services/music-library.js';
 import { getPersistedMusicQueue } from '../storage/music-queue-store.js';
 import { profileShopCategories, profileShopItems } from '../data/profile-shop.js';
-import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BankInterestDashboard, type BankResult, type BlackjackView, type RoosterDuelView } from '../services/economy.js';
+import { BANK_APR_CEILING_BPS, BANK_APR_FLOOR_BPS, BANK_BASE_APR_BPS, bankAction, businessGoods, DAILY_AMOUNT, getAccountBalances, getBankInterestDashboard, getBalance, getBusinessOverviewForUser, getInventory, getJobRoster, getJobToolStatuses, getJobToolUpgradeQuote, getPersonalLoanOverview, jobProductCategorySize, jobToolMaterial, JOB_TOOL_DURABILITY_PER_UPGRADE, JOB_XP_PER_SHIFT, MAX_JOB_LEVEL, storeItems, type BankInterestDashboard, type BankResult, type BlackjackView, type PersonalLoanOverview, type RoosterDuelView } from '../services/economy.js';
 import { getExpeditionLogPage, getLearnableRpgMoves, getRpgInventory, getRpgLeaderboard, getRpgMove, getRpgMovePower, getRpgMoveProgress, getRpgMoveTrainingRequirements, getRpgPet, getRpgQuests, getRpgTrainingRequirements, RPG_BATTLE_COOLDOWN, RPG_CARE_COOLDOWN, RPG_DAILY_XP_CAP, RPG_EXPLORE_COOLDOWN, RPG_TRAIN_COOLDOWN, RPG_TRAIN_COIN_COST, RPG_TRAIN_ENERGY_COST, RPG_TRAIN_HUNGER_COST, RPG_TRAIN_MIN_HUNGER, rpgItems, rpgZones, type ExpeditionOutcome, type PetElement, type RpgPvpMatch } from '../services/rpg.js';
 import { filterStoreCatalog, getStoreSnapshot, storeCategoryOptions, type StoreKind } from '../services/store.js';
 import { getProductPriceQuote, getProductPriceQuotes } from '../services/product-market.js';
@@ -165,6 +165,7 @@ export async function economyPanel(guildId: string, userId: string, username = `
       new StringSelectMenuBuilder().setCustomId('eco:section').setPlaceholder('Más opciones de economía').addOptions(
         { label: 'Inventario', value: 'inventory', emoji: '🎒', description: 'Revisar y usar tus objetos' },
         { label: 'Banco de monedas', value: 'bank', emoji: '🏦', description: 'Guardar o retirar tus monedas' },
+        { label: 'Préstamos', value: 'loans', emoji: '💳', description: 'Solicitar crédito y abonar tu deuda' },
         { label: 'Casino', value: 'casino', emoji: '🎰', description: 'Juegos y apuestas' },
         { label: 'Tienda completa', value: 'store', emoji: '🛍️', description: 'Herramientas, consumibles, personalización y RPG' },
         { label: businessSection, value: 'business', emoji: business && business.status !== 'land' ? '🏪' : '🏡', description: businessDescription },
@@ -910,7 +911,49 @@ export async function bankPanel(guildId: string, userId: string, bankSnapshot?: 
       new ButtonBuilder().setCustomId('eco:bank:deposit').setLabel('Depositar').setEmoji('📥').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('eco:bank:withdraw').setLabel('Retirar').setEmoji('📤').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('eco:bank:interest').setLabel('Mercado e interés').setEmoji('📊').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('eco:loan:open').setLabel('Préstamos').setEmoji('💳').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('eco:bank:refresh').setLabel('Actualizar').setEmoji('💹').setStyle(ButtonStyle.Secondary),
+    ))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('eco:back').setLabel('Economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    ));
+  return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };
+}
+
+export async function personalLoanPanel(guildId: string, userId: string, notice = '', overview?: PersonalLoanOverview) {
+  const loanOverview = overview ?? await getPersonalLoanOverview(guildId, userId);
+  const referenceApr = loanOverview.referenceAprBps / 100;
+  const loanApr = Math.min(4_500, Math.max(2_000, loanOverview.referenceAprBps + 1_800)) / 100;
+  const activeLoan = loanOverview.loan;
+  const foreclosureNotice = loanOverview.foreclosureNotice;
+  const now = Math.floor(Date.now() / 1000);
+  const bankruptcyDetails = activeLoan && activeLoan.bankruptAt !== null
+    ? activeLoan.foreclosedAt !== null
+      ? `\n\n## 🚨 Hipoteca ejecutada · <t:${activeLoan.foreclosedAt}:F>\nEl banco ya tomó la propiedad y aplicó **${money.format(activeLoan.collateralValue)} monedas** al préstamo; ese valor no se entregó en efectivo. Quedan **${money.format(activeLoan.balanceDue)} monedas**. Solo el trabajo y los pagos directos reducen esta deuda; el ingreso de cada turno se retiene automáticamente.`
+      : activeLoan.foreclosureAt !== null
+        ? `\n\n## 🏦 Bancarrota · propiedad hipotecada\nValor de liquidación estimado: **${money.format(activeLoan.collateralValue)} monedas**. Si no liquidas el préstamo antes de <t:${activeLoan.foreclosureAt}:F>, el banco ejecutará la propiedad. No se entregará ese valor en efectivo: se abonará directamente a la deuda. Mientras tanto, solo puedes generar ingresos trabajando; cada turno aplica automáticamente el pago al préstamo. Puedes recibir transferencias, pero no enviar dinero, vender productos ni recibir regalos de artículos.`
+        : `\n\n## ⚠️ Bancarrota\nNo hay terreno o negocio disponible como garantía. Solo puedes generar ingresos trabajando; cada turno se aplicará automáticamente al préstamo. Puedes recibir transferencias, pero no enviar dinero, vender productos ni recibir regalos de artículos.`
+    : '';
+  const loanDetails = activeLoan
+    ? `## 📌 Deuda vigente\n**Saldo por pagar:** ${money.format(activeLoan.balanceDue)} monedas\n**Préstamo inicial:** ${money.format(activeLoan.principal)} · comisión ${money.format(activeLoan.originationFee)} · interés pactado ${money.format(activeLoan.interestAmount)}\n**Tasa fijada:** ${activeLoan.aprBps / 100}% APR · **vencimiento:** <t:${activeLoan.dueAt}:R>${now >= activeLoan.dueAt ? ` · 🔴 vencido${activeLoan.lateFeePeriods ? ` (${activeLoan.lateFeePeriods} recargo(s) diario(s))` : ''}` : ''}\n**Billetera:** ${money.format(loanOverview.walletBalance)} · los abonos salen solo de la billetera.${bankruptcyDetails}`
+    : `## ✅ No tienes préstamos activos\n**Límite disponible:** ${money.format(loanOverview.creditLimit)} monedas · **referencia del banco:** ${referenceApr.toFixed(2)}% APR · **tu tasa fija:** ${loanApr.toFixed(2)}% APR.\nPlazo de **7 días** y comisión de apertura del **2%**. El interés del plazo se calcula al solicitarlo y el panel te muestra la deuda exacta. Tras cada 24 h de mora se añade 1% del principal, con tope de 10%.${foreclosureNotice ? `\n\n## 🧾 Resultado de la hipoteca · <t:${foreclosureNotice.foreclosedAt}:F>\nEl banco ejecutó tu propiedad y aplicó **${money.format(foreclosureNotice.appliedToDebt)} monedas** a la deuda; ese importe no se te entregó en efectivo. ${foreclosureNotice.cashSurplus ? `El excedente de **${money.format(foreclosureNotice.cashSurplus)} monedas** sí se acreditó a tu billetera.` : 'No hubo excedente en efectivo.'}` : ''}`;
+  const container = new ContainerBuilder().setAccentColor(activeLoan ? (activeLoan.bankruptAt !== null ? 0xef4444 : now >= activeLoan.dueAt ? 0xef4444 : 0xf59e0b) : 0x22c55e)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `# 💳 PRÉSTAMOS DEL BANCO\nCrédito personal con tasa fija calculada desde el mercado de ahorro del bot, más un margen de riesgo de 18 puntos porcentuales. Solo puedes mantener un préstamo activo. Mientras exista saldo pendiente, no puedes transferir monedas, vender productos, retar/aceptar duelos de gallos ni participar en robos entre jugadores. Sí puedes recibir transferencias.\n\n${loanDetails}${notice ? `\n\n${notice}` : ''}`))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...(activeLoan
+        ? [
+          new ButtonBuilder().setCustomId('eco:loan:pay').setLabel('Abonar').setEmoji('💸').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('eco:loan:payall').setLabel(`Liquidar ${money.format(activeLoan.balanceDue)}`).setEmoji('✅').setStyle(ButtonStyle.Primary).setDisabled(loanOverview.walletBalance < activeLoan.balanceDue),
+          new ButtonBuilder().setCustomId('eco:loan:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+        ]
+        : [
+          new ButtonBuilder().setCustomId('eco:loan:request').setLabel(`Solicitar hasta ${money.format(loanOverview.creditLimit)}`).setEmoji('💳').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('eco:loan:refresh').setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+        ]),
+    ))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('eco:loan:bank').setLabel('Volver al banco').setEmoji('🏦').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('eco:back').setLabel('Economía').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
     ));
   return { components: [container], flags: ['IsComponentsV2', 'Ephemeral'] as const };

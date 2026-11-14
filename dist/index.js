@@ -6,7 +6,7 @@ import { registerInteractionHandler } from './events/interaction-create.js';
 import { registerMessageCommandHandler } from './events/message-create.js';
 import './storage/database.js';
 import { initializeEconomyDatabase } from './storage/economy-database.js';
-import { accrueMaturedBankInterest, rebalanceBankInterest } from './services/economy.js';
+import { accrueMaturedBankInterest, rebalanceBankInterest, reconcilePersonalLoans } from './services/economy.js';
 import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js';
 import { initializeProfileStorage } from './services/profile.js';
 import { pruneExpiredFavorites, pruneExpiredMusicHistory, recordMusicHistory } from './services/music-library.js';
@@ -118,6 +118,22 @@ const scheduleBankInterestPayouts = async () => {
     }
 };
 void scheduleBankInterestPayouts();
+const schedulePersonalLoanReviews = async () => {
+    try {
+        const result = await reconcilePersonalLoans();
+        if (result.bankruptcies || result.foreclosures) {
+            console.log(`Revisión de préstamos: ${result.bankruptcies} bancarrota(s) nueva(s), ${result.foreclosures} ejecución(es) de garantía.`);
+        }
+        const timer = setTimeout(() => void schedulePersonalLoanReviews(), 15 * 60_000);
+        timer.unref();
+    }
+    catch (error) {
+        console.error('No se pudo revisar la mora de los préstamos; se reintentará en 5 minutos:', error);
+        const retryTimer = setTimeout(() => void schedulePersonalLoanReviews(), 5 * 60_000);
+        retryTimer.unref();
+    }
+};
+void schedulePersonalLoanReviews();
 await initializeProfileStorage();
 pruneExpiredFavorites();
 pruneExpiredMusicHistory();

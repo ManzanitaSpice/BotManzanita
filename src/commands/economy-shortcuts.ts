@@ -136,7 +136,7 @@ function createFishCommand(): BotCommand {
         return;
       }
       const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
-      if (!result.ok) { await interaction.reply({ content: result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.' : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`, flags: MessageFlags.Ephemeral }); return; }
+      if (!result.ok) { await interaction.reply({ content: result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.' : result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`, flags: MessageFlags.Ephemeral }); return; }
       await interaction.reply(economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
     },
   };
@@ -153,7 +153,8 @@ function createBlackjackCommand(name: '21' | 'bj'): BotCommand {
       }
       const result = await startBlackjack(interaction.guildId, interaction.user.id, interaction.options.getInteger('apuesta', true), interaction.id);
       if (!result.ok) {
-        const message = result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
+        const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+          : result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
         await interaction.reply({ content: `🃏 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -171,7 +172,7 @@ function createDailyCommand(): BotCommand {
         return;
       }
       const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
-      if (!result.ok) { await interaction.reply({ content: `⏳ Ya reclamaste tu diaria. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral }); return; }
+      if (!result.ok) { await interaction.reply({ content: result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `⏳ Ya reclamaste tu diaria. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral }); return; }
       await interaction.reply(economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
     },
   };
@@ -206,7 +207,7 @@ function createCrimeCommand(): BotCommand {
         return;
       }
       const result = await crime(interaction.guildId, interaction.user.id, interaction.id);
-      if (!result.ok) { await interaction.reply({ content: `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral }); return; }
+      if (!result.ok) { await interaction.reply({ content: result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral }); return; }
       await interaction.reply(economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
     },
   };
@@ -230,7 +231,7 @@ function createRobCommand(): BotCommand {
       const result = await robPlayer(interaction.guildId, interaction.user.id, target.id, target.username, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'self' ? 'No puedes robarte a ti mismo.'
-          : result.reason === 'target_empty' ? `${target.username} no tiene monedas ni artículos robables.`
+          : result.reason === 'target_empty' ? `${target.username} no tiene monedas en la billetera ni artículos robables. Sus ahorros del banco están protegidos.`
             : `Ya intentaste robar. Espera **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
         await interaction.editReply({ content: `🕵️ ${message}` });
         return;
@@ -256,7 +257,8 @@ function createRouletteCommand(): BotCommand {
         interaction.options.getInteger('cantidad', true),
         interaction.options.getString('color', true) as 'rojo' | 'negro' | 'verde', interaction.id);
       if (!result.ok) {
-        const message = result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes suficiente balance.';
+        const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+          : result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes suficiente balance.';
         await interaction.reply({ content: `🎰 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -326,7 +328,8 @@ function createPayCommand(): BotCommand {
       const result = await transferCoins(interaction.guildId, interaction.user.id, target.id, amount, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'self' ? 'No puedes enviarte monedas a ti mismo.'
-          : result.reason === 'insufficient_funds' ? 'No tienes suficiente balance.' : 'La cantidad no es válida.';
+          : result.reason === 'loan_active' ? 'No puedes enviar monedas mientras tengas un préstamo pendiente. Liquídalo primero desde /economia prestamos.'
+            : result.reason === 'insufficient_funds' ? 'No tienes suficiente balance.' : 'La cantidad no es válida.';
         await interaction.reply({ content: `💸 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }

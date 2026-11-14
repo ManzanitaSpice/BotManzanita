@@ -7,7 +7,7 @@ import { bankAction, businessGoods, claimDaily, consumeBusinessGood, createRoost
 import { addSavedTracks, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, rememberMusicPanel, rememberSearch, resumeSavedMusicQueue, searchTracks, type MusicEffect } from '../services/music.js';
 import { addFavorite, deletePlaylist, getFavorites, getMusicHistory, getPlaylist, getPlaylists, MAX_PLAYLISTS, MAX_PLAYLIST_TRACKS, removeFavorite, saveTracksToPlaylist, saveTrackToPlaylist, shufflePlaylist } from '../services/music-library.js';
 import { adminEditRpgPet, adminGrantRpgPet, adminRemoveRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, createRpgPvpChallenge, exploreRpg, getRpgQuests, getSpeciesCatalog, releaseRpgPet, rpgItems, rpgZones, trainRpgPet, useRpgItem } from '../services/rpg.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, leaderboardPanel, listPanel, musicPanel, personalLoanPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, searchResultsPanel, storePanel, playlistsPanel } from '../ui/panels.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addAdminAudit, adjustAdminCurrency, getAdminAudit, grantAdminRpgItem, inspectAdminUser, resetAdminCooldown, rollbackAdminCurrency, setAdminRobberyShield, type AdminCurrency } from '../services/admin.js';
 import { createAnimeReaction, findAnimeReaction } from '../services/reactions.js';
@@ -285,7 +285,7 @@ async function routeMessage(message: Message): Promise<void> {
       const item = businessGoods.find((entry) => entry.id === itemQuery || entry.name.toLocaleLowerCase() === itemQuery || entry.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalized);
       if (!item) return say(message, 'Uso: a!negocio vender articulo [cantidad]. Consulta tus productos en a!inventory.');
       const result = await sellBusinessGood(guildId, userId, item.id, hasQuantity ? quantityCandidate : 1, message.id);
-      return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
+      return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'loan_active' ? 'No puedes vender mientras tengas un préstamo pendiente. Liquídalo con `a!prestamos`.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
     }
     return sendPanel(message, await businessPanel(guildId, userId));
   }
@@ -297,11 +297,11 @@ async function routeMessage(message: Message): Promise<void> {
     const item = businessGoods.find((entry) => entry.id === itemQuery || entry.name.toLocaleLowerCase() === itemQuery || entry.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalized);
     if (!item) return say(message, 'Uso: a!vender articulo [cantidad].');
     const result = await sellBusinessGood(guildId, userId, item.id, hasQuantity ? quantityCandidate : 1, message.id);
-    return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
+    return say(message, result.ok ? result.message ?? 'Venta completada.' : result.reason === 'loan_active' ? 'No puedes vender mientras tengas un préstamo pendiente. Liquídalo con `a!prestamos`.' : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.' : result.reason === 'quantity' ? 'La cantidad debe ser un entero entre 1 y 1000.' : 'Ese producto no se puede vender.');
   }
   if (['daily', 'd', 'diaria'].includes(command)) {
     const result = await claimDaily(guildId, userId, message.id);
-    if (!result.ok) return say(message, `⏳ Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    if (!result.ok) return say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
     return sendPanel(message, economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));
   }
   if (['job', 'jobs', 'empleo', 'empleos', 'trabajo'].includes(command)) {
@@ -347,44 +347,44 @@ async function routeMessage(message: Message): Promise<void> {
       const duelBet = Number(args.find((arg) => /^\d+$/.test(arg)));
       if (!Number.isSafeInteger(duelBet) || duelBet < 1 || duelBet > 100_000) return say(message, 'Uso: `a!gallo @persona apuesta` · ambos arriesgan la misma cantidad, de 1 a 100000 monedas.');
       const duel = await createRoosterDuel(guildId, userId, message.author.username, opponent.id, opponent.username, duelBet);
-      if (!duel.ok) return say(message, duel.reason === 'self' ? 'No puedes retarte a ti mismo.' : duel.reason === 'insufficient_funds' ? 'No tienes saldo suficiente para cubrir tu parte de la apuesta.' : duel.reason === 'busy' ? 'Tú o esa persona ya tienen un reto de gallos pendiente.' : 'La apuesta debe ser de 1 a 100000 monedas.');
+      if (!duel.ok) return say(message, duel.reason === 'self' ? 'No puedes retarte a ti mismo.' : duel.reason === 'loan_active' ? 'No se puede hacer el duelo: una de las cuentas tiene un préstamo pendiente.' : duel.reason === 'insufficient_funds' ? 'No tienes saldo suficiente para cubrir tu parte de la apuesta.' : duel.reason === 'busy' ? 'Tú o esa persona ya tienen un reto de gallos pendiente.' : 'La apuesta debe ser de 1 a 100000 monedas.');
       await message.reply({ ...roosterDuelPanel(duel.duel), allowedMentions: { users: [opponent.id], repliedUser: false } });
       return;
     }
     const bet = Number(args[0]);
     if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!gallo apuesta` contra la máquina, `a!gallo @persona apuesta` para un duelo o `a!gallo nombre Nombre` para nombrar tu gallo. Apuesta entre 1 y 100000 monedas.');
     const result = await playRoosterFight(guildId, userId, bet, message.id);
-    if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
+    if (!result.ok) return say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
     return sendPanel(message, economyActionPanel(`🐓 Duelo de ${result.roosterName}`, result.message, result.won ? result.payout - result.bet : -result.bet, result.balance));
   }
   if (['slots', 'slot', 'tragamonedas', 'machine', 'maquina', 'máquina'].includes(command)) {
     const bet = Number(args[0]);
     if (!Number.isSafeInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!machine apuesta` · también puedes usar `a!slots` · apuesta entre 1 y 100000 monedas.');
     const result = await playSlots(guildId, userId, bet, message.id);
-    if (!result.ok) return say(message, result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
+    if (!result.ok) return say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : result.reason === 'invalid_bet' ? 'La apuesta debe ser de 1 a 100000 monedas.' : 'No tienes monedas suficientes para esa apuesta.');
     return sendPanel(message, economyActionPanel('🎰 Tragamonedas', `${result.reels.join('　│　')}\n${result.message}`, result.payout - result.bet, result.balance));
   }
   if (['fish', 'f', 'pescar'].includes(command)) {
     const result = await fish(guildId, userId, message.id);
-    if (!result.ok) return say(message, result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `a!shop` antes de usar `a!fish`.' : `🎣 Ya saliste a pescar. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+    if (!result.ok) return say(message, result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `a!shop` antes de usar `a!fish`.' : result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `🎣 Ya saliste a pescar. Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
     return sendPanel(message, economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance));
   }
   if (['crime', 'c', 'crimen'].includes(command)) {
     const result = await crime(guildId, userId, message.id);
-    if (!result.ok) return say(message, `🚨 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
+    if (!result.ok) return say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `🚨 Vuelve en ${formatCooldown(result.secondsRemaining)}.`);
     return sendPanel(message, economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
   }
   if (['rob', 'r', 'robar'].includes(command)) {
     const target = message.mentions.users.first();
     if (!target || target.bot) return say(message, 'Uso: `a!rob @persona`.');
     const result = await robPlayer(guildId, userId, target.id, target.username, message.id);
-    if (!result.ok) return say(message, result.reason === 'target_empty' ? 'Esa persona no tiene monedas ni artículos robables.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
+    if (!result.ok) return say(message, result.reason === 'loan_active' ? 'El banco bloqueó el robo entre estas cuentas mientras exista un préstamo pendiente.' : result.reason === 'target_empty' ? 'Esa persona no tiene monedas en la billetera ni artículos robables. Los ahorros del banco están protegidos.' : result.reason === 'self' ? 'No puedes robarte.' : `⏳ Vuelve en ${formatCooldown(result.secondsRemaining ?? 0)}.`);
     if (result.stolenItem) return say(message, result.message);
     return sendPanel(message, economyActionPanel(result.success ? '🕵️ Robo exitoso' : result.protected ? '🛡️ Robo bloqueado' : '🕵️ Robo fallido', result.message, result.success ? result.amount : -result.amount, result.balance, false));
   }
-  if (['roulette', 'rl', 'ruleta'].includes(command)) { const amount = Number(args[0]); const color = normalizeColor(args[1]); if (!Number.isInteger(amount) || !color) return say(message, 'Uso: `a!roulette cantidad rojo|negro|verde`.'); const result = await playRoulette(guildId, userId, amount, color, message.id); const ball = result.ok ? (result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde') : ''; return result.ok ? sendPanel(message, economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance)) : say(message, 'Apuesta inválida o saldo insuficiente.'); }
-  if (['itemroulette', 'itembet', 'apostar_objeto'].includes(command)) { const itemQuery = args.slice(0, -1).join('_').toLowerCase(); const color = normalizeColor(args.at(-1)); const item = storeItems.find((entry) => entry.id === itemQuery || entry.name.toLowerCase() === args.slice(0, -1).join(' ').toLowerCase()); if (!item || !color) return say(message, 'Uso: a!itembet cebo_premium rojo|negro|verde.'); const result = await playItemRoulette(guildId, userId, item.id, color, message.id); return result.ok ? sendPanel(message, economyActionPanel('🎒 Apuesta de objeto', result.message, result.payout ? result.payout : -item.cost, result.balance)) : say(message, result.reason === 'missing_item' ? 'No tienes ese artículo.' : 'Ese artículo no se puede apostar.'); }
-  if (['21', 'bj', 'blackjack'].includes(command)) { const bet = Number(args[0]); if (!Number.isInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!21 apuesta` (1–100000).'); const result = await startBlackjack(guildId, userId, bet, message.id); return result.ok ? sendPanel(message, blackjackPanel(result.view)) : say(message, result.reason === 'invalid_bet' ? 'Apuesta inválida.' : 'Saldo insuficiente.'); }
+  if (['roulette', 'rl', 'ruleta'].includes(command)) { const amount = Number(args[0]); const color = normalizeColor(args[1]); if (!Number.isInteger(amount) || !color) return say(message, 'Uso: `a!roulette cantidad rojo|negro|verde`.'); const result = await playRoulette(guildId, userId, amount, color, message.id); const ball = result.ok ? (result.result === 'rojo' ? '🔴 rojo' : result.result === 'negro' ? '⚫ negro' : '🟢 verde') : ''; return result.ok ? sendPanel(message, economyActionPanel('🎰 Ruleta', `La bola cayó en **${result.number} ${ball}**. ${result.message}`, result.payout - result.bet, result.balance)) : say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : 'Apuesta inválida o saldo insuficiente.'); }
+  if (['itemroulette', 'itembet', 'apostar_objeto'].includes(command)) { const itemQuery = args.slice(0, -1).join('_').toLowerCase(); const color = normalizeColor(args.at(-1)); const item = storeItems.find((entry) => entry.id === itemQuery || entry.name.toLowerCase() === args.slice(0, -1).join(' ').toLowerCase()); if (!item || !color) return say(message, 'Uso: a!itembet cebo_premium rojo|negro|verde.'); const result = await playItemRoulette(guildId, userId, item.id, color, message.id); return result.ok ? sendPanel(message, economyActionPanel('🎒 Apuesta de objeto', result.message, result.payout ? result.payout : -item.cost, result.balance)) : say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : result.reason === 'missing_item' ? 'No tienes ese artículo.' : 'Ese artículo no se puede apostar.'); }
+  if (['21', 'bj', 'blackjack'].includes(command)) { const bet = Number(args[0]); if (!Number.isInteger(bet) || bet < 1 || bet > 100_000) return say(message, 'Uso: `a!21 apuesta` (1–100000).'); const result = await startBlackjack(guildId, userId, bet, message.id); return result.ok ? sendPanel(message, blackjackPanel(result.view)) : say(message, result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : result.reason === 'invalid_bet' ? 'Apuesta inválida.' : 'Saldo insuficiente.'); }
   if (['bank', 'banco', 'deposit', 'depositar', 'ingresar', 'withdraw', 'retirar', 'sacar'].includes(command)) {
     const directAction = ['deposit', 'depositar', 'ingresar'].includes(command) ? 'deposit' : ['withdraw', 'retirar', 'sacar'].includes(command) ? 'withdraw' : undefined;
     const action = directAction ?? args[0]?.toLowerCase(); const amount = Number(directAction ? args[0] : args[1]);
@@ -396,11 +396,12 @@ async function routeMessage(message: Message): Promise<void> {
     if (directAction) return say(message, `Uso: \`a!${command} cantidad\`.`);
     await sendPanel(message, await bankPanel(guildId, userId)); return;
   }
+  if (['loan', 'loans', 'prestamo', 'prestamos'].includes(command)) { await sendPanel(message, await personalLoanPanel(guildId, userId)); return; }
   if (['shop', 'tienda'].includes(command)) { await sendPanel(message, await storePanel(guildId, userId, 'all', 0, undefined, '', undefined, message.author)); return; }
   if (command === 'premium') { const account = await getAccountBalances(guildId,userId); return say(message, `💎 Tienes **${money.format(account.premium)} gemas premium**.`); }
   if (['casino'].includes(command)) { await sendPanel(message, await casinoPanel(guildId, userId)); return; }
   if (['inv', 'inventory', 'inventario'].includes(command)) { await sendPanel(message, await inventoryPanel(guildId, userId)); return; }
-  if (['pay', 'pagar', 'dar', 'enviar', 'transferir', 'give-money', 'givemoney'].includes(command)) { const target = message.mentions.users.first(); const amount = Number(args.find((arg) => /^\d+$/.test(arg))); if (!target || target.bot || !Number.isSafeInteger(amount) || amount < 1) return say(message, 'Uso: `a!dar @persona cantidad` o `a!give-money @persona cantidad`.'); const result = await transferCoins(guildId, userId, target.id, amount, message.id); return say(message, result.ok ? `💸 Enviaste ${money.format(amount)} monedas a ${target}.` : result.reason === 'self' ? 'No puedes enviarte monedas.' : result.reason === 'insufficient_funds' ? 'No tienes saldo suficiente.' : 'Cantidad inválida.'); }
+  if (['pay', 'pagar', 'dar', 'enviar', 'transferir', 'give-money', 'givemoney'].includes(command)) { const target = message.mentions.users.first(); const amount = Number(args.find((arg) => /^\d+$/.test(arg))); if (!target || target.bot || !Number.isSafeInteger(amount) || amount < 1) return say(message, 'Uso: `a!dar @persona cantidad` o `a!give-money @persona cantidad`.'); const result = await transferCoins(guildId, userId, target.id, amount, message.id); return say(message, result.ok ? `💸 Enviaste ${money.format(amount)} monedas a ${target}.` : result.reason === 'loan_active' ? 'No puedes enviar monedas mientras tengas un préstamo pendiente. Liquídalo con `a!prestamos`.' : result.reason === 'self' ? 'No puedes enviarte monedas.' : result.reason === 'insufficient_funds' ? 'No tienes saldo suficiente.' : 'Cantidad inválida.'); }
   if (command === 'use') {
     const key = args.join('_').toLocaleLowerCase(); const query = args.join(' ').toLocaleLowerCase();
     const businessItem = businessGoods.find((candidate) => candidate.usable && (candidate.id === key || candidate.name.toLocaleLowerCase() === query));
@@ -411,7 +412,7 @@ async function routeMessage(message: Message): Promise<void> {
     const item = storeItems.find((candidate) => candidate.usable && (candidate.id === key || candidate.name.toLocaleLowerCase() === query));
     if (!item) return say(message, 'Indica el nombre o ID de un consumible que tengas, por ejemplo: `a!use escudo_acero_36h`.');
     const result = await useShopItem(guildId, userId, item.id, message.id);
-    return say(message, result.ok ? result.message : result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar** comprada en `a!shop` para usar el cebo.' : result.reason === 'cooldown' ? `Espera ${formatCooldown(result.secondsRemaining ?? 0)} para volver a pescar.` : result.reason === 'no_job' ? 'Primero elige un oficio con `a!jobs`.' : result.reason === 'missing_tool' ? 'Necesitas tener la herramienta de tu oficio para usar este artículo.' : result.reason === 'not_needed' ? item.effect?.kind === 'job_manual' ? 'Este oficio ya alcanzó el nivel máximo.' : 'Tu herramienta ya está completamente reparada.' : 'No tienes ese artículo o no puedes usarlo ahora.');
+    return say(message, result.ok ? result.message : result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos trabajando. El cebo no está disponible hasta liquidar la deuda.' : result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar** comprada en `a!shop` para usar el cebo.' : result.reason === 'cooldown' ? `Espera ${formatCooldown(result.secondsRemaining ?? 0)} para volver a pescar.` : result.reason === 'no_job' ? 'Primero elige un oficio con `a!jobs`.' : result.reason === 'missing_tool' ? 'Necesitas tener la herramienta de tu oficio para usar este artículo.' : result.reason === 'not_needed' ? item.effect?.kind === 'job_manual' ? 'Este oficio ya alcanzó el nivel máximo.' : 'Tu herramienta ya está completamente reparada.' : 'No tienes ese artículo o no puedes usarlo ahora.');
   }
 
   // RPG

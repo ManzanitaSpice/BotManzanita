@@ -67,6 +67,46 @@ export async function initializeEconomyDatabase() {
       KEY idx_economy_ledger_scope_time_reason (guild_id, created_at, reason)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+    await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_loans (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      principal BIGINT NOT NULL,
+      balance_due BIGINT NOT NULL,
+      origination_fee BIGINT NOT NULL DEFAULT 0,
+      interest_amount BIGINT NOT NULL DEFAULT 0,
+      apr_bps INT UNSIGNED NOT NULL,
+      created_at BIGINT NOT NULL,
+      due_at BIGINT NOT NULL,
+      late_fee_periods INT UNSIGNED NOT NULL DEFAULT 0,
+      bankrupt_at BIGINT NULL,
+      foreclosure_at BIGINT NULL,
+      foreclosed_at BIGINT NULL,
+      collateral_value BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      reference VARCHAR(191) NOT NULL,
+      PRIMARY KEY (guild_id,user_id),
+      UNIQUE KEY uq_economy_loans_reference (reference),
+      KEY idx_economy_loans_due (due_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+    await ensureColumn('economy_loans', 'bankrupt_at', 'BIGINT NULL');
+    await ensureColumn('economy_loans', 'foreclosure_at', 'BIGINT NULL');
+    await ensureColumn('economy_loans', 'foreclosed_at', 'BIGINT NULL');
+    await ensureColumn('economy_loans', 'collateral_value', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
+    await economyPool.query(`
+    CREATE TABLE IF NOT EXISTS economy_loan_foreclosures (
+      guild_id VARCHAR(32) NOT NULL,
+      user_id VARCHAR(32) NOT NULL,
+      loan_created_at BIGINT NOT NULL,
+      job_id VARCHAR(32) NOT NULL,
+      collateral_value BIGINT UNSIGNED NOT NULL,
+      applied_to_debt BIGINT UNSIGNED NOT NULL,
+      cash_surplus BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      foreclosed_at BIGINT NOT NULL,
+      PRIMARY KEY (guild_id,user_id,loan_created_at),
+      KEY idx_economy_loan_foreclosures_user_date (guild_id,user_id,foreclosed_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
     await ensureIndex('economy_ledger', 'idx_economy_ledger_scope_time_reason', 'guild_id,created_at,reason');
     await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_product_price_policy (
@@ -227,12 +267,16 @@ export async function initializeEconomyDatabase() {
       level TINYINT UNSIGNED NOT NULL DEFAULT 1,
       construction_complete_at BIGINT NULL,
       debt BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      investment_value BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      mortgaged_at BIGINT NULL,
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL,
       PRIMARY KEY (guild_id, owner_id),
       KEY idx_economy_businesses_status (guild_id, status, job_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+    await ensureColumn('economy_businesses', 'investment_value', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
+    await ensureColumn('economy_businesses', 'mortgaged_at', 'BIGINT NULL');
     await economyPool.query(`
     CREATE TABLE IF NOT EXISTS economy_business_events (
       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

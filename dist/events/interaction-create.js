@@ -1,6 +1,6 @@
 import { LabelBuilder, MessageFlags, ModalBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle, } from 'discord.js';
-import { bankInterestPanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, purchaseConfirmPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
-import { bankAction, buyBusinessLand, businessGoods, claimDaily, consumeBusinessGood, fish, formatCooldown, getInventory, hireBusinessNpc, payBusinessDebt, playBlackjackTurn, purchaseItem, removeBusinessNpc, respondBusinessEmployment, respondRoosterDuel, resolveBusinessEvent, selectJob, startBusinessConstruction, storeItems, upgradeBusiness, upgradeJobTool, useShopItem } from '../services/economy.js';
+import { bankInterestPanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, expeditionLogPanel, favoritesPanel, inventoryPanel, jobsPanel, musicPanel, personalLoanPanel, purchaseConfirmPanel, queuePanel, roosterDuelPanel, rpgAdoptionPanel, rpgBuildPanel, rpgCareResultPanel, rpgCombatPanel, rpgExplorePanel, rpgFeedPanel, rpgInventoryPanel, rpgManagePanel, rpgMenuPanel, rpgMissionsPanel, rpgPanel, rpgPvPHelpPanel, rpgPvpPanel, rpgRankingPanel, rpgShopPanel, storePanel } from '../ui/panels.js';
+import { bankAction, buyBusinessLand, businessGoods, claimDaily, consumeBusinessGood, fish, formatCooldown, getInventory, getPersonalLoanOverview, hireBusinessNpc, payBusinessDebt, playBlackjackTurn, purchaseItem, repayPersonalLoan, requestPersonalLoan, removeBusinessNpc, respondBusinessEmployment, respondRoosterDuel, resolveBusinessEvent, selectJob, startBusinessConstruction, storeItems, upgradeBusiness, upgradeJobTool, useShopItem } from '../services/economy.js';
 import { adoptRpgPet, battleRpg, buyRpgItem, careForRpgPet, claimRpgQuest, equipRpgMoves, exploreRpg, getRpgInventory, getRpgPet, getRpgQuests, learnRpgMove, playRpgPvpTurn, renameRpgPet, respondRpgPvpChallenge, rpgItems, rpgZones, trainRpgMove, trainRpgPet, useRpgItem } from '../services/rpg.js';
 import { rpgEggOptions } from '../ui/rpg-art.js';
 import { addSelectedTrack, addTrack, applyMusicEffect, disconnectPlayer, refreshMusicPanel, takeSearchTrack } from '../services/music.js';
@@ -140,6 +140,39 @@ export function registerInteractionHandler(client) {
                 await interaction.reply({ content: `🏦 ${verb} **${amount} monedas**. Billetera: **${result.balance}** · Banco: **${result.bankBalance}**.${interest}`, flags: MessageFlags.Ephemeral });
                 return;
             }
+            if (interaction.isModalSubmit() && interaction.customId.startsWith('eco:loan:modal:')) {
+                if (!interaction.guildId) {
+                    await interaction.reply({ content: 'Los préstamos solo están disponibles dentro de un servidor.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+                const action = interaction.customId.slice('eco:loan:modal:'.length);
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const amount = Number(interaction.fields.getTextInputValue('amount').trim());
+                let notice = '';
+                if (action === 'request') {
+                    const result = await requestPersonalLoan(interaction.guildId, interaction.user.id, amount, interaction.id);
+                    notice = result.ok
+                        ? `✅ Préstamo aprobado: **${result.loan.principal.toLocaleString('es-MX')} monedas** a tu billetera. Deberás **${result.loan.balanceDue.toLocaleString('es-MX')}** antes de <t:${result.loan.dueAt}:F> · ${result.loan.aprBps / 100}% APR fijo.`
+                        : result.reason === 'active_loan' ? 'Ya tienes un préstamo activo; paga el saldo pendiente antes de solicitar otro.'
+                            : result.reason === 'above_limit' ? `La cantidad supera tu límite de **${result.creditLimit.toLocaleString('es-MX')} monedas**.`
+                                : 'Solicita una cantidad entera entre 100 monedas y tu límite disponible.';
+                }
+                else if (action === 'repay') {
+                    const result = await repayPersonalLoan(interaction.guildId, interaction.user.id, amount, interaction.id);
+                    notice = result.ok
+                        ? result.cleared ? `✅ Préstamo liquidado. Abonaste **${result.paid.toLocaleString('es-MX')} monedas** desde tu billetera.`
+                            : `💸 Abonaste **${result.paid.toLocaleString('es-MX')} monedas** desde tu billetera. Restan **${result.remaining.toLocaleString('es-MX')} monedas**.`
+                        : result.reason === 'no_loan' ? 'No tienes un préstamo activo.'
+                            : result.reason === 'insufficient_wallet' ? `Tu billetera tiene **${result.walletBalance.toLocaleString('es-MX')}**; no se retiró nada del banco.`
+                                : result.amountDue > 0 ? `Escribe un abono entre 1 y **${result.amountDue.toLocaleString('es-MX')} monedas**.`
+                                    : 'Escribe una cantidad entera mayor que cero.';
+                }
+                else {
+                    notice = 'Esa operación de préstamo no es válida.';
+                }
+                await interaction.editReply(componentUpdate(await personalLoanPanel(interaction.guildId, interaction.user.id, notice)));
+                return;
+            }
             if (!interaction.isMessageComponent() || !interaction.guildId)
                 return;
             if (interaction.isButton() && (interaction.customId.startsWith('rooster:accept:') || interaction.customId.startsWith('rooster:decline:'))) {
@@ -159,8 +192,9 @@ export function registerInteractionHandler(client) {
                     await interaction.editReply(componentUpdate(roosterDuelPanel(result.duel)));
                 if (!result.ok && result.reason !== 'expired') {
                     const message = result.reason === 'insufficient_funds' ? `Ambos necesitan **${result.duel?.bet.toLocaleString('es-MX') ?? 'la apuesta'} monedas** disponibles para aceptar.`
-                        : result.reason === 'not_pending' ? 'Este reto ya fue respondido o terminó.'
-                            : result.reason === 'not_invited' ? 'Este reto estaba dirigido a otra persona.' : 'No encontré ese reto.';
+                        : result.reason === 'loan_active' ? 'El banco bloqueó el duelo porque una de las cuentas tiene un préstamo pendiente. No se descontaron monedas.'
+                            : result.reason === 'not_pending' ? 'Este reto ya fue respondido o terminó.'
+                                : result.reason === 'not_invited' ? 'Este reto estaba dirigido a otra persona.' : 'No encontré ese reto.';
                     await interaction.followUp({ content: `🐓 ${message}`, flags: MessageFlags.Ephemeral });
                 }
                 else if (result.ok && result.duel.status === 'declined') {
@@ -242,12 +276,14 @@ export function registerInteractionHandler(client) {
                                 : action === 'fire-npc' && result?.reason === 'not_found' ? 'No hay un ayudante NPC contratado para retirar.'
                                     : result?.reason === 'not_found' ? 'Primero compra un terreno.'
                                         : result?.reason === 'not_ready' ? 'Esta acción todavía no está disponible; revisa el estado de la obra.'
-                                            : result?.reason === 'max_level' ? 'El negocio ya alcanzó el nivel 10.'
-                                                : result?.reason === 'staff_limit' ? 'El negocio llegó al límite de personal o de consumibles preparados.'
-                                                    : result?.reason === 'insufficient_funds' ? result.debt ? `Necesitas **${result.debt.toLocaleString('es-MX')} monedas** para pagar este evento.` : 'No tienes monedas suficientes para cubrir esta inversión.'
-                                                        : result?.reason === 'no_debt' ? 'Tu negocio no tiene facturas pendientes.'
-                                                            : result?.reason === 'no_event' ? 'Ese evento ya fue resuelto o no sigue pendiente.'
-                                                                : result ? 'No se pudo completar esa operación.' : 'Acción de negocio no reconocida.';
+                                            : result?.reason === 'mortgaged' ? 'La propiedad está hipotecada. Liquida primero el préstamo desde /economia prestamos antes de volver a invertir.'
+                                                : result?.reason === 'bankrupt' ? 'No puedes comprar un terreno mientras sigas en bancarrota. Trabaja para abonar a la deuda y consulta /economia prestamos.'
+                                                    : result?.reason === 'max_level' ? 'El negocio ya alcanzó el nivel 10.'
+                                                        : result?.reason === 'staff_limit' ? 'El negocio llegó al límite de personal o de consumibles preparados.'
+                                                            : result?.reason === 'insufficient_funds' ? result.debt ? `Necesitas **${result.debt.toLocaleString('es-MX')} monedas** para pagar este evento.` : 'No tienes monedas suficientes para cubrir esta inversión.'
+                                                                : result?.reason === 'no_debt' ? 'Tu negocio no tiene facturas pendientes.'
+                                                                    : result?.reason === 'no_event' ? 'Ese evento ya fue resuelto o no sigue pendiente.'
+                                                                        : result ? 'No se pudo completar esa operación.' : 'Acción de negocio no reconocida.';
                     await interaction.editReply(componentUpdate(await businessPanel(interaction.guildId, ownerId, undefined, notice)));
                     return;
                 }
@@ -837,9 +873,10 @@ export function registerInteractionHandler(client) {
                     await interaction.deferUpdate();
                     const panel = section === 'inventory' ? await inventoryPanel(interaction.guildId, interaction.user.id)
                         : section === 'bank' ? await bankPanel(interaction.guildId, interaction.user.id)
-                            : section === 'casino' ? await casinoPanel(interaction.guildId, interaction.user.id)
-                                : section === 'business' ? await businessPanel(interaction.guildId, interaction.user.id)
-                                    : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user) : undefined;
+                            : section === 'loans' ? await personalLoanPanel(interaction.guildId, interaction.user.id)
+                                : section === 'casino' ? await casinoPanel(interaction.guildId, interaction.user.id)
+                                    : section === 'business' ? await businessPanel(interaction.guildId, interaction.user.id)
+                                        : section === 'store' || section === 'premium' ? await storePanel(interaction.guildId, interaction.user.id, 'all', 0, undefined, '', undefined, interaction.user) : undefined;
                     if (!panel) {
                         await interaction.followUp({ content: 'Esa sección ya no está disponible.', flags: MessageFlags.Ephemeral });
                         return;
@@ -873,11 +910,45 @@ export function registerInteractionHandler(client) {
                     await interaction.showModal(modal);
                     return;
                 }
+                if (interaction.customId === 'eco:loan:open' || interaction.customId === 'eco:loan:refresh') {
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await personalLoanPanel(interaction.guildId, interaction.user.id)));
+                    return;
+                }
+                if (interaction.customId === 'eco:loan:bank') {
+                    await interaction.deferUpdate();
+                    await interaction.editReply(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
+                    return;
+                }
+                if (interaction.customId === 'eco:loan:request' && interaction.isButton()) {
+                    const modal = new ModalBuilder().setCustomId('eco:loan:modal:request').setTitle('Solicitar préstamo')
+                        .addLabelComponents(new LabelBuilder().setLabel('Cantidad de monedas').setTextInputComponent(new TextInputBuilder().setCustomId('amount').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(12).setPlaceholder('Ejemplo: 500')));
+                    await interaction.showModal(modal);
+                    return;
+                }
+                if (interaction.customId === 'eco:loan:pay' && interaction.isButton()) {
+                    const modal = new ModalBuilder().setCustomId('eco:loan:modal:repay').setTitle('Abonar al préstamo')
+                        .addLabelComponents(new LabelBuilder().setLabel('Cantidad de monedas').setTextInputComponent(new TextInputBuilder().setCustomId('amount').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(12).setPlaceholder('Ejemplo: 250')));
+                    await interaction.showModal(modal);
+                    return;
+                }
+                if (interaction.customId === 'eco:loan:payall' && interaction.isButton()) {
+                    await interaction.deferUpdate();
+                    const overview = await getPersonalLoanOverview(interaction.guildId, interaction.user.id);
+                    const result = overview.loan
+                        ? await repayPersonalLoan(interaction.guildId, interaction.user.id, overview.loan.balanceDue, interaction.id)
+                        : undefined;
+                    const notice = result?.ok ? `✅ Préstamo liquidado. Abonaste **${result.paid.toLocaleString('es-MX')} monedas** desde tu billetera.`
+                        : result && !result.ok && result.reason === 'insufficient_wallet' ? 'No tienes suficiente en la billetera; no se tocó tu saldo bancario.'
+                            : 'No tienes un préstamo activo.';
+                    await interaction.editReply(componentUpdate(await personalLoanPanel(interaction.guildId, interaction.user.id, notice)));
+                    return;
+                }
                 if (interaction.customId === 'eco:daily') {
                     const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
                     const message = result.ok
                         ? economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance)
-                        : { content: `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: ['Ephemeral'] };
+                        : { content: result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await economyPanel(interaction.guildId, interaction.user.id, interaction.user.username, interaction.user.displayAvatarURL({ extension: 'png', size: 256 }))));
                     await interaction.followUp(message);
                     return;
@@ -894,7 +965,7 @@ export function registerInteractionHandler(client) {
                     const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
                     const message = result.ok
                         ? economyActionPanel('🎣 Pesca', result.message, result.amount, result.balance)
-                        : { content: result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.' : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`, flags: ['Ephemeral'] };
+                        : { content: result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.' : result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.' : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await casinoPanel(interaction.guildId, interaction.user.id)));
                     await interaction.followUp(message);
                     return;
@@ -907,7 +978,7 @@ export function registerInteractionHandler(client) {
                     }
                     const result = await useShopItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
                     const message = !result.ok
-                        ? { content: result.reason === 'missing_rod' ? 'Necesitas una Caña de pescar para usar cebo.' : result.reason === 'cooldown' ? `⏳ Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.` : result.reason === 'no_job' ? 'Primero elige un oficio con `/economia empleo`.' : result.reason === 'missing_tool' ? 'Necesitas tener la herramienta de tu oficio para usar este artículo.' : result.reason === 'not_needed' ? itemId === 'manual_oficio' ? 'Este oficio ya alcanzó el nivel máximo.' : 'Tu herramienta ya está completamente reparada.' : 'No tienes ese consumible o ya no está disponible.', flags: ['Ephemeral'] }
+                        ? { content: result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos trabajando. El cebo no está disponible hasta liquidar la deuda.' : result.reason === 'missing_rod' ? 'Necesitas una Caña de pescar para usar cebo.' : result.reason === 'cooldown' ? `⏳ Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.` : result.reason === 'no_job' ? 'Primero elige un oficio con `/economia empleo`.' : result.reason === 'missing_tool' ? 'Necesitas tener la herramienta de tu oficio para usar este artículo.' : result.reason === 'not_needed' ? itemId === 'manual_oficio' ? 'Este oficio ya alcanzó el nivel máximo.' : 'Tu herramienta ya está completamente reparada.' : 'No tienes ese consumible o ya no está disponible.', flags: ['Ephemeral'] }
                         : result.kind === 'fish' ? economyActionPanel('🎣 Cebo utilizado', result.message, result.amount, result.balance) : { content: result.message, flags: ['Ephemeral'] };
                     await interaction.update(componentUpdate(await inventoryPanel(interaction.guildId, interaction.user.id)));
                     await interaction.followUp(message);
@@ -921,7 +992,10 @@ export function registerInteractionHandler(client) {
                     }
                     const view = await playBlackjackTurn(interaction.guildId, interaction.user.id, gameId, action);
                     if (!view) {
-                        await interaction.reply({ content: 'Esta partida no existe o no te pertenece.', flags: MessageFlags.Ephemeral });
+                        const loanOverview = await getPersonalLoanOverview(interaction.guildId, interaction.user.id);
+                        await interaction.reply({ content: loanOverview.loan?.bankruptAt !== null && loanOverview.loan
+                                ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+                                : 'Esta partida no existe o no te pertenece.', flags: MessageFlags.Ephemeral });
                         return;
                     }
                     await interaction.update(componentUpdate(blackjackPanel(view)));

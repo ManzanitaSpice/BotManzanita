@@ -223,6 +223,8 @@ export async function addSelectedTrack(client, input, track) {
         throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
     if (!player.connected)
         await player.connect();
+    if (player.queue.tracks.length >= MAX_MUSIC_QUEUE_TRACKS)
+        throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
     await player.queue.add(track);
     rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
     if (!player.playing && !player.paused)
@@ -274,7 +276,10 @@ export async function addSavedTracks(client, input) {
     if (!input.uris.length)
         throw new Error('Esta lista no tiene canciones guardadas.');
     const player = await getOrCreatePlayer(client, input);
-    if (!input.replaceQueue && player.queue.tracks.length + input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
+    if (input.uris.length > MAX_MUSIC_QUEUE_TRACKS) {
+        throw new Error(`La lista supera el límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones que se pueden cargar a la vez.`);
+    }
+    if (!input.replaceQueue && player.queue.tracks.length >= MAX_MUSIC_QUEUE_TRACKS) {
         throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
     }
     if (!player.connected)
@@ -304,6 +309,9 @@ export async function addSavedTracks(client, input) {
         throw new Error('No pude resolver ninguna canción guardada.');
     if (input.replaceQueue)
         await player.stopPlaying(true);
+    else if (player.queue.tracks.length + tracks.length > MAX_MUSIC_QUEUE_TRACKS) {
+        throw new Error(`La cola llegó al límite de ${MAX_MUSIC_QUEUE_TRACKS} canciones.`);
+    }
     await player.queue.add(tracks);
     if (input.repeatMode)
         await player.setRepeatMode(input.repeatMode);
@@ -344,6 +352,9 @@ export async function addTrack(client, input) {
     }
     if (!player.connected)
         await player.connect();
+    if (player.queue.tracks.length + selectedTracks.length > MAX_MUSIC_QUEUE_TRACKS) {
+        throw new Error(`No caben todas las canciones: la cola admite hasta ${MAX_MUSIC_QUEUE_TRACKS}.`);
+    }
     await player.queue.add(selectedTracks);
     rememberMusicQueueChannel(input.guildId, input.voiceChannelId);
     if (!player.playing && !player.paused)

@@ -1,7 +1,7 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { BotCommand } from '../types.js';
 import { adjustPremiumCurrency, businessGoods, claimDaily, consumeBusinessGood, createRoosterDuel, crime, economyJobs, fish, formatCooldown, getAccountBalances, getActiveJob, getBusinessOverview, getLeaderboard, MAX_JOB_LEVEL, payBusinessDebt, playItemRoulette, playRoulette, removeBusinessEmployee, requestBusinessEmployee, robPlayer, selectJob, sellBusinessGood, startBlackjack, storeItems, transferCoins, useShopItem, work } from '../services/economy.js';
-import { balancePanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel, roosterDuelPanel } from '../ui/panels.js';
+import { balancePanel, bankPanel, blackjackPanel, casinoPanel, componentUpdate, economyActionPanel, economyPanel, inventoryPanel, leaderboardPanel, personalLoanPanel, roosterDuelPanel } from '../ui/panels.js';
 import { businessInvitePanel, businessPanel } from '../ui/business-panel.js';
 
 export const economyCommand: BotCommand = {
@@ -20,6 +20,7 @@ export const economyCommand: BotCommand = {
       .addIntegerOption((option) => option.setName('cantidad').setDescription('Unidades a vender').setMinValue(1).setMaxValue(1000)))
     .addSubcommand((subcommand) => subcommand.setName('casino').setDescription('Abre el casino de monedas virtuales'))
     .addSubcommand((subcommand) => subcommand.setName('banco').setDescription('Abre tu banco y gestiona tus ahorros'))
+    .addSubcommand((subcommand) => subcommand.setName('prestamos').setDescription('Solicita o paga un préstamo del banco'))
     .addSubcommand((subcommand) => subcommand.setName('saldo').setDescription('Consulta tu saldo'))
     .addSubcommand((subcommand) => subcommand.setName('admin_moneda').setDescription('Administra gemas premium de una persona (requiere Gestionar servidor)')
       .addUserOption((option) => option.setName('usuario').setDescription('Persona que recibirá o perderá gemas').setRequired(true))
@@ -125,6 +126,7 @@ export const economyCommand: BotCommand = {
       const text = result.ok ? result.message ?? 'Venta completada.'
         : result.reason === 'no_items' ? 'No tienes esa cantidad en el inventario.'
           : result.reason === 'quantity' ? 'La cantidad debe estar entre 1 y 1000.'
+            : result.reason === 'loan_active' ? 'No puedes vender productos mientras tengas un préstamo pendiente. Liquídalo primero desde /economia prestamos.'
             : 'Ese producto no está disponible para vender.';
       await interaction.reply({ content: '🏪 ' + text, flags: MessageFlags.Ephemeral });
       return;
@@ -136,6 +138,11 @@ export const economyCommand: BotCommand = {
     if (action === 'banco') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await interaction.editReply(componentUpdate(await bankPanel(interaction.guildId, interaction.user.id)));
+      return;
+    }
+    if (action === 'prestamos') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.editReply(componentUpdate(await personalLoanPanel(interaction.guildId, interaction.user.id)));
       return;
     }
     if (action === 'saldo') {
@@ -176,7 +183,9 @@ export const economyCommand: BotCommand = {
     if (action === 'crimen') {
       const result = await crime(interaction.guildId, interaction.user.id, interaction.id);
       if (!result.ok) {
-        await interaction.reply({ content: `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+        const message = result.reason === 'bankrupt' ? 'No puedes generar ingresos fuera del trabajo mientras sigas en bancarrota. Trabaja para abonar el préstamo.'
+          : `🚨 Ya lo intentaste hace poco. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
+        await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
         return;
       }
       await interaction.reply(economyActionPanel(result.success ? '🕶️ Golpe exitoso' : '🚨 Golpe fallido', result.message, result.success ? result.amount : -result.amount, result.balance));
@@ -186,7 +195,8 @@ export const economyCommand: BotCommand = {
       const result = await fish(interaction.guildId, interaction.user.id, interaction.id);
       if (!result.ok) {
         const content = result.reason === 'missing_rod' ? 'Necesitas una **Caña de pescar**. Cómprala en `/shop` o `a!shop`.'
-          : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
+          : result.reason === 'bankrupt' ? 'No puedes generar ingresos fuera del trabajo mientras sigas en bancarrota. Trabaja para abonar el préstamo.'
+            : `🎣 Ya saliste a pescar. Vuelve en **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
         await interaction.reply({ content, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -203,7 +213,8 @@ export const economyCommand: BotCommand = {
       const result = await robPlayer(interaction.guildId, interaction.user.id, target.id, target.username, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'self' ? 'No puedes robarte a ti mismo.'
-          : result.reason === 'target_empty' ? `${target.username} no tiene monedas ni artículos robables.`
+          : result.reason === 'loan_active' ? 'El banco bloqueó el robo entre estas cuentas mientras exista un préstamo pendiente.'
+          : result.reason === 'target_empty' ? `${target.username} no tiene monedas en la billetera ni artículos robables. Sus ahorros del banco están protegidos.`
             : `Ya intentaste robar recientemente. Espera **${formatCooldown(result.secondsRemaining ?? 0)}**.`;
         await interaction.editReply({ content: `🕵️ ${message}` });
         return;
@@ -221,6 +232,7 @@ export const economyCommand: BotCommand = {
         const message = result.reason === 'self' ? 'No puedes retarte a ti mismo.'
           : result.reason === 'invalid_bet' ? 'La apuesta debe estar entre 1 y 100000 monedas.'
             : result.reason === 'insufficient_funds' ? 'No tienes saldo suficiente para cubrir tu parte de la apuesta.'
+              : result.reason === 'loan_active' ? 'No se puede hacer el duelo: una de las cuentas tiene un préstamo pendiente.'
               : 'Tú o esa persona ya tienen un reto de gallos pendiente.';
         await interaction.editReply({ content: `🐓 ${message}` });
         return;
@@ -237,7 +249,8 @@ export const economyCommand: BotCommand = {
         interaction.id,
       );
       if (!result.ok) {
-        const message = result.reason === 'invalid_bet' ? 'La apuesta debe estar entre 1 y 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
+        const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+          : result.reason === 'invalid_bet' ? 'La apuesta debe estar entre 1 y 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
         await interaction.reply({ content: `🎰 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -254,7 +267,8 @@ export const economyCommand: BotCommand = {
         interaction.id,
       );
       if (!result.ok) {
-        const message = result.reason === 'missing_item' ? 'No tienes una unidad de ese artículo para apostar.' : 'Ese artículo no se puede apostar.';
+        const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+          : result.reason === 'missing_item' ? 'No tienes una unidad de ese artículo para apostar.' : 'Ese artículo no se puede apostar.';
         await interaction.reply({ content: `🎒 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -277,6 +291,7 @@ export const economyCommand: BotCommand = {
       const result = await useShopItem(interaction.guildId, interaction.user.id, itemId, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'missing_item' ? 'No tienes ese artículo en tu inventario.'
+          : result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos trabajando. El cebo no está disponible hasta liquidar la deuda.'
           : result.reason === 'missing_rod' ? 'Necesitas una Caña de pescar para usar cebo.'
           : result.reason === 'cooldown' ? `Espera **${formatCooldown(result.secondsRemaining ?? 0)}** para volver a pescar.`
           : result.reason === 'no_job' ? 'Primero elige un oficio con `/economia empleo`.'
@@ -292,7 +307,8 @@ export const economyCommand: BotCommand = {
     if (action === 'blackjack') {
       const result = await startBlackjack(interaction.guildId, interaction.user.id, interaction.options.getInteger('apuesta', true), interaction.id);
       if (!result.ok) {
-        const message = result.reason === 'invalid_bet' ? 'La apuesta debe estar entre 1 y 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
+        const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, solo puedes generar ingresos con el trabajo.'
+          : result.reason === 'invalid_bet' ? 'La apuesta debe estar entre 1 y 100000 monedas.' : 'No tienes suficientes monedas para esa apuesta.';
         await interaction.reply({ content: `🃏 ${message}`, flags: MessageFlags.Ephemeral });
         return;
       }
@@ -309,6 +325,7 @@ export const economyCommand: BotCommand = {
       const result = await transferCoins(interaction.guildId, interaction.user.id, recipient.id, amount, interaction.id);
       if (!result.ok) {
         const message = result.reason === 'self' ? 'No puedes enviarte monedas a ti mismo.'
+          : result.reason === 'loan_active' ? 'No puedes enviar monedas mientras tengas un préstamo pendiente. Liquídalo desde /economia prestamos.'
           : result.reason === 'insufficient_funds' ? 'No tienes suficientes monedas para esa transferencia.'
             : 'La cantidad no es válida.';
         await interaction.reply({ content: `❌ ${message}`, flags: MessageFlags.Ephemeral });
@@ -329,7 +346,9 @@ export const economyCommand: BotCommand = {
     }
     const result = await claimDaily(interaction.guildId, interaction.user.id, interaction.id);
     if (!result.ok) {
-      await interaction.reply({ content: `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`, flags: MessageFlags.Ephemeral });
+      const message = result.reason === 'bankrupt' ? 'Mientras sigas en bancarrota, tu única fuente activa de ingresos es trabajar; ese pago se aplica al préstamo.'
+        : `⏳ Ya reclamaste tu recompensa. Vuelve en **${formatCooldown(result.secondsRemaining)}**.`;
+      await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.reply(economyActionPanel('🎁 Recompensa diaria', 'Tu recompensa de hoy ya está en tu billetera.', result.amount, result.balance));

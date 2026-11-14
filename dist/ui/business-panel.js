@@ -1,12 +1,13 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, TextDisplayBuilder, } from 'discord.js';
-import { businessCooldownSeconds, businessJobs, formatCooldown, getBalance, getBusinessOverviewForUser, getJobRoster } from '../services/economy.js';
+import { businessCooldownSeconds, businessJobs, formatCooldown, getBalance, getBusinessOverviewForUser, getJobRoster, getPersonalLoanOverview } from '../services/economy.js';
 import { getProductPriceQuote } from '../services/product-market.js';
 import { renderBusinessBackdrop } from './business-art.js';
 const money = new Intl.NumberFormat('es-MX');
 const categorySize = businessJobs.length * 4 + 16;
 const quoteAsset = (id, basePrice) => getProductPriceQuote({ kind: 'economy', id, category: 'economy:business_assets', basePrice, categorySize });
 export async function businessPanel(guildId, userId, selectedJobId, notice = '') {
-    const [overview, roster, balance] = await Promise.all([getBusinessOverviewForUser(guildId, userId), getJobRoster(guildId, userId), getBalance(guildId, userId)]);
+    const [overview, roster, balance, loanOverview] = await Promise.all([getBusinessOverviewForUser(guildId, userId), getJobRoster(guildId, userId), getBalance(guildId, userId), getPersonalLoanOverview(guildId, userId)]);
+    const bankruptLoan = loanOverview.loan?.bankruptAt !== null && loanOverview.loan ? loanOverview.loan : null;
     const activeJobs = roster.jobs.filter((entry) => entry.active);
     const chosen = activeJobs.find((entry) => entry.job.id === selectedJobId)
         ?? activeJobs.find((entry) => entry.job.id === roster.primaryJobId) ?? activeJobs[0];
@@ -25,22 +26,37 @@ export async function businessPanel(guildId, userId, selectedJobId, notice = '')
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(heading + (overview && !isOwner ? ' · empleo' : '')
         + '\nPropiedad conectada a tu oficio y a la economía del banco.' + (notice ? '\n\n' + notice : '')))
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://business-terrain.png').setDescription('Ilustración de ' + (overview?.name ?? 'tu terreno'))));
+    if (!overview && loanOverview.foreclosureNotice && (!loanOverview.loan || loanOverview.loan.createdAt <= loanOverview.foreclosureNotice.foreclosedAt)) {
+        const foreclosure = loanOverview.foreclosureNotice;
+        const surplusText = foreclosure.cashSurplus
+            ? ` El excedente de **${money.format(foreclosure.cashSurplus)} monedas** sí se acreditó a tu billetera.`
+            : ' No hubo excedente en efectivo.';
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🚨 Propiedad ejecutada · <t:${foreclosure.foreclosedAt}:F>\nEl banco aplicó **${money.format(foreclosure.appliedToDebt)} monedas** del terreno o negocio a tu préstamo; ese importe no se te entregó en efectivo.${surplusText}${bankruptLoan ? `\nTu deuda pendiente es **${money.format(bankruptLoan.balanceDue)} monedas**. Sigue trabajando y abonando desde a!prestamos para volver a comprar una propiedad.` : '\nLa deuda quedó liquidada con la garantía.'}`));
+    }
+    if (overview?.mortgagedAt !== null && overview?.mortgagedAt !== undefined) {
+        const foreclosure = overview.foreclosureAt ? `<t:${overview.foreclosureAt}:R>` : 'sin inmueble pendiente';
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(isOwner
+            ? `## 🏦 Propiedad hipotecada por mora\nValor de liquidación estimado: **${money.format(overview.collateralValue)} monedas** · deuda actual: **${money.format(overview.loanBalanceDue ?? 0)} monedas**. Si no se liquida el préstamo, el banco ejecutará la propiedad ${foreclosure}. Puedes seguir trabajando y cada ingreso del trabajo se abona primero a la deuda. Al pagarla por completo, la hipoteca se libera.`
+            : `## 🏦 Propiedad hipotecada\nEl negocio sigue operando durante el plazo de regularización. Los ingresos del trabajo del dueño se aplican primero a su préstamo; fecha límite de la propiedad: ${foreclosure}.`));
+    }
     if (!overview && !chosen) {
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent('## Antes de comprar\nElige un oficio activo con a!jobs. El terreno se compra para ese oficio y solo él puede operar el negocio.'))
             .addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:jobs').setLabel('Elegir oficio').setEmoji('🧰').setStyle(ButtonStyle.Primary)));
     }
     else if (!overview && chosen && selectedConfig) {
         const quote = await quoteAsset('business_land_' + chosen.job.id, selectedConfig.landPrice);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent('## Comprar terreno\nOficio: **' + chosen.job.emoji + ' ' + chosen.job.name + ' · nivel ' + chosen.level + '**.\n\nEl terreno cuesta **' + money.format(quote.price)
-            + ' monedas** a precio dinámico. La construcción requiere otra inversión y tarda **6 horas**. Solo puedes tener un negocio.'));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bankruptLoan
+            ? `## Comprar terreno\nNo puedes adquirir terrenos mientras sigas en bancarrota. El saldo pendiente es **${money.format(bankruptLoan.balanceDue)} monedas**; trabaja para que se descuente automáticamente y liquídalo en a!prestamos.`
+            : '## Comprar terreno\nOficio: **' + chosen.job.emoji + ' ' + chosen.job.name + ' · nivel ' + chosen.level + '**.\n\nEl terreno cuesta **' + money.format(quote.price)
+                + ' monedas** a precio dinámico. La construcción requiere otra inversión y tarda **6 horas**. Solo puedes tener un negocio.'));
         if (activeJobs.length > 1)
             container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('biz:job:' + userId).setPlaceholder('Oficio del negocio · ' + chosen.job.name).addOptions(activeJobs.map((entry) => ({ label: entry.job.name, value: entry.job.id, emoji: entry.job.emoji, description: 'Nivel ' + entry.level + ' · ' + (businessJobs.find((b) => b.jobId === entry.job.id)?.name ?? 'Negocio'), default: entry.job.id === chosen.job.id })))));
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:buy:' + userId + ':' + chosen.job.id).setLabel('Comprar terreno · ' + money.format(quote.price)).setEmoji('🏡').setStyle(ButtonStyle.Success).setDisabled(balance < quote.price)));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:buy:' + userId + ':' + chosen.job.id).setLabel('Comprar terreno · ' + money.format(quote.price)).setEmoji('🏡').setStyle(ButtonStyle.Success).setDisabled(balance < quote.price || !!bankruptLoan)));
     }
     else if (overview?.status === 'land' && config) {
         const quote = await quoteAsset('business_build_' + overview.job.id, config.buildPrice);
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent('## Terreno listo para construir\nLa obra cuesta **' + money.format(quote.price) + ' monedas** y tarda 6 horas. Al abrir, a!work pagará desde el negocio con un turno inicial de 3 horas.'));
-        container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:build:' + userId).setLabel('Iniciar construcción · ' + money.format(quote.price)).setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(balance < quote.price), new ButtonBuilder().setCustomId('biz:refresh:' + userId).setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:build:' + userId).setLabel('Iniciar construcción · ' + money.format(quote.price)).setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(balance < quote.price || overview.mortgagedAt !== null), new ButtonBuilder().setCustomId('biz:refresh:' + userId).setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
     }
     else if (overview?.status === 'construction') {
         const left = Math.max(0, (overview.constructionCompleteAt ?? 0) - Math.floor(Date.now() / 1000));
@@ -88,7 +104,7 @@ export async function businessPanel(guildId, userId, selectedJobId, notice = '')
             + '\n\nEl nivel recomienda ' + overview.recommendedStaff + ' empleado(s). Superar esa dotación reduce rápidamente las ventas: el beneficio del dueño puede llegar a cero. Si las ventas no cubren la nómina completa, el turno no se realiza y no se descuenta dinero personal.'
             + (overview.events.some((event) => event.type === 'pest') ? '\n\n🐀 Hay una plaga activa; el negocio no puede trabajar hasta pagar el exterminio.' : '')));
         if (isOwner) {
-            container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:upgrade:' + userId).setLabel(overview.level >= 10 ? 'Nivel máximo' : 'Mejorar · ' + money.format(upgradeQuote?.price ?? upgradeBase)).setEmoji('⬆️').setStyle(ButtonStyle.Primary).setDisabled(overview.level >= 10 || balance < (upgradeQuote?.price ?? upgradeBase)), new ButtonBuilder().setCustomId('biz:npc:' + userId).setLabel('Contratar NPC · ' + money.format(npcQuote?.price ?? 0)).setEmoji('🤖').setStyle(ButtonStyle.Success).setDisabled(overview.employees.length >= limit || balance < (npcQuote?.price ?? 0)), new ButtonBuilder().setCustomId('biz:debt:' + userId).setLabel(overview.debt ? 'Pagar deuda' : 'Sin deuda').setEmoji('🧾').setStyle(ButtonStyle.Secondary).setDisabled(overview.debt <= 0 || balance <= 0), new ButtonBuilder().setCustomId('biz:fire-npc:' + userId).setLabel('Retirar NPC').setEmoji('👋').setStyle(ButtonStyle.Secondary).setDisabled(!overview.employees.some((employee) => employee.kind === 'npc' && employee.status === 'active')), new ButtonBuilder().setCustomId('biz:refresh:' + userId).setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
+            container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:upgrade:' + userId).setLabel(overview.level >= 10 ? 'Nivel máximo' : 'Mejorar · ' + money.format(upgradeQuote?.price ?? upgradeBase)).setEmoji('⬆️').setStyle(ButtonStyle.Primary).setDisabled(overview.level >= 10 || balance < (upgradeQuote?.price ?? upgradeBase) || overview.mortgagedAt !== null), new ButtonBuilder().setCustomId('biz:npc:' + userId).setLabel('Contratar NPC · ' + money.format(npcQuote?.price ?? 0)).setEmoji('🤖').setStyle(ButtonStyle.Success).setDisabled(overview.employees.length >= limit || balance < (npcQuote?.price ?? 0) || overview.mortgagedAt !== null), new ButtonBuilder().setCustomId('biz:debt:' + userId).setLabel(overview.debt ? 'Pagar deuda' : 'Sin deuda').setEmoji('🧾').setStyle(ButtonStyle.Secondary).setDisabled(overview.debt <= 0 || balance <= 0), new ButtonBuilder().setCustomId('biz:fire-npc:' + userId).setLabel('Retirar NPC').setEmoji('👋').setStyle(ButtonStyle.Secondary).setDisabled(!overview.employees.some((employee) => employee.kind === 'npc' && employee.status === 'active')), new ButtonBuilder().setCustomId('biz:refresh:' + userId).setLabel('Actualizar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)));
             const pest = overview.events.find((event) => event.type === 'pest');
             if (pest)
                 container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('biz:event:' + userId + ':pest').setLabel('Pagar exterminación · ' + money.format(pest.amount)).setEmoji('🐀').setStyle(ButtonStyle.Danger).setDisabled(balance < pest.amount)));

@@ -38,6 +38,37 @@ db.exec(`
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
+  CREATE TABLE IF NOT EXISTS economy_loans (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    principal INTEGER NOT NULL CHECK (principal > 0),
+    balance_due INTEGER NOT NULL CHECK (balance_due >= 0),
+    origination_fee INTEGER NOT NULL DEFAULT 0,
+    interest_amount INTEGER NOT NULL DEFAULT 0,
+    apr_bps INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    due_at INTEGER NOT NULL,
+    late_fee_periods INTEGER NOT NULL DEFAULT 0,
+    bankrupt_at INTEGER,
+    foreclosure_at INTEGER,
+    foreclosed_at INTEGER,
+    collateral_value INTEGER NOT NULL DEFAULT 0,
+    reference TEXT NOT NULL UNIQUE,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS economy_loan_foreclosures (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    loan_created_at INTEGER NOT NULL,
+    job_id TEXT NOT NULL,
+    collateral_value INTEGER NOT NULL,
+    applied_to_debt INTEGER NOT NULL,
+    cash_surplus INTEGER NOT NULL DEFAULT 0,
+    foreclosed_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id, loan_created_at)
+  );
+
   CREATE TABLE IF NOT EXISTS economy_product_price_policy (
     policy_id INTEGER PRIMARY KEY CHECK (policy_id = 1),
     price_index_bps INTEGER NOT NULL DEFAULT 10000,
@@ -204,6 +235,8 @@ db.exec(`
     level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1 AND level <= 10),
     construction_complete_at INTEGER,
     debt INTEGER NOT NULL DEFAULT 0 CHECK (debt >= 0),
+    investment_value INTEGER NOT NULL DEFAULT 0 CHECK (investment_value >= 0),
+    mortgaged_at INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (guild_id, owner_id)
@@ -455,6 +488,22 @@ try {
 catch (error) {
     if (!(error instanceof Error) || !error.message.includes('duplicate column name'))
         throw error;
+}
+for (const [table, column, definition] of [
+    ['economy_loans', 'bankrupt_at', 'INTEGER'],
+    ['economy_loans', 'foreclosure_at', 'INTEGER'],
+    ['economy_loans', 'foreclosed_at', 'INTEGER'],
+    ['economy_loans', 'collateral_value', 'INTEGER NOT NULL DEFAULT 0'],
+    ['economy_businesses', 'investment_value', 'INTEGER NOT NULL DEFAULT 0'],
+    ['economy_businesses', 'mortgaged_at', 'INTEGER'],
+]) {
+    try {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+    catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('duplicate column name'))
+            throw error;
+    }
 }
 for (const [column, definition] of [
     ['bot_money_growth_bps', 'INTEGER NOT NULL DEFAULT 0'],

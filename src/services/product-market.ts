@@ -214,8 +214,6 @@ export async function getProductPriceQuotes(requests: ProductPriceRequest[], now
     // Two baseline sales soften sparse data; category comparison and week-over-week demand keep prices responsive.
     const relativeDemand = (itemStats.recentUnits + 2) / (categoryAverage + 2);
     const demandTrend = (itemStats.recentUnits + 2) / (itemStats.previousUnits + 2);
-    // Everyday economy goods stay within a narrower band; cosmetics and RPG goods
-    // can react more to scarcity and popularity as discretionary purchases.
     const flexibleLuxury = entry.kind !== 'economy';
     const demandElasticity = flexibleLuxury ? 1_600 : 700;
     const trendElasticity = flexibleLuxury ? 600 : 300;

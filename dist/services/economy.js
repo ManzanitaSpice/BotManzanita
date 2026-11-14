@@ -340,6 +340,12 @@ const robFailLines = [
     'La alarma sonó y tuviste que salir corriendo.', 'Te confundiste de bolsillo y todo salió al revés.',
     'El intento fue detectado.', 'La mala suerte ganó esta ronda.',
 ];
+const robFailNoFineLines = [
+    'El intento salió mal, pero escapaste sin multa.',
+    'La alarma te frenó antes de llegar al botín; esta vez no hubo cargo.',
+    'Te detectaron a tiempo. El intento falló, pero tu billetera salió intacta.',
+    'El plan se vino abajo y tuviste que retirarte sin llevarte nada.',
+];
 const rouletteWinLines = [
     '¡La bola cayó donde dijiste!', 'La ruleta te sonrió.', 'Apuesta acertada. El casino paga.',
     'La mesa quedó en silencio: ¡acertaste!', 'Tu predicción fue exacta.',
@@ -361,6 +367,14 @@ function nowSeconds() { return Math.floor(Date.now() / 1000); }
 function pick(items) { return items[randomInt(items.length)]; }
 function formatMessage(template, values) {
     return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
+}
+function robFailureMessage(targetName, amount, robberBalance, robberBankBalance, victimWallet) {
+    if (amount > 0)
+        return `${formatMessage(pick(robFailLines), { amount, target: targetName })}\n\n💸 La multa de **${money.format(amount)} monedas** salió solo de tu billetera; los saldos del banco no se tocan.\n\n🫠 ${moneyLossRemark(robberBalance + robberBankBalance)}`;
+    const reason = victimWallet <= 0
+        ? `La billetera de ${targetName} estaba vacía; no se cobró multa. Los fondos del banco están protegidos.`
+        : 'Tu billetera estaba vacía; no se cobró multa ni se tocaron los saldos del banco.';
+    return `${pick(robFailNoFineLines)}\n\n💵 ${reason}`;
 }
 function sqliteEnsureAccount(guildId, userId) {
     const now = nowSeconds();
@@ -952,11 +966,406 @@ export async function bankAction(guildId, userId, action, amount = 0, reference 
     });
     return operate.immediate();
 }
+const PERSONAL_LOAN_MIN = 100;
+const PERSONAL_LOAN_MAX = 10_000;
+const PERSONAL_LOAN_TERM_SECONDS = 7 * 24 * 60 * 60;
+const PERSONAL_LOAN_LATE_PERIOD_SECONDS = 24 * 60 * 60;
+const PERSONAL_LOAN_RISK_SPREAD_BPS = 1_800;
+const PERSONAL_LOAN_BANKRUPTCY_GRACE_SECONDS = 7 * 24 * 60 * 60;
+const PERSONAL_LOAN_FORECLOSURE_SECONDS = 30 * 24 * 60 * 60;
+const PERSONAL_LOAN_COLLATERAL_HAIRCUT_BPS = 6_000;
+function personalLoanCreditLimit(account) {
+    return Math.min(PERSONAL_LOAN_MAX, Math.max(500, Math.floor((account.balance + account.bankBalance) * 0.5)));
+}
+function loanFromDbRow(row) {
+    return {
+        principal: Number(row.principal), balanceDue: Number(row.balanceDue), originationFee: Number(row.originationFee),
+        interestAmount: Number(row.interestAmount), aprBps: Number(row.aprBps), createdAt: Number(row.createdAt),
+        dueAt: Number(row.dueAt), lateFeePeriods: Number(row.lateFeePeriods),
+        bankruptAt: row.bankruptAt === null ? null : Number(row.bankruptAt),
+        foreclosureAt: row.foreclosureAt === null ? null : Number(row.foreclosureAt),
+        foreclosedAt: row.foreclosedAt === null ? null : Number(row.foreclosedAt), collateralValue: Number(row.collateralValue),
+    };
+}
+function fallbackBusinessInvestment(jobId, level, status) {
+    const business = businessJobs.find((entry) => entry.jobId === jobId);
+    if (!business)
+        return 0;
+    let value = business.landPrice;
+    if (status !== 'land') {
+        value += business.buildPrice;
+        for (let priorLevel = 1; priorLevel < level; priorLevel++) {
+            value += Math.round(650 + (priorLevel - 1) * 430 + (priorLevel - 1) ** 2 * 85);
+        }
+    }
+    return value;
+}
+function accruePersonalLoanLateFees(loan, now) {
+    const elapsedPeriods = Math.max(0, Math.min(10, Math.floor((now - loan.dueAt) / PERSONAL_LOAN_LATE_PERIOD_SECONDS)));
+    const additionalPeriods = Math.max(0, elapsedPeriods - loan.lateFeePeriods);
+    if (additionalPeriods === 0)
+        return { loan, feeAdded: 0 };
+    const feeCap = Math.max(1, Math.floor(loan.principal * 0.1));
+    const feePerDay = Math.max(1, Math.ceil(loan.principal * 0.01));
+    const currentFee = Math.min(feeCap, feePerDay * loan.lateFeePeriods);
+    const nextFee = Math.min(feeCap, feePerDay * elapsedPeriods);
+    const feeAdded = Math.max(0, nextFee - currentFee);
+    return { loan: { ...loan, balanceDue: loan.balanceDue + feeAdded, lateFeePeriods: elapsedPeriods }, feeAdded };
+}
+async function mysqlLoadPersonalLoan(connection, guildId, userId, lock) {
+    const [rows] = await connection.execute(`SELECT principal,balance_due AS balanceDue,origination_fee AS originationFee,
+    interest_amount AS interestAmount,apr_bps AS aprBps,created_at AS createdAt,due_at AS dueAt,late_fee_periods AS lateFeePeriods,
+    bankrupt_at AS bankruptAt,foreclosure_at AS foreclosureAt,foreclosed_at AS foreclosedAt,collateral_value AS collateralValue
+    FROM economy_loans WHERE guild_id=? AND user_id=?${lock ? ' FOR UPDATE' : ''}`, [guildId, userId]);
+    return rows[0] ? loanFromDbRow(rows[0]) : null;
+}
+function sqliteLoadPersonalLoan(guildId, userId) {
+    const row = db.prepare(`SELECT principal,balance_due AS balanceDue,origination_fee AS originationFee,
+    interest_amount AS interestAmount,apr_bps AS aprBps,created_at AS createdAt,due_at AS dueAt,late_fee_periods AS lateFeePeriods,
+    bankrupt_at AS bankruptAt,foreclosure_at AS foreclosureAt,foreclosed_at AS foreclosedAt,collateral_value AS collateralValue
+    FROM economy_loans WHERE guild_id=? AND user_id=?`).get(guildId, userId);
+    return row ? loanFromDbRow(row) : null;
+}
+const isPersonalLoanBankrupt = (loan) => loan !== null && loan.bankruptAt !== null;
+async function mysqlPersistPersonalLoanLateFees(connection, guildId, userId, loan, now) {
+    const accrued = accruePersonalLoanLateFees(loan, now);
+    if (accrued.feeAdded > 0)
+        await connection.execute('UPDATE economy_loans SET balance_due=?,late_fee_periods=? WHERE guild_id=? AND user_id=?', [accrued.loan.balanceDue, accrued.loan.lateFeePeriods, guildId, userId]);
+    return accrued.loan;
+}
+function sqlitePersistPersonalLoanLateFees(guildId, userId, loan, now) {
+    const accrued = accruePersonalLoanLateFees(loan, now);
+    if (accrued.feeAdded > 0)
+        db.prepare('UPDATE economy_loans SET balance_due=?,late_fee_periods=? WHERE guild_id=? AND user_id=?')
+            .run(accrued.loan.balanceDue, accrued.loan.lateFeePeriods, guildId, userId);
+    return accrued.loan;
+}
+async function reconcilePersonalLoanMysql(connection, guildId, userId, now, lockedAccount) {
+    const account = lockedAccount ?? await mysqlEnsureAccount(connection, guildId, userId, true);
+    const current = await mysqlLoadPersonalLoan(connection, guildId, userId, true);
+    if (!current)
+        return null;
+    let loan = await mysqlPersistPersonalLoanLateFees(connection, guildId, userId, current, now);
+    if (loan.bankruptAt === null && now >= loan.dueAt + PERSONAL_LOAN_BANKRUPTCY_GRACE_SECONDS
+        && account.balance + account.bankBalance < loan.balanceDue) {
+        const [businessRows] = await connection.execute(`SELECT job_id AS jobId,status,level,
+      investment_value AS investmentValue,mortgaged_at AS mortgagedAt FROM economy_businesses
+      WHERE guild_id=? AND owner_id=? FOR UPDATE`, [guildId, userId]);
+        const business = businessRows[0];
+        const investment = business ? Math.max(Number(business.investmentValue ?? 0), fallbackBusinessInvestment(String(business.jobId), Number(business.level), String(business.status))) : 0;
+        const collateralValue = Math.floor(investment * PERSONAL_LOAN_COLLATERAL_HAIRCUT_BPS / 10_000);
+        const foreclosureAt = business ? now + PERSONAL_LOAN_FORECLOSURE_SECONDS : null;
+        await connection.execute('UPDATE economy_loans SET bankrupt_at=?,foreclosure_at=?,collateral_value=? WHERE guild_id=? AND user_id=?', [now, foreclosureAt, collateralValue, guildId, userId]);
+        if (business)
+            await connection.execute('UPDATE economy_businesses SET mortgaged_at=?,updated_at=? WHERE guild_id=? AND owner_id=?', [now, now, guildId, userId]);
+        loan = { ...loan, bankruptAt: now, foreclosureAt, collateralValue };
+    }
+    if (loan.bankruptAt !== null && loan.foreclosureAt !== null && loan.foreclosedAt === null && now >= loan.foreclosureAt) {
+        const [businessRows] = await connection.execute('SELECT job_id AS jobId,mortgaged_at AS mortgagedAt FROM economy_businesses WHERE guild_id=? AND owner_id=? FOR UPDATE', [guildId, userId]);
+        const hasMortgagedProperty = businessRows[0]?.mortgagedAt !== null && businessRows[0]?.mortgagedAt !== undefined;
+        if (hasMortgagedProperty) {
+            const recovered = Math.min(loan.balanceDue, loan.collateralValue);
+            const remaining = loan.balanceDue - recovered;
+            const surplus = Math.max(0, loan.collateralValue - recovered);
+            const reference = `loan-foreclosure:${guildId}:${userId}:${loan.createdAt}`;
+            await connection.execute(`INSERT IGNORE INTO economy_loan_foreclosures(guild_id,user_id,loan_created_at,job_id,collateral_value,applied_to_debt,cash_surplus,foreclosed_at)
+        VALUES(?,?,?,?,?,?,?,?)`, [guildId, userId, loan.createdAt, String(businessRows[0].jobId), loan.collateralValue, recovered, surplus, now]);
+            if (recovered > 0)
+                await mysqlAddLedger(connection, guildId, userId, -recovered, 'loan:collateral_recovery', `${reference}:recovery`, now);
+            if (surplus > 0) {
+                await connection.execute('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?', [surplus, now, guildId, userId]);
+                await mysqlAddLedger(connection, guildId, userId, surplus, 'loan:collateral_surplus', `${reference}:surplus`, now);
+            }
+            await connection.execute('DELETE FROM economy_business_events WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+            await connection.execute('DELETE FROM economy_business_employees WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+            await connection.execute('DELETE FROM economy_business_buffs WHERE guild_id=? AND user_id=?', [guildId, userId]);
+            await connection.execute('DELETE FROM economy_businesses WHERE guild_id=? AND owner_id=?', [guildId, userId]);
+            if (remaining === 0) {
+                await connection.execute('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?', [guildId, userId]);
+                return null;
+            }
+            loan = { ...loan, balanceDue: remaining, foreclosedAt: now };
+            await connection.execute('UPDATE economy_loans SET balance_due=?,foreclosed_at=? WHERE guild_id=? AND user_id=?', [remaining, now, guildId, userId]);
+        }
+        else {
+            loan = { ...loan, foreclosedAt: now };
+            await connection.execute('UPDATE economy_loans SET foreclosed_at=? WHERE guild_id=? AND user_id=?', [now, guildId, userId]);
+        }
+    }
+    return loan;
+}
+async function applyBankruptcyWorkPaymentMysql(connection, guildId, userId, loan, gross, reference, now) {
+    if (!loan || loan.bankruptAt === null || gross <= 0)
+        return { payout: gross, withheld: 0, remaining: loan?.balanceDue ?? 0 };
+    const withheld = Math.min(gross, loan.balanceDue);
+    const remaining = loan.balanceDue - withheld;
+    if (remaining === 0) {
+        await connection.execute('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?', [guildId, userId]);
+        await connection.execute('UPDATE economy_businesses SET mortgaged_at=NULL,updated_at=? WHERE guild_id=? AND owner_id=?', [now, guildId, userId]);
+    }
+    else {
+        await connection.execute('UPDATE economy_loans SET balance_due=? WHERE guild_id=? AND user_id=?', [remaining, guildId, userId]);
+    }
+    if (withheld > 0)
+        await mysqlAddLedger(connection, guildId, userId, -withheld, 'loan:work_repayment', `${reference}:loan-payment`, now);
+    return { payout: gross - withheld, withheld, remaining };
+}
+function applyBankruptcyWorkPaymentSqlite(guildId, userId, loan, gross, reference, now) {
+    if (!loan || loan.bankruptAt === null || gross <= 0)
+        return { payout: gross, withheld: 0, remaining: loan?.balanceDue ?? 0 };
+    const withheld = Math.min(gross, loan.balanceDue);
+    const remaining = loan.balanceDue - withheld;
+    if (remaining === 0) {
+        db.prepare('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?').run(guildId, userId);
+        db.prepare('UPDATE economy_businesses SET mortgaged_at=NULL,updated_at=? WHERE guild_id=? AND owner_id=?').run(now, guildId, userId);
+    }
+    else {
+        db.prepare('UPDATE economy_loans SET balance_due=? WHERE guild_id=? AND user_id=?').run(remaining, guildId, userId);
+    }
+    if (withheld > 0)
+        db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)')
+            .run(guildId, userId, -withheld, 'loan:work_repayment', `${reference}:loan-payment`, now);
+    return { payout: gross - withheld, withheld, remaining };
+}
+function workLoanPaymentText(payment) {
+    if (!payment.withheld)
+        return '';
+    return payment.remaining === 0
+        ? `\n🏦 El banco retuvo **${money.format(payment.withheld)}** de este turno y liquidaste el préstamo. La hipoteca quedó liberada.`
+        : `\n🏦 El banco aplicó **${money.format(payment.withheld)}** de este turno a tu deuda; quedan **${money.format(payment.remaining)}**. La hipoteca sigue activa.`;
+}
+function reconcilePersonalLoanSqlite(guildId, userId, now, lockedAccount) {
+    const account = lockedAccount ?? sqliteEnsureAccount(guildId, userId);
+    const current = sqliteLoadPersonalLoan(guildId, userId);
+    if (!current)
+        return null;
+    let loan = sqlitePersistPersonalLoanLateFees(guildId, userId, current, now);
+    if (loan.bankruptAt === null && now >= loan.dueAt + PERSONAL_LOAN_BANKRUPTCY_GRACE_SECONDS
+        && account.balance + account.bankBalance < loan.balanceDue) {
+        const business = db.prepare('SELECT job_id AS jobId,status,level,investment_value AS investmentValue,mortgaged_at AS mortgagedAt FROM economy_businesses WHERE guild_id=? AND owner_id=?')
+            .get(guildId, userId);
+        const investment = business ? Math.max(Number(business.investmentValue ?? 0), fallbackBusinessInvestment(business.jobId, Number(business.level), business.status)) : 0;
+        const collateralValue = Math.floor(investment * PERSONAL_LOAN_COLLATERAL_HAIRCUT_BPS / 10_000);
+        const foreclosureAt = business ? now + PERSONAL_LOAN_FORECLOSURE_SECONDS : null;
+        db.prepare('UPDATE economy_loans SET bankrupt_at=?,foreclosure_at=?,collateral_value=? WHERE guild_id=? AND user_id=?').run(now, foreclosureAt, collateralValue, guildId, userId);
+        if (business)
+            db.prepare('UPDATE economy_businesses SET mortgaged_at=?,updated_at=? WHERE guild_id=? AND owner_id=?').run(now, now, guildId, userId);
+        loan = { ...loan, bankruptAt: now, foreclosureAt, collateralValue };
+    }
+    if (loan.bankruptAt !== null && loan.foreclosureAt !== null && loan.foreclosedAt === null && now >= loan.foreclosureAt) {
+        const business = db.prepare('SELECT job_id AS jobId,mortgaged_at AS mortgagedAt FROM economy_businesses WHERE guild_id=? AND owner_id=?')
+            .get(guildId, userId);
+        if (business?.mortgagedAt !== null && business?.mortgagedAt !== undefined) {
+            const recovered = Math.min(loan.balanceDue, loan.collateralValue);
+            const remaining = loan.balanceDue - recovered;
+            const surplus = Math.max(0, loan.collateralValue - recovered);
+            const reference = `loan-foreclosure:${guildId}:${userId}:${loan.createdAt}`;
+            db.prepare(`INSERT OR IGNORE INTO economy_loan_foreclosures(guild_id,user_id,loan_created_at,job_id,collateral_value,applied_to_debt,cash_surplus,foreclosed_at)
+        VALUES(?,?,?,?,?,?,?,?)`).run(guildId, userId, loan.createdAt, business.jobId, loan.collateralValue, recovered, surplus, now);
+            if (recovered > 0)
+                db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -recovered, 'loan:collateral_recovery', `${reference}:recovery`, now);
+            if (surplus > 0) {
+                db.prepare('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?').run(surplus, now, guildId, userId);
+                db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, surplus, 'loan:collateral_surplus', `${reference}:surplus`, now);
+            }
+            db.prepare('DELETE FROM economy_business_events WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+            db.prepare('DELETE FROM economy_business_employees WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+            db.prepare('DELETE FROM economy_business_buffs WHERE guild_id=? AND user_id=?').run(guildId, userId);
+            db.prepare('DELETE FROM economy_businesses WHERE guild_id=? AND owner_id=?').run(guildId, userId);
+            if (remaining === 0) {
+                db.prepare('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?').run(guildId, userId);
+                return null;
+            }
+            loan = { ...loan, balanceDue: remaining, foreclosedAt: now };
+            db.prepare('UPDATE economy_loans SET balance_due=?,foreclosed_at=? WHERE guild_id=? AND user_id=?').run(remaining, now, guildId, userId);
+        }
+        else {
+            loan = { ...loan, foreclosedAt: now };
+            db.prepare('UPDATE economy_loans SET foreclosed_at=? WHERE guild_id=? AND user_id=?').run(now, guildId, userId);
+        }
+    }
+    return loan;
+}
+async function mysqlIsPersonalLoanBankrupt(connection, guildId, userId) {
+    return isPersonalLoanBankrupt(await reconcilePersonalLoanMysql(connection, guildId, userId, nowSeconds()));
+}
+function sqliteIsPersonalLoanBankrupt(guildId, userId) {
+    return isPersonalLoanBankrupt(reconcilePersonalLoanSqlite(guildId, userId, nowSeconds()));
+}
+export async function reconcilePersonalLoans(now = nowSeconds()) {
+    const rows = economyPool
+        ? (await economyPool.execute('SELECT user_id AS userId FROM economy_loans WHERE guild_id=?', [GLOBAL_SCOPE_ID]))[0]
+        : db.prepare('SELECT user_id AS userId FROM economy_loans WHERE guild_id=?').all(GLOBAL_SCOPE_ID);
+    let bankruptcies = 0;
+    let foreclosures = 0;
+    for (const row of rows) {
+        const userId = String(row.userId);
+        if (economyPool) {
+            await withEconomyTransaction(async (connection) => {
+                const account = await mysqlEnsureAccount(connection, GLOBAL_SCOPE_ID, userId, true);
+                const before = await mysqlLoadPersonalLoan(connection, GLOBAL_SCOPE_ID, userId, true);
+                if (before?.bankruptAt === null && now >= before.dueAt + PERSONAL_LOAN_BANKRUPTCY_GRACE_SECONDS && account.balance + account.bankBalance < before.balanceDue)
+                    bankruptcies++;
+                if (before?.foreclosedAt === null && before?.foreclosureAt !== null && now >= before.foreclosureAt)
+                    foreclosures++;
+                await reconcilePersonalLoanMysql(connection, GLOBAL_SCOPE_ID, userId, now, account);
+            });
+        }
+        else {
+            const before = sqliteLoadPersonalLoan(GLOBAL_SCOPE_ID, userId);
+            const account = sqliteEnsureAccount(GLOBAL_SCOPE_ID, userId);
+            if (before?.bankruptAt === null && now >= before.dueAt + PERSONAL_LOAN_BANKRUPTCY_GRACE_SECONDS && account.balance + account.bankBalance < before.balanceDue)
+                bankruptcies++;
+            if (before?.foreclosedAt === null && before?.foreclosureAt !== null && now >= before.foreclosureAt)
+                foreclosures++;
+            db.transaction(() => { reconcilePersonalLoanSqlite(GLOBAL_SCOPE_ID, userId, now, account); }).immediate();
+        }
+    }
+    return { loansReviewed: rows.length, bankruptcies, foreclosures };
+}
+export async function getPersonalLoanOverview(guildId, userId, now = nowSeconds()) {
+    guildId = GLOBAL_SCOPE_ID;
+    if (economyPool)
+        return withEconomyTransaction(async (connection) => {
+            const policy = await rebalanceBankInterestMysql(connection, now);
+            const accountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, userId, true);
+            const loan = await reconcilePersonalLoanMysql(connection, guildId, userId, now, accountBeforeReconcile);
+            const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            const [notices] = await connection.execute('SELECT job_id AS jobId,collateral_value AS collateralValue,applied_to_debt AS appliedToDebt,cash_surplus AS cashSurplus,foreclosed_at AS foreclosedAt FROM economy_loan_foreclosures WHERE guild_id=? AND user_id=? AND foreclosed_at>=? ORDER BY foreclosed_at DESC LIMIT 1', [guildId, userId, now - 30 * 24 * 60 * 60]);
+            const notice = notices[0];
+            return { walletBalance: account.balance, bankBalance: account.bankBalance,
+                creditLimit: personalLoanCreditLimit(account), referenceAprBps: policy.rateBps, loan,
+                foreclosureNotice: notice ? { jobId: String(notice.jobId), collateralValue: Number(notice.collateralValue), appliedToDebt: Number(notice.appliedToDebt), cashSurplus: Number(notice.cashSurplus), foreclosedAt: Number(notice.foreclosedAt) } : null };
+        });
+    const read = db.transaction(() => {
+        const policy = rebalanceBankInterestSqlite(now);
+        sqliteEnsureAccount(guildId, userId);
+        const loan = reconcilePersonalLoanSqlite(guildId, userId, now);
+        const account = sqliteEnsureAccount(guildId, userId);
+        const notice = db.prepare('SELECT job_id AS jobId,collateral_value AS collateralValue,applied_to_debt AS appliedToDebt,cash_surplus AS cashSurplus,foreclosed_at AS foreclosedAt FROM economy_loan_foreclosures WHERE guild_id=? AND user_id=? AND foreclosed_at>=? ORDER BY foreclosed_at DESC LIMIT 1')
+            .get(guildId, userId, now - 30 * 24 * 60 * 60);
+        return { walletBalance: account.balance, bankBalance: account.bankBalance,
+            creditLimit: personalLoanCreditLimit(account), referenceAprBps: policy.rateBps, loan,
+            foreclosureNotice: notice ? { jobId: notice.jobId, collateralValue: Number(notice.collateralValue), appliedToDebt: Number(notice.appliedToDebt), cashSurplus: Number(notice.cashSurplus), foreclosedAt: Number(notice.foreclosedAt) } : null };
+    });
+    return read.immediate();
+}
+function personalLoanTerms(principal, referenceAprBps) {
+    const aprBps = clamp(referenceAprBps + PERSONAL_LOAN_RISK_SPREAD_BPS, 2_000, 4_500);
+    const originationFee = Math.max(1, Math.ceil(principal * 0.02));
+    const interestAmount = Math.max(1, Math.ceil(principal * aprBps * 7 / (10_000 * 365)));
+    return { aprBps, originationFee, interestAmount };
+}
+export async function requestPersonalLoan(guildId, userId, principal, reference, now = nowSeconds()) {
+    guildId = GLOBAL_SCOPE_ID;
+    if (!Number.isSafeInteger(principal) || principal < PERSONAL_LOAN_MIN || principal > PERSONAL_LOAN_MAX) {
+        return { ok: false, reason: 'invalid_amount', loan: null, creditLimit: 0 };
+    }
+    const issue = async (connection) => {
+        const policy = await rebalanceBankInterestMysql(connection, now);
+        const accountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, userId, true);
+        const currentLoan = await reconcilePersonalLoanMysql(connection, guildId, userId, now, accountBeforeReconcile);
+        const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+        const creditLimit = personalLoanCreditLimit(account);
+        if (currentLoan)
+            return { ok: false, reason: 'active_loan', loan: currentLoan, creditLimit };
+        if (principal > creditLimit)
+            return { ok: false, reason: 'above_limit', loan: null, creditLimit };
+        const terms = personalLoanTerms(principal, policy.rateBps);
+        const balanceDue = principal + terms.originationFee + terms.interestAmount;
+        const loan = { principal, balanceDue, ...terms, createdAt: now, dueAt: now + PERSONAL_LOAN_TERM_SECONDS, lateFeePeriods: 0,
+            bankruptAt: null, foreclosureAt: null, foreclosedAt: null, collateralValue: 0 };
+        await connection.execute(`INSERT INTO economy_loans (guild_id,user_id,principal,balance_due,origination_fee,interest_amount,apr_bps,created_at,due_at,late_fee_periods,reference)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [guildId, userId, principal, balanceDue, terms.originationFee, terms.interestAmount,
+            terms.aprBps, now, loan.dueAt, 0, `loan:${guildId}:${userId}:${reference}`]);
+        await connection.execute('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?', [principal, now, guildId, userId]);
+        await mysqlAddLedger(connection, guildId, userId, principal, 'loan:disbursement', `loan-disbursement:${guildId}:${userId}:${reference}`, now);
+        return { ok: true, loan, walletBalance: account.balance + principal, creditLimit };
+    };
+    if (economyPool)
+        return withEconomyTransaction(issue);
+    const create = db.transaction(() => {
+        const policy = rebalanceBankInterestSqlite(now);
+        sqliteEnsureAccount(guildId, userId);
+        const currentLoan = reconcilePersonalLoanSqlite(guildId, userId, now);
+        const account = sqliteEnsureAccount(guildId, userId);
+        const creditLimit = personalLoanCreditLimit(account);
+        if (currentLoan)
+            return { ok: false, reason: 'active_loan', loan: currentLoan, creditLimit };
+        if (principal > creditLimit)
+            return { ok: false, reason: 'above_limit', loan: null, creditLimit };
+        const terms = personalLoanTerms(principal, policy.rateBps);
+        const balanceDue = principal + terms.originationFee + terms.interestAmount;
+        const loan = { principal, balanceDue, ...terms, createdAt: now, dueAt: now + PERSONAL_LOAN_TERM_SECONDS, lateFeePeriods: 0,
+            bankruptAt: null, foreclosureAt: null, foreclosedAt: null, collateralValue: 0 };
+        db.prepare(`INSERT INTO economy_loans (guild_id,user_id,principal,balance_due,origination_fee,interest_amount,apr_bps,created_at,due_at,late_fee_periods,reference)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(guildId, userId, principal, balanceDue, terms.originationFee, terms.interestAmount, terms.aprBps, now, loan.dueAt, 0, `loan:${guildId}:${userId}:${reference}`);
+        db.prepare('UPDATE economy_accounts SET balance=balance+?,updated_at=? WHERE guild_id=? AND user_id=?').run(principal, now, guildId, userId);
+        db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
+            .run(guildId, userId, principal, 'loan:disbursement', `loan-disbursement:${guildId}:${userId}:${reference}`, now);
+        return { ok: true, loan, walletBalance: account.balance + principal, creditLimit };
+    });
+    return create.immediate();
+}
+export async function repayPersonalLoan(guildId, userId, amount, reference, now = nowSeconds()) {
+    guildId = GLOBAL_SCOPE_ID;
+    if (!Number.isSafeInteger(amount) || amount <= 0)
+        return { ok: false, reason: 'invalid_amount', walletBalance: 0, amountDue: 0 };
+    if (economyPool)
+        return withEconomyTransaction(async (connection) => {
+            const accountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, userId, true);
+            const loan = await reconcilePersonalLoanMysql(connection, guildId, userId, now, accountBeforeReconcile);
+            const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (!loan)
+                return { ok: false, reason: 'no_loan', walletBalance: account.balance, amountDue: 0 };
+            if (amount > loan.balanceDue)
+                return { ok: false, reason: 'invalid_amount', walletBalance: account.balance, amountDue: loan.balanceDue };
+            if (account.balance < amount)
+                return { ok: false, reason: 'insufficient_wallet', walletBalance: account.balance, amountDue: loan.balanceDue };
+            const walletBalance = account.balance - amount;
+            const remaining = loan.balanceDue - amount;
+            await connection.execute('UPDATE economy_accounts SET balance=?,updated_at=? WHERE guild_id=? AND user_id=?', [walletBalance, now, guildId, userId]);
+            if (remaining === 0) {
+                await connection.execute('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?', [guildId, userId]);
+                await connection.execute('UPDATE economy_businesses SET mortgaged_at=NULL,updated_at=? WHERE guild_id=? AND owner_id=?', [now, guildId, userId]);
+            }
+            else
+                await connection.execute('UPDATE economy_loans SET balance_due=? WHERE guild_id=? AND user_id=?', [remaining, guildId, userId]);
+            await mysqlAddLedger(connection, guildId, userId, -amount, 'loan:repayment', `loan-repayment:${guildId}:${userId}:${reference}`, now);
+            return { ok: true, paid: amount, remaining, walletBalance, cleared: remaining === 0 };
+        });
+    const pay = db.transaction(() => {
+        sqliteEnsureAccount(guildId, userId);
+        const loan = reconcilePersonalLoanSqlite(guildId, userId, now);
+        const account = sqliteEnsureAccount(guildId, userId);
+        if (!loan)
+            return { ok: false, reason: 'no_loan', walletBalance: account.balance, amountDue: 0 };
+        if (amount > loan.balanceDue)
+            return { ok: false, reason: 'invalid_amount', walletBalance: account.balance, amountDue: loan.balanceDue };
+        if (account.balance < amount)
+            return { ok: false, reason: 'insufficient_wallet', walletBalance: account.balance, amountDue: loan.balanceDue };
+        const walletBalance = account.balance - amount;
+        const remaining = loan.balanceDue - amount;
+        db.prepare('UPDATE economy_accounts SET balance=?,updated_at=? WHERE guild_id=? AND user_id=?').run(walletBalance, now, guildId, userId);
+        if (remaining === 0) {
+            db.prepare('DELETE FROM economy_loans WHERE guild_id=? AND user_id=?').run(guildId, userId);
+            db.prepare('UPDATE economy_businesses SET mortgaged_at=NULL,updated_at=? WHERE guild_id=? AND owner_id=?').run(now, guildId, userId);
+        }
+        else
+            db.prepare('UPDATE economy_loans SET balance_due=? WHERE guild_id=? AND user_id=?').run(remaining, guildId, userId);
+        db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
+            .run(guildId, userId, -amount, 'loan:repayment', `loan-repayment:${guildId}:${userId}:${reference}`, now);
+        return { ok: true, paid: amount, remaining, walletBalance, cleared: remaining === 0 };
+    });
+    return pay.immediate();
+}
 export async function claimDaily(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt', secondsRemaining: 0 };
             const now = nowSeconds();
             const nextClaimAt = (account.lastDailyAt ?? 0) + DAILY_COOLDOWN_SECONDS;
             if (now < nextClaimAt)
@@ -967,6 +1376,8 @@ export async function claimDaily(guildId, userId, reference) {
         });
     const claim = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt', secondsRemaining: 0 };
         const now = nowSeconds();
         const nextClaimAt = (account.lastDailyAt ?? 0) + DAILY_COOLDOWN_SECONDS;
         if (now < nextClaimAt)
@@ -1274,11 +1685,18 @@ function addJobExperience(level, xp, xpGain = JOB_XP_PER_SHIFT) {
 }
 export async function work(guildId, userId, reference) {
     guildId = GLOBAL_SCOPE_ID;
+    const loanOverview = await getPersonalLoanOverview(guildId, userId);
+    const isBankrupt = Boolean(loanOverview.loan && loanOverview.loan.bankruptAt !== null);
     const businessRoute = await getBusinessWorkRoute(guildId, userId);
-    if (businessRoute)
-        return workBusinessShift(guildId, userId, reference, businessRoute);
+    if (businessRoute && (!businessRoute.blocked || !isBankrupt)) {
+        const businessResult = await workBusinessShift(guildId, userId, reference, businessRoute);
+        if (!isBankrupt || businessResult.ok || businessResult.reason !== 'business_funds')
+            return businessResult;
+    }
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
+            const accountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, userId, true);
+            const loan = await reconcilePersonalLoanMysql(connection, guildId, userId, nowSeconds(), accountBeforeReconcile);
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
             const [jobRows] = await connection.execute('SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1 FOR UPDATE', [guildId, userId]);
             const current = jobRows[0];
@@ -1300,8 +1718,9 @@ export async function work(guildId, userId, reference) {
             const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(level - 1, MAX_JOB_LEVEL - 1) * 3;
             const progress = addJobExperience(level, xp);
             const toolWear = await wearJobToolMysql(connection, guildId, userId, job, progress.level, reference, now);
+            const loanPayment = await applyBankruptcyWorkPaymentMysql(connection, guildId, userId, loan, amount, reference, now);
             await connection.execute('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?', [progress.level, progress.xp, selectedAt, guildId, userId, job.id]);
-            await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
+            await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [loanPayment.payout, now, now, guildId, userId]);
             await mysqlAddLedger(connection, guildId, userId, amount, `work_reward:${job.id}:lv${level}`, reference, now);
             const xpText = progress.level >= MAX_JOB_LEVEL ? ' · nivel máximo' : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`;
             const levelText = progress.levelUp ? `\n🎉 **${job.name} subió al nivel ${progress.level}.**` : '';
@@ -1310,10 +1729,12 @@ export async function work(guildId, userId, reference) {
                 : `${job.toolName} ${jobToolMaterial(toolWear.upgradeLevel)}`;
             const toolText = toolWear.broke ? `\n💥 **${toolDisplayName} se rompió.** Recompra otra herramienta en la tienda para seguir trabajando; las mejoras de material se conservan.`
                 : `\n🧰 ${toolDisplayName} · durabilidad **${toolWear.durability}/${toolWear.maxDurability}**${toolWear.worn ? '' : ' · tu experiencia evitó el desgaste'}`;
-            return { ok: true, amount, balance: account.balance + amount, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
-                message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${xpText}${levelText}${toolText}` };
+            return { ok: true, amount: loanPayment.payout, balance: account.balance + loanPayment.payout, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
+                message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${workLoanPaymentText(loanPayment)}${xpText}${levelText}${toolText}` };
         });
     const earn = db.transaction(() => {
+        sqliteEnsureAccount(guildId, userId);
+        const loan = reconcilePersonalLoanSqlite(guildId, userId, nowSeconds());
         const account = sqliteEnsureAccount(guildId, userId);
         const current = db.prepare('SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1')
             .get(guildId, userId);
@@ -1334,10 +1755,11 @@ export async function work(guildId, userId, reference) {
         const amount = job.minPay + randomInt(job.maxPay - job.minPay + 1) + Math.min(current.level - 1, MAX_JOB_LEVEL - 1) * 3;
         const progress = addJobExperience(current.level, current.xp);
         const toolWear = wearJobToolSqlite(guildId, userId, job, progress.level, reference, now);
+        const loanPayment = applyBankruptcyWorkPaymentSqlite(guildId, userId, loan, amount, reference, now);
         db.prepare('UPDATE economy_jobs SET level=?,xp=?,updated_at=? WHERE guild_id=? AND user_id=? AND job_id=?')
             .run(progress.level, progress.xp, selectedAt, guildId, userId, job.id);
         db.prepare('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?')
-            .run(amount, now, now, guildId, userId);
+            .run(loanPayment.payout, now, now, guildId, userId);
         db.prepare('INSERT INTO economy_ledger (guild_id,user_id,amount,reason,reference,created_at) VALUES (?,?,?,?,?,?)')
             .run(guildId, userId, amount, `work_reward:${job.id}:lv${current.level}`, reference, now);
         const xpText = progress.level >= MAX_JOB_LEVEL ? ' · nivel máximo' : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`;
@@ -1347,8 +1769,8 @@ export async function work(guildId, userId, reference) {
             : `${job.toolName} ${jobToolMaterial(toolWear.upgradeLevel)}`;
         const toolText = toolWear.broke ? `\n💥 **${toolDisplayName} se rompió.** Recompra otra herramienta en la tienda para seguir trabajando; las mejoras de material se conservan.`
             : `\n🧰 ${toolDisplayName} · durabilidad **${toolWear.durability}/${toolWear.maxDurability}**${toolWear.worn ? '' : ' · tu experiencia evitó el desgaste'}`;
-        return { ok: true, amount, balance: account.balance + amount, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
-            message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${xpText}${levelText}${toolText}` };
+        return { ok: true, amount: loanPayment.payout, balance: account.balance + loanPayment.payout, jobName: job.name, level: progress.level, levelUp: progress.levelUp,
+            message: `${pick(job.messages)}\n**${job.name} · nivel ${progress.level}**${workLoanPaymentText(loanPayment)}${xpText}${levelText}${toolText}` };
     });
     return earn.immediate();
 }
@@ -1552,8 +1974,15 @@ async function workBusinessShift(guildId, userId, reference, route) {
         return { ok: false, reason: 'business_pest' };
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
-            const workerAccount = await mysqlEnsureAccount(connection, guildId, userId, true);
-            const ownerAccount = route.ownerId === userId ? workerAccount : await mysqlEnsureAccount(connection, guildId, route.ownerId, true);
+            const ownerAccountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, route.ownerId, true);
+            const ownerLoan = await reconcilePersonalLoanMysql(connection, guildId, route.ownerId, nowSeconds(), ownerAccountBeforeReconcile);
+            let workerLoan = ownerLoan;
+            if (route.ownerId !== userId) {
+                const workerAccountBeforeReconcile = await mysqlEnsureAccount(connection, guildId, userId, true);
+                workerLoan = await reconcilePersonalLoanMysql(connection, guildId, userId, nowSeconds(), workerAccountBeforeReconcile);
+            }
+            const ownerAccount = await mysqlEnsureAccount(connection, guildId, route.ownerId, true);
+            const workerAccount = route.ownerId === userId ? ownerAccount : await mysqlEnsureAccount(connection, guildId, userId, true);
             const [jobs] = await connection.execute('SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1 FOR UPDATE', [guildId, userId]);
             const current = jobs[0];
             if (!current)
@@ -1592,7 +2021,10 @@ async function workBusinessShift(guildId, userId, reference, route) {
             if (hasBuff)
                 await connection.execute('UPDATE economy_business_buffs SET uses=uses-1,updated_at=? WHERE guild_id=? AND user_id=?', [now, guildId, userId]);
             const { gross, wagesDue: wagesPaid, theft, utilitiesPaid, debt: newDebt, net } = settlement;
-            const nextOwnerBalance = ownerAccount.balance + net;
+            const ownerLoanPayment = await applyBankruptcyWorkPaymentMysql(connection, guildId, route.ownerId, ownerLoan, net, `${reference}:owner`, now);
+            const workerLoanPayment = route.ownerId === userId ? ownerLoanPayment
+                : await applyBankruptcyWorkPaymentMysql(connection, guildId, userId, workerLoan, wagesPaid, `${reference}:worker`, now);
+            const nextOwnerBalance = ownerAccount.balance + ownerLoanPayment.payout;
             const progress = addJobExperience(level, Number(current.xp));
             const toolWear = await wearJobToolMysql(connection, guildId, userId, job, progress.level, reference, now);
             const selectedAt = Math.max(now, Number(current.updatedAt ?? 0) + 1);
@@ -1605,7 +2037,7 @@ async function workBusinessShift(guildId, userId, reference, route) {
             if (wagesPaid) {
                 await mysqlAddLedger(connection, guildId, route.ownerId, -wagesPaid, route.isOwner ? 'business:npc_wage' : 'business:employee_wage', `${reference}:wage:out`, now);
                 if (!route.isOwner) {
-                    await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [wagesPaid, now, now, guildId, userId]);
+                    await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [workerLoanPayment.payout, now, now, guildId, userId]);
                     await mysqlAddLedger(connection, guildId, userId, wagesPaid, 'business:employee_wage', `${reference}:wage:in`, now);
                 }
             }
@@ -1631,14 +2063,18 @@ async function workBusinessShift(guildId, userId, reference, route) {
                 + (pestFine ? `\n🐀 ¡Plaga detectada! El negocio queda pausado hasta pagar **${money.format(pestFine)}** por el exterminio en el panel del terreno.` : '');
             const buffText = hasBuff ? '\n✨ El consumible de negocio aumentó 20% los ingresos de este turno.' : '';
             const toolText = toolWear.broke ? `\n💥 ${job.toolName} se rompió; recompra otra para seguir trabajando.` : `\n🧰 ${job.toolName} · ${toolWear.durability}/${toolWear.maxDurability} de durabilidad.`;
-            const amount = route.isOwner ? net : wagesPaid;
-            const balance = route.isOwner ? nextOwnerBalance : workerAccount.balance + wagesPaid;
-            const message = `${pick(job.messages)}\n**${businessName(job.id)} · nivel ${businessLevel}**${businessText}\n📦 Producto guardado en tu inventario: ${employeeNames}.${buffText}${progressText}${toolText}`;
+            const paymentText = route.isOwner ? workLoanPaymentText(ownerLoanPayment) : workLoanPaymentText(workerLoanPayment);
+            const amount = route.isOwner ? ownerLoanPayment.payout : workerLoanPayment.payout;
+            const balance = route.isOwner ? nextOwnerBalance : workerAccount.balance + workerLoanPayment.payout;
+            const message = `${pick(job.messages)}\n**${businessName(job.id)} · nivel ${businessLevel}**${businessText}${paymentText}\n📦 Producto guardado en tu inventario: ${employeeNames}.${buffText}${progressText}${toolText}`;
             return { ok: true, amount, balance, jobName: job.name, level: progress.level, levelUp: progress.levelUp, message };
         });
     const result = db.transaction(() => {
-        const workerAccount = sqliteEnsureAccount(guildId, userId);
-        const ownerAccount = route.ownerId === userId ? workerAccount : sqliteEnsureAccount(guildId, route.ownerId);
+        sqliteEnsureAccount(guildId, route.ownerId);
+        const ownerLoan = reconcilePersonalLoanSqlite(guildId, route.ownerId, nowSeconds());
+        const workerLoan = route.ownerId === userId ? ownerLoan : reconcilePersonalLoanSqlite(guildId, userId, nowSeconds());
+        const ownerAccount = sqliteEnsureAccount(guildId, route.ownerId);
+        const workerAccount = route.ownerId === userId ? ownerAccount : sqliteEnsureAccount(guildId, userId);
         const current = db.prepare('SELECT job_id AS jobId,level,xp,updated_at AS updatedAt FROM economy_jobs WHERE guild_id=? AND user_id=? AND is_active=1 ORDER BY updated_at DESC,job_id ASC LIMIT 1').get(guildId, userId);
         if (!current)
             return { ok: false, reason: 'no_job' };
@@ -1675,7 +2111,10 @@ async function workBusinessShift(guildId, userId, reference, route) {
         if (hasBuff)
             db.prepare('UPDATE economy_business_buffs SET uses=uses-1,updated_at=? WHERE guild_id=? AND user_id=?').run(now, guildId, userId);
         const { gross, wagesDue: wagesPaid, theft, utilitiesPaid, debt: newDebt, net } = settlement;
-        const nextOwnerBalance = ownerAccount.balance + net;
+        const ownerLoanPayment = applyBankruptcyWorkPaymentSqlite(guildId, route.ownerId, ownerLoan, net, `${reference}:owner`, now);
+        const workerLoanPayment = route.ownerId === userId ? ownerLoanPayment
+            : applyBankruptcyWorkPaymentSqlite(guildId, userId, workerLoan, wagesPaid, `${reference}:worker`, now);
+        const nextOwnerBalance = ownerAccount.balance + ownerLoanPayment.payout;
         const progress = addJobExperience(level, Number(current.xp));
         const toolWear = wearJobToolSqlite(guildId, userId, job, progress.level, reference, now);
         const selectedAt = Math.max(now, Number(current.updatedAt ?? 0) + 1);
@@ -1688,7 +2127,7 @@ async function workBusinessShift(guildId, userId, reference, route) {
         if (wagesPaid) {
             db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, route.ownerId, -wagesPaid, route.isOwner ? 'business:npc_wage' : 'business:employee_wage', `${reference}:wage:out`, now);
             if (!route.isOwner) {
-                db.prepare('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(wagesPaid, now, now, guildId, userId);
+                db.prepare('UPDATE economy_accounts SET balance=balance+?,last_work_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(workerLoanPayment.payout, now, now, guildId, userId);
                 db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, wagesPaid, 'business:employee_wage', `${reference}:wage:in`, now);
             }
         }
@@ -1713,7 +2152,8 @@ async function workBusinessShift(guildId, userId, reference, route) {
             + (theft ? `\n🕵️ Un robo inesperado se llevó **${money.format(theft)}** monedas de las ventas.` : '')
             + (pestFine ? `\n🐀 ¡Plaga detectada! El negocio queda pausado hasta pagar **${money.format(pestFine)}** por el exterminio en el panel del terreno.` : '');
         const message = `${pick(job.messages)}\n**${businessName(job.id)} · nivel ${businessLevel}**${businessText}\n📦 Producto guardado en tu inventario: ${goodsText}.${hasBuff ? '\n✨ El consumible de negocio aumentó 20% los ingresos de este turno.' : ''}${progressText}\n🧰 ${toolWear.broke ? `${job.toolName} se rompió; recompra otra para seguir trabajando.` : `${job.toolName} · ${toolWear.durability}/${toolWear.maxDurability} de durabilidad.`}`;
-        return { ok: true, amount: route.isOwner ? net : wagesPaid, balance: route.isOwner ? nextOwnerBalance : workerAccount.balance + wagesPaid, jobName: job.name, level: progress.level, levelUp: progress.levelUp, message };
+        const paymentText = route.isOwner ? workLoanPaymentText(ownerLoanPayment) : workLoanPaymentText(workerLoanPayment);
+        return { ok: true, amount: route.isOwner ? ownerLoanPayment.payout : workerLoanPayment.payout, balance: route.isOwner ? nextOwnerBalance : workerAccount.balance + workerLoanPayment.payout, jobName: job.name, level: progress.level, levelUp: progress.levelUp, message: message.replace(`${businessText}`, `${businessText}${paymentText}`) };
     });
     return result.immediate();
 }
@@ -1722,7 +2162,9 @@ export async function getBusinessOverview(guildId, ownerId) {
     const now = businessNow();
     await refreshBusinessLifecycle(guildId, ownerId, now);
     if (economyPool) {
-        const [rows] = await economyPool.execute('SELECT owner_id AS ownerId,job_id AS jobId,status,level,construction_complete_at AS constructionCompleteAt,debt FROM economy_businesses WHERE guild_id=? AND owner_id=?', [guildId, ownerId]);
+        const [rows] = await economyPool.execute(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.construction_complete_at AS constructionCompleteAt,b.debt,
+      b.investment_value AS investmentValue,b.mortgaged_at AS mortgagedAt,l.foreclosure_at AS foreclosureAt,l.collateral_value AS collateralValue,l.balance_due AS loanBalanceDue
+      FROM economy_businesses b LEFT JOIN economy_loans l ON l.guild_id=b.guild_id AND l.user_id=b.owner_id WHERE b.guild_id=? AND b.owner_id=?`, [guildId, ownerId]);
         const row = rows[0];
         if (!row)
             return undefined;
@@ -1738,13 +2180,18 @@ export async function getBusinessOverview(guildId, ownerId) {
             return undefined;
         return { ownerId, job, name: businessName(job.id), status: String(row.status), level: Number(row.level),
             constructionCompleteAt: row.constructionCompleteAt === null ? null : Number(row.constructionCompleteAt), debt: Number(row.debt),
+            investmentValue: Number(row.investmentValue ?? 0), mortgagedAt: row.mortgagedAt === null || row.mortgagedAt === undefined ? null : Number(row.mortgagedAt),
+            foreclosureAt: row.foreclosureAt === null || row.foreclosureAt === undefined ? null : Number(row.foreclosureAt), collateralValue: Number(row.collateralValue ?? 0),
+            loanBalanceDue: row.loanBalanceDue === null || row.loanBalanceDue === undefined ? null : Number(row.loanBalanceDue),
             employees: staff.map((entry) => ({ key: String(entry.key), userId: entry.userId ? String(entry.userId) : null, name: String(entry.name), kind: String(entry.kind), status: String(entry.status), lastWorkAt: entry.lastWorkAt === null || entry.lastWorkAt === undefined ? null : Number(entry.lastWorkAt) })),
             income30d: Number(stats[0]?.income30d ?? 0), expenses30d: Number(stats[0]?.expenses30d ?? 0), wages30d: Number(stats[0]?.wages30d ?? 0), profit30d: Number(stats[0]?.profit30d ?? 0),
             lastWorkAt: activityRows[0]?.lastWorkAt === null || activityRows[0]?.lastWorkAt === undefined ? null : Number(activityRows[0].lastWorkAt),
             events: eventRows.map((entry) => ({ type: String(entry.type), amount: Number(entry.amount), createdAt: Number(entry.createdAt) })),
             recommendedStaff: businessRecommendedStaff(Number(row.level)), staffLimit: businessStaffLimit(Number(row.level)) };
     }
-    const row = db.prepare('SELECT owner_id AS ownerId,job_id AS jobId,status,level,construction_complete_at AS constructionCompleteAt,debt FROM economy_businesses WHERE guild_id=? AND owner_id=?').get(guildId, ownerId);
+    const row = db.prepare(`SELECT b.owner_id AS ownerId,b.job_id AS jobId,b.status,b.level,b.construction_complete_at AS constructionCompleteAt,b.debt,
+    b.investment_value AS investmentValue,b.mortgaged_at AS mortgagedAt,l.foreclosure_at AS foreclosureAt,l.collateral_value AS collateralValue,l.balance_due AS loanBalanceDue
+    FROM economy_businesses b LEFT JOIN economy_loans l ON l.guild_id=b.guild_id AND l.user_id=b.owner_id WHERE b.guild_id=? AND b.owner_id=?`).get(guildId, ownerId);
     if (!row)
         return undefined;
     const staff = db.prepare(`SELECT e.employee_key AS \`key\`,e.employee_user_id AS userId,e.employee_name AS name,e.kind,e.status,a.last_work_at AS lastWorkAt
@@ -1758,6 +2205,8 @@ export async function getBusinessOverview(guildId, ownerId) {
     if (!job)
         return undefined;
     return { ownerId, job, name: businessName(job.id), status: row.status, level: Number(row.level), constructionCompleteAt: row.constructionCompleteAt === null ? null : Number(row.constructionCompleteAt), debt: Number(row.debt),
+        investmentValue: Number(row.investmentValue ?? 0), mortgagedAt: row.mortgagedAt === null ? null : Number(row.mortgagedAt), foreclosureAt: row.foreclosureAt === null ? null : Number(row.foreclosureAt),
+        collateralValue: Number(row.collateralValue ?? 0), loanBalanceDue: row.loanBalanceDue === null ? null : Number(row.loanBalanceDue),
         employees: staff.map((entry) => ({ ...entry, userId: entry.userId ?? null, kind: entry.kind, status: entry.status, lastWorkAt: entry.lastWorkAt ?? null })), income30d: Number(stats.income30d), expenses30d: Number(stats.expenses30d), wages30d: Number(stats.wages30d), profit30d: Number(stats.profit30d), lastWorkAt: activity.lastWorkAt ?? null,
         events: events.map((entry) => ({ type: entry.type, amount: Number(entry.amount), createdAt: Number(entry.createdAt) })), recommendedStaff: businessRecommendedStaff(Number(row.level)), staffLimit: businessStaffLimit(Number(row.level)) };
 }
@@ -1802,6 +2251,9 @@ export async function buyBusinessLand(guildId, userId, jobId, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            const loan = await mysqlLoadPersonalLoan(connection, guildId, userId, true);
+            if (loan?.bankruptAt !== null && loan)
+                return { ok: false, reason: 'bankrupt', balance: account.balance };
             const [jobs] = await connection.execute('SELECT job_id FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=? AND is_active=1 FOR UPDATE', [guildId, userId, jobId]);
             if (!jobs[0])
                 return { ok: false, reason: 'no_job', balance: account.balance };
@@ -1814,13 +2266,16 @@ export async function buyBusinessLand(guildId, userId, jobId, reference) {
             if (account.balance < quote.price)
                 return { ok: false, reason: 'insufficient_funds', balance: account.balance };
             await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [quote.price, now, guildId, userId]);
-            await connection.execute("INSERT INTO economy_businesses(guild_id,owner_id,job_id,status,level,debt,created_at,updated_at) VALUES(?,?,?,'land',1,0,?,?)", [guildId, userId, jobId, now, now]);
+            await connection.execute("INSERT INTO economy_businesses(guild_id,owner_id,job_id,status,level,debt,investment_value,created_at,updated_at) VALUES(?,?,?,'land',1,0,?,?,?)", [guildId, userId, jobId, quote.price, now, now]);
             await mysqlAddLedger(connection, guildId, userId, -quote.price, 'business:land', reference, now);
             await recordProductSaleMysql(connection, { userId, kind: 'economy', id: `business_land_${jobId}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
             return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Compraste el terreno para **${business.name}**.` };
         });
     const purchase = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        const loan = sqliteLoadPersonalLoan(guildId, userId);
+        if (loan?.bankruptAt !== null && loan)
+            return { ok: false, reason: 'bankrupt', balance: account.balance };
         const job = db.prepare('SELECT job_id FROM economy_jobs WHERE guild_id=? AND user_id=? AND job_id=? AND is_active=1').get(guildId, userId, jobId);
         if (!job)
             return { ok: false, reason: 'no_job', balance: account.balance };
@@ -1833,7 +2288,7 @@ export async function buyBusinessLand(guildId, userId, jobId, reference) {
         if (account.balance < quote.price)
             return { ok: false, reason: 'insufficient_funds', balance: account.balance };
         db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(quote.price, now, guildId, userId);
-        db.prepare("INSERT INTO economy_businesses(guild_id,owner_id,job_id,status,level,debt,created_at,updated_at) VALUES(?,?,?,'land',1,0,?,?)").run(guildId, userId, jobId, now, now);
+        db.prepare("INSERT INTO economy_businesses(guild_id,owner_id,job_id,status,level,debt,investment_value,created_at,updated_at) VALUES(?,?,?,'land',1,0,?,?,?)").run(guildId, userId, jobId, quote.price, now, now);
         db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -quote.price, 'business:land', reference, now);
         recordProductSaleSqlite({ userId, kind: 'economy', id: `business_land_${jobId}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
         return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Compraste el terreno para **${business.name}**.` };
@@ -1846,6 +2301,8 @@ export async function startBusinessConstruction(guildId, userId, reference) {
     const jobBusiness = overview && businessByJob(overview.job.id);
     if (!overview || !jobBusiness)
         return { ok: false, reason: 'not_found', balance: await getBalance(guildId, userId) };
+    if (overview.mortgagedAt !== null)
+        return { ok: false, reason: 'mortgaged', balance: await getBalance(guildId, userId) };
     const quote = await getProductPriceQuote(businessProductRequest(`business_build_${overview.job.id}`, jobBusiness.buildPrice));
     const now = businessNow();
     if (economyPool)
@@ -1860,7 +2317,7 @@ export async function startBusinessConstruction(guildId, userId, reference) {
                 return { ok: false, reason: 'insufficient_funds', balance: account.balance };
             const completeAt = now + BUSINESS_CONSTRUCTION_SECONDS;
             await connection.execute("UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?", [quote.price, now, guildId, userId]);
-            await connection.execute("UPDATE economy_businesses SET status='construction',construction_complete_at=?,updated_at=? WHERE guild_id=? AND owner_id=?", [completeAt, now, guildId, userId]);
+            await connection.execute("UPDATE economy_businesses SET status='construction',construction_complete_at=?,investment_value=investment_value+?,updated_at=? WHERE guild_id=? AND owner_id=?", [completeAt, quote.price, now, guildId, userId]);
             await mysqlAddLedger(connection, guildId, userId, -quote.price, 'business:construction', reference, now);
             await recordProductSaleMysql(connection, { userId, kind: 'economy', id: `business_build_${overview.job.id}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
             return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Inició la construcción de **${businessName(overview.job.id)}**. Estará lista en 6 horas.` };
@@ -1875,7 +2332,7 @@ export async function startBusinessConstruction(guildId, userId, reference) {
         if (account.balance < quote.price)
             return { ok: false, reason: 'insufficient_funds', balance: account.balance };
         db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(quote.price, now, guildId, userId);
-        db.prepare("UPDATE economy_businesses SET status='construction',construction_complete_at=?,updated_at=? WHERE guild_id=? AND owner_id=?").run(now + BUSINESS_CONSTRUCTION_SECONDS, now, guildId, userId);
+        db.prepare("UPDATE economy_businesses SET status='construction',construction_complete_at=?,investment_value=investment_value+?,updated_at=? WHERE guild_id=? AND owner_id=?").run(now + BUSINESS_CONSTRUCTION_SECONDS, quote.price, now, guildId, userId);
         db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -quote.price, 'business:construction', reference, now);
         recordProductSaleSqlite({ userId, kind: 'economy', id: `business_build_${overview.job.id}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
         return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Inició la construcción de **${businessName(row.jobId)}**. Estará lista en 6 horas.` };
@@ -1887,6 +2344,8 @@ export async function upgradeBusiness(guildId, userId, reference) {
     const overview = await getBusinessOverview(guildId, userId);
     if (!overview)
         return { ok: false, reason: 'not_found', balance: await getBalance(guildId, userId) };
+    if (overview.mortgagedAt !== null)
+        return { ok: false, reason: 'mortgaged', balance: await getBalance(guildId, userId) };
     if (overview.status !== 'active')
         return { ok: false, reason: 'not_ready', balance: await getBalance(guildId, userId) };
     if (overview.level >= 10)
@@ -1907,7 +2366,7 @@ export async function upgradeBusiness(guildId, userId, reference) {
                 return { ok: false, reason: 'insufficient_funds', balance: account.balance };
             const level = Number(row.level) + 1;
             await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [quote.price, now, guildId, userId]);
-            await connection.execute('UPDATE economy_businesses SET level=?,updated_at=? WHERE guild_id=? AND owner_id=?', [level, now, guildId, userId]);
+            await connection.execute('UPDATE economy_businesses SET level=?,investment_value=investment_value+?,updated_at=? WHERE guild_id=? AND owner_id=?', [level, quote.price, now, guildId, userId]);
             await mysqlAddLedger(connection, guildId, userId, -quote.price, 'business:upgrade', reference, now);
             await recordProductSaleMysql(connection, { userId, kind: 'economy', id: `business_upgrade_${overview.job.id}_${level}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
             return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Negocio mejorado al **nivel ${level}/10**.` };
@@ -1923,7 +2382,7 @@ export async function upgradeBusiness(guildId, userId, reference) {
             return { ok: false, reason: 'insufficient_funds', balance: account.balance };
         const level = row.level + 1;
         db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(quote.price, now, guildId, userId);
-        db.prepare('UPDATE economy_businesses SET level=?,updated_at=? WHERE guild_id=? AND owner_id=?').run(level, now, guildId, userId);
+        db.prepare('UPDATE economy_businesses SET level=?,investment_value=investment_value+?,updated_at=? WHERE guild_id=? AND owner_id=?').run(level, quote.price, now, guildId, userId);
         db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -quote.price, 'business:upgrade', reference, now);
         recordProductSaleSqlite({ userId, kind: 'economy', id: `business_upgrade_${overview.job.id}_${level}`, category: BUSINESS_MARKET_CATEGORY, quantity: 1, unitPrice: quote.price, reference, soldAt: now });
         return { ok: true, price: quote.price, balance: account.balance - quote.price, message: `Negocio mejorado al **nivel ${level}/10**.` };
@@ -1935,6 +2394,8 @@ export async function hireBusinessNpc(guildId, userId, reference) {
     const overview = await getBusinessOverview(guildId, userId);
     if (!overview)
         return { ok: false, reason: 'not_found', balance: await getBalance(guildId, userId) };
+    if (overview.mortgagedAt !== null)
+        return { ok: false, reason: 'mortgaged', balance: await getBalance(guildId, userId) };
     if (overview.status !== 'active')
         return { ok: false, reason: 'not_ready', balance: await getBalance(guildId, userId) };
     const count = overview.employees.filter((employee) => employee.status !== 'pending').length;
@@ -2263,6 +2724,8 @@ export async function sellBusinessGood(guildId, userId, itemId, quantity, refere
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlLoadPersonalLoan(connection, guildId, userId, true))
+                return { ok: false, reason: 'loan_active', balance: account.balance };
             const [rows] = await connection.execute('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE', [guildId, userId, itemId]);
             if (Number(rows[0]?.quantity ?? 0) < quantity)
                 return { ok: false, reason: 'no_items', balance: account.balance };
@@ -2277,6 +2740,8 @@ export async function sellBusinessGood(guildId, userId, itemId, quantity, refere
         });
     const sell = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteLoadPersonalLoan(guildId, userId))
+            return { ok: false, reason: 'loan_active', balance: account.balance };
         const rows = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=?').get(guildId, userId, itemId);
         if (Number(rows?.quantity ?? 0) < quantity)
             return { ok: false, reason: 'no_items', balance: account.balance };
@@ -2312,6 +2777,8 @@ export async function crime(guildId, userId, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt', secondsRemaining: 0 };
             const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
             if (now < nextCrimeAt)
                 return { ok: false, secondsRemaining: nextCrimeAt - now };
@@ -2329,6 +2796,8 @@ export async function crime(guildId, userId, reference) {
         });
     const commitCrime = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt', secondsRemaining: 0 };
         const nextCrimeAt = (account.lastCrimeAt ?? 0) + CRIME_COOLDOWN_SECONDS;
         if (now < nextCrimeAt)
             return { ok: false, secondsRemaining: nextCrimeAt - now };
@@ -2362,6 +2831,8 @@ export async function transferCoins(guildId, fromUserId, toUserId, amount, refer
                 accounts.set(id, await mysqlEnsureAccount(connection, guildId, id, true));
             const from = accounts.get(fromUserId);
             const to = accounts.get(toUserId);
+            if (await mysqlLoadPersonalLoan(connection, guildId, fromUserId, true))
+                return { ok: false, reason: 'loan_active' };
             if (from.balance < amount)
                 return { ok: false, reason: 'insufficient_funds' };
             const now = nowSeconds();
@@ -2374,6 +2845,8 @@ export async function transferCoins(guildId, fromUserId, toUserId, amount, refer
     const send = db.transaction(() => {
         const from = sqliteEnsureAccount(guildId, fromUserId);
         const to = sqliteEnsureAccount(guildId, toUserId);
+        if (sqliteLoadPersonalLoan(guildId, fromUserId))
+            return { ok: false, reason: 'loan_active' };
         if (from.balance < amount)
             return { ok: false, reason: 'insufficient_funds' };
         const now = nowSeconds();
@@ -2398,6 +2871,8 @@ export async function fish(guildId, userId, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             const [rods] = await connection.execute('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=? FOR UPDATE', [guildId, userId, 'cana_pescar']);
             if (Number(rods[0]?.quantity ?? 0) < 1)
                 return { ok: false, reason: 'missing_rod' };
@@ -2417,6 +2892,8 @@ export async function fish(guildId, userId, reference) {
         });
     const catchFish = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         const rod = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id=? AND user_id=? AND item_id=?')
             .get(guildId, userId, 'cana_pescar');
         if (!rod || rod.quantity < 1)
@@ -2492,8 +2969,12 @@ export async function robPlayer(guildId, userId, targetId, targetName, reference
             const accounts = new Map();
             for (const id of ids)
                 accounts.set(id, await mysqlEnsureAccount(connection, guildId, id, true));
+            for (const id of ids)
+                if (await mysqlLoadPersonalLoan(connection, guildId, id, true))
+                    return { ok: false, reason: 'loan_active' };
             const robber = accounts.get(userId);
             const victim = accounts.get(targetId);
+            const victimWallet = Math.max(0, Math.floor(victim.balance));
             const now = nowSeconds();
             const nextRobAt = (robber.lastRobAt ?? 0) + ROB_COOLDOWN_SECONDS;
             if (now < nextRobAt)
@@ -2515,28 +2996,28 @@ export async function robPlayer(guildId, userId, targetId, targetName, reference
                 const isUniqueTool = detail?.source === 'economy' && storeItems.find((entry) => entry.id === detail.itemId)?.category === 'jobs';
                 return detail && !(isUniqueTool && robberItems.has(detail.itemId)) ? [detail] : [];
             });
-            if (victim.balance <= 0 && candidates.length === 0)
+            if (victimWallet <= 0 && candidates.length === 0)
                 return { ok: false, reason: 'target_empty' };
             if (success) {
-                const stolenItem = candidates.length && (victim.balance <= 0 || randomInt(100) < 45)
+                const stolenItem = candidates.length && (victimWallet <= 0 || randomInt(100) < 45)
                     ? candidates[randomInt(candidates.length)] : undefined;
                 if (stolenItem) {
                     await transferRobItemMysql(connection, guildId, targetId, userId, stolenItem, reference, now);
                     await connection.execute('UPDATE economy_accounts SET last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [now, now, guildId, userId]);
                     return { ok: true, success: true, amount: 0, balance: robber.balance, stolenItem,
-                        message: `🎒 Robaste ${stolenItem.emoji} **${stolenItem.name} ×1** del inventario de ${targetName}. No se movieron monedas.` };
+                        message: `🎒 Robaste ${stolenItem.emoji} **${stolenItem.name} ×1** del inventario de ${targetName}. No se movieron monedas ni se tocaron los saldos del banco.` };
                 }
-                const amount = Math.min(victim.balance, 200, Math.max(1, Math.floor(victim.balance * (5 + randomInt(11)) / 100)));
-                const message = formatMessage(pick(robSuccessLines), { amount, target: targetName });
+                const amount = Math.min(victimWallet, 200, Math.max(1, Math.floor(victimWallet * (5 + randomInt(11)) / 100)));
+                const message = `${formatMessage(pick(robSuccessLines), { amount, target: targetName })}\n\n💵 Las **${money.format(amount)} monedas** salieron solo de la billetera de ${targetName}; sus ahorros del banco quedan intactos.`;
                 await connection.execute('UPDATE economy_accounts SET balance=balance+?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
                 await connection.execute('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, guildId, targetId]);
                 await mysqlAddLedger(connection, guildId, userId, amount, `rob:from:${targetId}`, `${reference}:in`, now);
                 await mysqlAddLedger(connection, guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
                 return { ok: true, success: true, amount, balance: robber.balance + amount, message };
             }
-            const amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05)));
+            const amount = victimWallet > 0 ? Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05))) : 0;
             const balance = robber.balance - amount;
-            const message = `${formatMessage(pick(robFailLines), { amount, target: targetName })}\n\n🫠 ${moneyLossRemark(balance + robber.bankBalance)}`;
+            const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet);
             await connection.execute('UPDATE economy_accounts SET balance=balance-?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?', [amount, now, now, guildId, userId]);
             if (amount)
                 await mysqlAddLedger(connection, guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
@@ -2546,8 +3027,12 @@ export async function robPlayer(guildId, userId, targetId, targetName, reference
         const accounts = new Map();
         for (const id of [userId, targetId].sort())
             accounts.set(id, sqliteEnsureAccount(guildId, id));
+        for (const id of [userId, targetId].sort())
+            if (sqliteLoadPersonalLoan(guildId, id))
+                return { ok: false, reason: 'loan_active' };
         const robber = accounts.get(userId);
         const victim = accounts.get(targetId);
+        const victimWallet = Math.max(0, Math.floor(victim.balance));
         const now = nowSeconds();
         const nextRobAt = (robber.lastRobAt ?? 0) + ROB_COOLDOWN_SECONDS;
         if (now < nextRobAt)
@@ -2569,19 +3054,19 @@ export async function robPlayer(guildId, userId, targetId, targetName, reference
             const isUniqueTool = detail?.source === 'economy' && storeItems.find((entry) => entry.id === detail.itemId)?.category === 'jobs';
             return detail && !(isUniqueTool && robberItems.has(detail.itemId)) ? [detail] : [];
         });
-        if (victim.balance <= 0 && candidates.length === 0)
+        if (victimWallet <= 0 && candidates.length === 0)
             return { ok: false, reason: 'target_empty' };
         if (success) {
-            const stolenItem = candidates.length && (victim.balance <= 0 || randomInt(100) < 45)
+            const stolenItem = candidates.length && (victimWallet <= 0 || randomInt(100) < 45)
                 ? candidates[randomInt(candidates.length)] : undefined;
             if (stolenItem) {
                 transferRobItemSqlite(guildId, targetId, userId, stolenItem, reference, now);
                 db.prepare('UPDATE economy_accounts SET last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(now, now, guildId, userId);
                 return { ok: true, success: true, amount: 0, balance: robber.balance, stolenItem,
-                    message: `🎒 Robaste ${stolenItem.emoji} **${stolenItem.name} ×1** del inventario de ${targetName}. No se movieron monedas.` };
+                    message: `🎒 Robaste ${stolenItem.emoji} **${stolenItem.name} ×1** del inventario de ${targetName}. No se movieron monedas ni se tocaron los saldos del banco.` };
             }
-            const amount = Math.min(victim.balance, 200, Math.max(1, Math.floor(victim.balance * (5 + randomInt(11)) / 100)));
-            const message = formatMessage(pick(robSuccessLines), { amount, target: targetName });
+            const amount = Math.min(victimWallet, 200, Math.max(1, Math.floor(victimWallet * (5 + randomInt(11)) / 100)));
+            const message = `${formatMessage(pick(robSuccessLines), { amount, target: targetName })}\n\n💵 Las **${money.format(amount)} monedas** salieron solo de la billetera de ${targetName}; sus ahorros del banco quedan intactos.`;
             db.prepare('UPDATE economy_accounts SET balance=balance+?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(amount, now, now, guildId, userId);
             db.prepare('UPDATE economy_accounts SET balance=balance-?,updated_at=? WHERE guild_id=? AND user_id=?').run(amount, now, guildId, targetId);
             const ledger = db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)');
@@ -2589,9 +3074,9 @@ export async function robPlayer(guildId, userId, targetId, targetName, reference
             ledger.run(guildId, targetId, -amount, `rob:to:${userId}`, `${reference}:out`, now);
             return { ok: true, success: true, amount, balance: robber.balance + amount, message };
         }
-        const amount = Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05)));
+        const amount = victimWallet > 0 ? Math.min(robber.balance, Math.max(1, Math.floor(robber.balance * 0.05))) : 0;
         const balance = robber.balance - amount;
-        const message = `${formatMessage(pick(robFailLines), { amount, target: targetName })}\n\n🫠 ${moneyLossRemark(balance + robber.bankBalance)}`;
+        const message = robFailureMessage(targetName, amount, balance, robber.bankBalance, victimWallet);
         db.prepare('UPDATE economy_accounts SET balance=balance-?,last_rob_at=?,updated_at=? WHERE guild_id=? AND user_id=?').run(amount, now, now, guildId, userId);
         if (amount)
             db.prepare('INSERT INTO economy_ledger(guild_id,user_id,amount,reason,reference,created_at) VALUES(?,?,?,?,?,?)').run(guildId, userId, -amount, 'rob_fine', `${reference}:fine`, now);
@@ -2614,6 +3099,8 @@ export async function playRoulette(guildId, userId, bet, choice, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             if (account.balance < bet)
                 return { ok: false, reason: 'insufficient_funds' };
             const now = nowSeconds();
@@ -2627,6 +3114,8 @@ export async function playRoulette(guildId, userId, bet, choice, reference) {
         });
     const spin = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         if (account.balance < bet)
             return { ok: false, reason: 'insufficient_funds' };
         const now = nowSeconds();
@@ -2750,6 +3239,8 @@ export async function playRoosterFight(guildId, userId, bet, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             if (account.balance < bet)
                 return { ok: false, reason: 'insufficient_funds' };
             const [statsRows] = await connection.execute("SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats' FOR UPDATE", [gameId, guildId, userId]);
@@ -2764,6 +3255,8 @@ export async function playRoosterFight(guildId, userId, bet, reference) {
         });
     const play = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         if (account.balance < bet)
             return { ok: false, reason: 'insufficient_funds' };
         const stats = db.prepare("SELECT state_json AS stateJson FROM economy_games WHERE id=? AND guild_id=? AND user_id=? AND game_type='rooster_stats'")
@@ -2795,6 +3288,9 @@ export async function createRoosterDuel(guildId, challengerId, challengerName, d
             const accounts = new Map();
             for (const playerId of playerIds)
                 accounts.set(playerId, await mysqlEnsureAccount(connection, guildId, playerId, true));
+            for (const playerId of playerIds)
+                if (await mysqlLoadPersonalLoan(connection, guildId, playerId, true))
+                    return { ok: false, reason: 'loan_active' };
             if (accounts.get(challengerId).balance < bet)
                 return { ok: false, reason: 'insufficient_funds' };
             await connection.execute("UPDATE economy_rooster_duels SET status='expired',updated_at=? WHERE guild_id=? AND status='pending' AND expires_at<=?", [now, guildId, now]);
@@ -2816,6 +3312,9 @@ export async function createRoosterDuel(guildId, challengerId, challengerName, d
         const accounts = new Map();
         for (const playerId of playerIds)
             accounts.set(playerId, sqliteEnsureAccount(guildId, playerId));
+        for (const playerId of playerIds)
+            if (sqliteLoadPersonalLoan(guildId, playerId))
+                return { ok: false, reason: 'loan_active' };
         if (accounts.get(challengerId).balance < bet)
             return { ok: false, reason: 'insufficient_funds' };
         db.prepare("UPDATE economy_rooster_duels SET status='expired',updated_at=? WHERE guild_id=? AND status='pending' AND expires_at<=?").run(now, guildId, now);
@@ -2881,6 +3380,15 @@ export async function respondRoosterDuel(guildId, duelId, userId, accept) {
                 await connection.execute("UPDATE economy_rooster_duels SET status='declined',state_json=?,updated_at=? WHERE id=?", [JSON.stringify(state), now, duelId]);
                 return { ok: true, duel };
             }
+            const challengerLoan = await mysqlLoadPersonalLoan(connection, guildId, duel.challengerId, true);
+            const defenderLoan = await mysqlLoadPersonalLoan(connection, guildId, duel.defenderId, true);
+            if (challengerLoan || defenderLoan) {
+                duel.status = 'declined';
+                duel.resultMessage = '🏦 El banco canceló el duelo: hay un préstamo pendiente entre los participantes. No se descontaron monedas.';
+                const state = { ...roosterDuelState(duel.stateJson), resultMessage: duel.resultMessage };
+                await connection.execute("UPDATE economy_rooster_duels SET status='declined',state_json=?,updated_at=? WHERE id=?", [JSON.stringify(state), now, duelId]);
+                return { ok: false, reason: 'loan_active', duel };
+            }
             const challenger = accounts.get(duel.challengerId);
             const defender = accounts.get(duel.defenderId);
             if (challenger.balance < duel.bet || defender.balance < duel.bet)
@@ -2942,6 +3450,15 @@ export async function respondRoosterDuel(guildId, duelId, userId, accept) {
             const state = { ...roosterDuelState(duel.stateJson), resultMessage: duel.resultMessage };
             db.prepare("UPDATE economy_rooster_duels SET status='declined',state_json=?,updated_at=? WHERE id=?").run(JSON.stringify(state), now, duelId);
             return { ok: true, duel };
+        }
+        const challengerLoan = sqliteLoadPersonalLoan(guildId, duel.challengerId);
+        const defenderLoan = sqliteLoadPersonalLoan(guildId, duel.defenderId);
+        if (challengerLoan || defenderLoan) {
+            duel.status = 'declined';
+            duel.resultMessage = '🏦 El banco canceló el duelo: hay un préstamo pendiente entre los participantes. No se descontaron monedas.';
+            const state = { ...roosterDuelState(duel.stateJson), resultMessage: duel.resultMessage };
+            db.prepare("UPDATE economy_rooster_duels SET status='declined',state_json=?,updated_at=? WHERE id=?").run(JSON.stringify(state), now, duelId);
+            return { ok: false, reason: 'loan_active', duel };
         }
         const challenger = accounts.get(duel.challengerId);
         const defender = accounts.get(duel.defenderId);
@@ -3009,6 +3526,8 @@ export async function playSlots(guildId, userId, bet, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             if (account.balance < bet)
                 return { ok: false, reason: 'insufficient_funds' };
             const balance = account.balance - bet + payout;
@@ -3021,6 +3540,8 @@ export async function playSlots(guildId, userId, bet, reference) {
         });
     const spin = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         if (account.balance < bet)
             return { ok: false, reason: 'insufficient_funds' };
         const balance = account.balance - bet + payout;
@@ -3048,6 +3569,8 @@ export async function playItemRoulette(guildId, userId, itemId, choice, referenc
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             const [items] = await connection.execute('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ? FOR UPDATE', [guildId, userId, itemId]);
             const quantity = Number(items[0]?.quantity ?? 0);
             if (quantity < 1)
@@ -3064,6 +3587,8 @@ export async function playItemRoulette(guildId, userId, itemId, choice, referenc
         });
     const spin = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         const inventory = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ?')
             .get(guildId, userId, itemId);
         if (!inventory || inventory.quantity < 1)
@@ -3152,6 +3677,8 @@ export async function useShopItem(guildId, userId, itemId, reference) {
                 return { ok: true, kind: 'utility', message: `📗 Usaste **${item.name}**: **${job.name}** ganó ${effect.xp} XP${progress.levelUp ? ` y subió al nivel ${progress.level}` : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`}.` };
             }
             if (effect.kind === 'fish_bait') {
+                if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                    return { ok: false, reason: 'bankrupt' };
                 const [rods] = await connection.execute('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ? FOR UPDATE', [guildId, userId, 'cana_pescar']);
                 if (Number(rods[0]?.quantity ?? 0) < 1)
                     return { ok: false, reason: 'missing_rod' };
@@ -3218,6 +3745,8 @@ export async function useShopItem(guildId, userId, itemId, reference) {
             return { ok: true, kind: 'utility', message: `📗 Usaste **${item.name}**: **${job.name}** ganó ${effect.xp} XP${progress.levelUp ? ` y subió al nivel ${progress.level}` : ` · ${progress.xp}/${jobXpToNext(progress.level)} XP`}.` };
         }
         if (effect.kind === 'fish_bait') {
+            if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             const rod = db.prepare('SELECT quantity FROM economy_inventory WHERE guild_id = ? AND user_id = ? AND item_id = ?')
                 .get(guildId, userId, 'cana_pescar');
             if (!rod || rod.quantity < 1)
@@ -3358,6 +3887,8 @@ export async function startBlackjack(guildId, userId, bet, reference) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return { ok: false, reason: 'bankrupt' };
             const active = await mysqlRows(connection, "SELECT id, bet, state_json, status FROM economy_games WHERE guild_id = ? AND user_id = ? AND game_type = 'blackjack' AND status = 'active' LIMIT 1 FOR UPDATE", [guildId, userId]);
             if (active[0]) {
                 return { ok: true, view: blackjackView(active[0].id, Number(active[0].bet), account.balance, JSON.parse(active[0].state_json)), existing: true };
@@ -3379,6 +3910,8 @@ export async function startBlackjack(guildId, userId, bet, reference) {
         });
     const start = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return { ok: false, reason: 'bankrupt' };
         const active = db.prepare("SELECT id, bet, state_json, status FROM economy_games WHERE guild_id = ? AND user_id = ? AND game_type = 'blackjack' AND status = 'active' LIMIT 1")
             .get(guildId, userId);
         if (active)
@@ -3406,6 +3939,8 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
     if (economyPool)
         return withEconomyTransaction(async (connection) => {
             const account = await mysqlEnsureAccount(connection, guildId, userId, true);
+            if (await mysqlIsPersonalLoanBankrupt(connection, guildId, userId))
+                return undefined;
             const games = await mysqlRows(connection, 'SELECT id, bet, state_json, status FROM economy_games WHERE id = ? AND guild_id = ? AND user_id = ? FOR UPDATE', [gameId, guildId, userId]);
             const game = games[0];
             if (!game)
@@ -3437,6 +3972,8 @@ export async function playBlackjackTurn(guildId, userId, gameId, action) {
         });
     const play = db.transaction(() => {
         const account = sqliteEnsureAccount(guildId, userId);
+        if (sqliteIsPersonalLoanBankrupt(guildId, userId))
+            return undefined;
         const game = db.prepare('SELECT id, bet, state_json, status FROM economy_games WHERE id = ? AND guild_id = ? AND user_id = ?')
             .get(gameId, guildId, userId);
         if (!game)
