@@ -8,6 +8,7 @@ El proyecto está organizado por responsabilidades para poder añadir funciones 
 - `src/events/interaction-create.ts` enruta comandos, autocompletado, formularios y controles de panel. `src/events/message-create.ts` traduce `a!` y sus abreviaturas a los mismos servicios, incluidos los paneles existentes. Mantén reglas de negocio en el servicio de su función.
 - `src/services/` contiene reglas de negocio. Música administra Lavalink y sus búsquedas; economía y RPG validan operaciones antes de guardarlas; la biblioteca musical administra listas y favoritos.
 - `src/services/reactions.ts` obtiene GIFs SFW del catálogo de NEKOS.BEST, limita frecuencia y valida URLs antes de publicarlas. `src/ui/catalog.ts` describe las categorías y arma el panel interactivo de ayuda.
+- `src/services/stream-notifications.ts` consulta el estado de Twitch y Kick cada minuto y publica avisos al detectar un nuevo directo. `src/storage/stream-notification-store.ts` conserva los canales, mensajes y estado de cada aviso en SQLite.
 - `src/services/profile.ts` mantiene perfiles globales, XP global y por servidor, reputación, inventario de cosméticos y compras; `src/data/profile-shop.ts` es el catálogo declarativo de categorías y artículos.
 - `src/ui/profile.ts` arma los paneles de Profile, Wallet, Rank, progreso, tienda, inventario y Room; `src/ui/profile-cards.ts` renderiza las tarjetas PNG y conserva un cache corto en memoria.
 - `src/ui/panels.ts` construye vistas de Discord. Debe presentar datos y controles; los cambios persistentes pasan por servicios.
@@ -23,6 +24,8 @@ Prioridad de valores: variables no vacías del host, después `.env`, y finalmen
 **Obligatorio para el bot:** `DISCORD_TOKEN` y `DISCORD_CLIENT_ID`.
 
 **Opcional para música:** `LAVALINK_HOST`, `LAVALINK_PORT`, `LAVALINK_PASSWORD` y `LAVALINK_SECURE`. Al dejar la contraseña vacía, el bot no intenta conectar Lavalink y economía/RPG pueden funcionar. Spotify se configura en el entorno del proceso Lavalink (`SPOTIFY_CLIENT_ID` y `SPOTIFY_CLIENT_SECRET`), no es requisito para iniciar el bot.
+
+**Avisos de directos:** configura `TWITCH_CLIENT_ID` y `TWITCH_CLIENT_SECRET` para Twitch, y/o `KICK_CLIENT_ID` y `KICK_CLIENT_SECRET` para Kick. El bot obtiene tokens de aplicación OAuth para consultar el estado público; no requiere un callback HTTPS. Usa `/stream` para abrir el panel, configura los campos `cuenta`, `canal` y `mensaje`, y elige `accion: lista` o `accion: quitar` para administrar los avisos.
 
 **Prefijo `a!`:** requiere `MessageContent` activado en **Discord Developer Portal → Bot → Privileged Gateway Intents**. El grupo administrativo por prefijo funciona solo por DM para no publicar operaciones privadas.
 

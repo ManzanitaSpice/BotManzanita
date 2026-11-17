@@ -7,6 +7,7 @@ import { adminCommand } from './admin.js';
 import { catalogCommand } from './catalog.js';
 import { utilitiesCommand } from './utilities.js';
 import { wordResponsesCommand } from './word-responses.js';
+import { streamsCommand } from './streams.js';
 // Keep runtime dispatch and Discord command deployment on one source of truth.
 export const commands = [
     economyCommand,
@@ -15,6 +16,7 @@ export const commands = [
     catalogCommand,
     utilitiesCommand,
     wordResponsesCommand,
+    streamsCommand,
     musicCommand,
     ...economyShortcutCommands,
     ...musicShortcutCommands,

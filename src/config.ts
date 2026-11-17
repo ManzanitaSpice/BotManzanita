@@ -33,6 +33,16 @@ export const config = {
   clientId: required('DISCORD_CLIENT_ID'),
   devGuildId: process.env.DISCORD_DEV_GUILD_ID?.trim() || undefined,
   databasePath: process.env.DATABASE_PATH?.trim() || './data/bot.sqlite',
+  streamPlatforms: {
+    twitch: {
+      clientId: env('TWITCH_CLIENT_ID'),
+      clientSecret: env('TWITCH_CLIENT_SECRET'),
+    },
+    kick: {
+      clientId: env('KICK_CLIENT_ID'),
+      clientSecret: env('KICK_CLIENT_SECRET'),
+    },
+  },
   economyDatabase: readEconomyDatabaseConfig(),
   lavalink: {
     host: process.env.LAVALINK_HOST?.trim() || '127.0.0.1',

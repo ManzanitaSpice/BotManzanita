@@ -11,6 +11,8 @@ import { refreshActiveMusicPanels, refreshMusicPanel } from './services/music.js
 import { initializeProfileStorage } from './services/profile.js';
 import { pruneExpiredFavorites, pruneExpiredMusicHistory, recordMusicHistory } from './services/music-library.js';
 import { musicQueueStoreManager } from './storage/music-queue-store.js';
+import { initializeStreamNotificationStorage } from './storage/stream-notification-store.js';
+import { startStreamNotificationPolling } from './services/stream-notifications.js';
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] });
 client.commands = new Collection(commands.map((command) => [command.data.name, command]));
 client.lavalink = new LavalinkManager({
@@ -43,6 +45,7 @@ if (config.lavalink.enabled)
     client.on('raw', ((packet) => client.lavalink.sendRawData(packet)));
 client.once('clientReady', async (readyClient) => {
     console.log(`Conectado como ${readyClient.user.tag}.`);
+    startStreamNotificationPolling(client);
     if (!config.lavalink.enabled) {
         console.log('Música desactivada: configura LAVALINK_PASSWORD y la conexión del nodo para habilitarla.');
         return;
@@ -135,6 +138,7 @@ const schedulePersonalLoanReviews = async () => {
 };
 void schedulePersonalLoanReviews();
 await initializeProfileStorage();
+initializeStreamNotificationStorage();
 pruneExpiredFavorites();
 pruneExpiredMusicHistory();
 const favoriteCleanupTimer = setInterval(() => {

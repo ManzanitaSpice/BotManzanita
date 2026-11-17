@@ -330,6 +330,22 @@ const categories = {
         "• `/utilidad ping`",
       ].join('\n'),
   },
+  directos: {
+    label: "Directos", description: "Avisos automáticos al iniciar stream", emoji: "📡",
+      body: [
+        "# 📡 AVISOS DE DIRECTOS",
+        "Escribe `/stream` sin campos para abrir el panel de configuración. Cuando la cuenta inicie un nuevo stream, Manzanita enviará tu mensaje y el enlace en el canal de Discord que elijas.",
+        "",
+        "## Configuración rápida",
+        "• `/stream cuenta canal mensaje` · guarda un aviso; también puedes elegir un rol para mencionarlo",
+        "• Usa el enlace para detectar la plataforma; si solo pones usuario, revisa Twitch y Kick",
+        "• `/stream accion: lista` · ver los avisos del servidor",
+        "• `/stream accion: quitar cuenta` · eliminar los avisos de esa cuenta",
+        "",
+        "Los roles deben tener activado Mencionable. No se envían `@everyone` ni `@here`. Estos avisos solo se administran con comandos slash; no tienen atajo `a!`.",
+        "La detección revisa las plataformas cada minuto. La primera revisión guarda el estado inicial sin publicar un aviso. Cada servidor puede configurar hasta 50 canales.",
+      ].join('\n'),
+  },
   admin: {
     label: "Admin", description: "Herramientas privadas del propietario", emoji: "🛡️",
       body: [
@@ -371,7 +387,7 @@ const categories = {
 } as const;
 
 export type CatalogCategory = keyof typeof categories;
-const categoryOrder: CatalogCategory[] = ["inicio", "musica", "economia", "negocios", "rpg", "expresiones", "utilidades", "admin"];
+const categoryOrder: CatalogCategory[] = ["inicio", "musica", "economia", "negocios", "rpg", "expresiones", "utilidades", "directos", "admin"];
 
 export function catalogPanel(selected: string = 'inicio') {
   const key: CatalogCategory = selected in categories ? selected as CatalogCategory : 'inicio';
