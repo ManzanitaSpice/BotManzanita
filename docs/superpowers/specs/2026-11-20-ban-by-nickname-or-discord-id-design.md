@@ -2,12 +2,14 @@
 
 ## Intención
 
-Agregar a BotManzanita un comando de moderación para expulsar permanentemente una cuenta del servidor donde se ejecuta. El moderador podrá encontrar miembros por nick mediante autocompletado o escribir un ID de Discord.
+Agregar a BotManzanita comandos de moderación para expulsar permanentemente una cuenta del servidor donde se ejecutan. `/ban objetivo` permite encontrar miembros por nick mediante autocompletado o escribir un ID; `a!ban` acepta un nick, mención o ID en el formato de prefijo que ya usan los servidores.
 
 ## Alcance
 
-- `/ban objetivo` solo funciona dentro de un servidor.
+- `/ban objetivo` y `a!ban` solo funcionan dentro de un servidor.
 - El autocompletado busca miembros actuales del servidor por su nick o nombre de usuario y envía su ID como valor seleccionado.
+- `a!ban` resuelve un nick actual del servidor de forma única; si hay varios resultados, pide una mención o ID en vez de elegir arbitrariamente.
+- `a!ban` acepta una mención y un ID directo; con una mención o ID también admite un motivo opcional de hasta 512 caracteres al final.
 - El mismo campo acepta un ID de Discord para banear también una cuenta que ya no sea miembro.
 - Incluye un motivo opcional, que se envía al registro de auditoría de Discord.
 - El comando requiere el permiso `BanMembers`; el bot también necesita ese permiso y un rol por encima del miembro objetivo.
@@ -27,7 +29,8 @@ Agregar a BotManzanita un comando de moderación para expulsar permanentemente u
 
 ## Decisiones para implementar
 
-- Registrar el comando en la lista central existente.
+- Registrar el comando en la lista central existente y agregar la ruta al manejador `a!`.
+- Compartir la resolución del objetivo y la ejecución del ban entre slash y prefijo para que permisos y jerarquía sean iguales.
 - Usar búsqueda REST de miembros del servidor para el autocompletado; no habilitar el intent privilegiado `GuildMembers` solo para esta función.
 - Resolver nombres ambiguos mediante las opciones del autocompletado, sin escoger un miembro arbitrariamente.
 - Comprobar permisos al ejecutar y enviar el motivo a Discord junto con el ban.

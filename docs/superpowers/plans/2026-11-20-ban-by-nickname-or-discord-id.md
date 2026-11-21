@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a guild-only `/ban objetivo` command that resolves current members by nickname and accepts a Discord ID directly.
+**Goal:** Add guild-only `/ban objetivo` and `a!ban` commands that resolve current members by nickname and accept Discord IDs directly.
 
-**Architecture:** Keep command metadata and ban execution in a focused moderation command module. Route its autocomplete through the existing interaction handler, use REST member search for nicknames, and call Discord's guild ban API with an optional audit reason.
+**Architecture:** Keep slash metadata and shared ban resolution/execution in the moderation module. Route autocomplete through the interaction handler and `a!ban` through the existing message handler; both use REST member search and the same permission and hierarchy checks.
 
 **Tech Stack:** TypeScript, discord.js 14.28.0, existing slash-command registry and interaction handler.
 
@@ -32,6 +32,7 @@
 - Create `src/commands/moderation.ts` for `/ban`, autocomplete results, permission checks, and ban execution.
 - Modify `src/commands/registry.ts` to register the command.
 - Modify `src/events/interaction-create.ts` to dispatch `/ban` autocomplete.
+- Modify `src/events/message-create.ts` to support `a!ban <nick|mention|ID> [reason]`.
 
 ## Implementation Task
 
@@ -47,4 +48,6 @@
 - [x] Implement execution: accept only a valid snowflake value; confirm the invoking moderator and bot have `BanMembers`; fetch the bot member; reject the guild owner, the bot itself, and current members whose highest role is not below the bot's; ban by ID with the optional reason; respond privately with success or a clear failure.
 - [x] Defer the private interaction response before REST calls and edit it afterward, with success delivery outside the ban request's error handler.
 - [x] Register `banCommand` in `src/commands/registry.ts` and dispatch its autocomplete in `src/events/interaction-create.ts`, responding with no choices when there is no guild or search fails.
+- [x] Add `a!ban` routing in `src/events/message-create.ts`; resolve one nick match, accept a mention or snowflake, and reject ambiguous nicknames.
+- [x] Share the ban permission, target and hierarchy checks with the slash command so both entry points use the same rules.
 - [x] Run `npm run build` and confirm TypeScript compilation succeeds.

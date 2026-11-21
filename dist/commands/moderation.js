@@ -1,10 +1,99 @@
 import { InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 const discordIdPattern = /^\d{17,20}$/;
+const discordMentionPattern = /^<@!?(\d{17,20})>$/;
+export function isDiscordUserId(value) {
+    return discordIdPattern.test(value);
+}
+export async function resolveBanTarget(guild, input) {
+    const query = input.trim();
+    if (!query)
+        return { ok: false, reason: 'empty' };
+    const mention = query.match(discordMentionPattern)?.[1];
+    if (mention)
+        return { ok: true, id: mention };
+    if (isDiscordUserId(query))
+        return { ok: true, id: query };
+    try {
+        const members = [...(await guild.members.search({ query, limit: 25 })).values()];
+        const normalized = query.toLocaleLowerCase();
+        const exact = members.filter((member) => [member.displayName, member.user.username, member.user.globalName ?? '']
+            .some((name) => name.toLocaleLowerCase() === normalized));
+        if (exact.length === 1)
+            return { ok: true, id: exact[0].id };
+        if (exact.length > 1 || members.length > 1)
+            return { ok: false, reason: 'ambiguous' };
+        if (members.length === 1)
+            return { ok: true, id: members[0].id };
+        return { ok: false, reason: 'not_found' };
+    }
+    catch {
+        return { ok: false, reason: 'search_failed' };
+    }
+}
+function discordErrorCode(error) {
+    return typeof error === 'object' && error !== null && 'code' in error
+        ? error.code
+        : undefined;
+}
+export function banFailureMessage(reason) {
+    switch (reason) {
+        case 'invalid_id': return 'Selecciona a la persona en las sugerencias o escribe un ID de Discord válido.';
+        case 'owner': return 'No se puede banear a la persona propietaria del servidor.';
+        case 'self': return 'No puedes banearte a ti mismo.';
+        case 'bot_unavailable': return 'No pude comprobar los permisos de Manzanita en este servidor.';
+        case 'bot_permission': return 'Manzanita necesita el permiso **Banear miembros** para ejecutar el ban.';
+        case 'bot': return 'No puedo banear a Manzanita.';
+        case 'member_lookup': return 'No pude validar a esa persona en el servidor; no se aplicó el ban.';
+        case 'role_hierarchy': return 'El rol más alto de esa persona debe estar por debajo del rol más alto de Manzanita.';
+        case 'ban_rejected': return 'Discord rechazó el ban. Revisa los permisos y la jerarquía de roles de Manzanita.';
+        case 'ban_failed': return 'No se pudo completar el ban. Comprueba que el ID sea correcto y vuelve a intentarlo.';
+    }
+}
+export async function banGuildUser(guild, actorId, targetId, reason) {
+    if (!isDiscordUserId(targetId))
+        return { ok: false, reason: 'invalid_id' };
+    if (targetId === guild.ownerId)
+        return { ok: false, reason: 'owner' };
+    if (targetId === actorId)
+        return { ok: false, reason: 'self' };
+    let botMember;
+    try {
+        botMember = await guild.members.fetchMe();
+    }
+    catch {
+        return { ok: false, reason: 'bot_unavailable' };
+    }
+    if (!botMember.permissions.has(PermissionFlagsBits.BanMembers))
+        return { ok: false, reason: 'bot_permission' };
+    if (targetId === botMember.id)
+        return { ok: false, reason: 'bot' };
+    let targetMember;
+    try {
+        targetMember = await guild.members.fetch({ user: targetId, force: true });
+    }
+    catch (error) {
+        if (discordErrorCode(error) !== 10007)
+            return { ok: false, reason: 'member_lookup' };
+        targetMember = null;
+    }
+    if (targetMember && targetMember.roles.highest.position >= botMember.roles.highest.position) {
+        return { ok: false, reason: 'role_hierarchy' };
+    }
+    try {
+        await guild.members.ban(targetId, reason?.trim() ? { reason: reason.trim() } : {});
+        return { ok: true };
+    }
+    catch (error) {
+        return discordErrorCode(error) === 50013
+            ? { ok: false, reason: 'ban_rejected' }
+            : { ok: false, reason: 'ban_failed' };
+    }
+}
 export async function banAutocomplete(guild, query) {
     const search = query.trim();
     if (!search)
         return [];
-    if (discordIdPattern.test(search))
+    if (isDiscordUserId(search))
         return [{ name: `ID de Discord: ${search}`, value: search }];
     try {
         const members = await guild.members.search({ query: search, limit: 25 });
@@ -16,11 +105,6 @@ export async function banAutocomplete(guild, query) {
     catch {
         return [];
     }
-}
-function discordErrorCode(error) {
-    return typeof error === 'object' && error !== null && 'code' in error
-        ? error.code
-        : undefined;
 }
 export const banCommand = {
     data: new SlashCommandBuilder()
@@ -44,7 +128,7 @@ export const banCommand = {
             return;
         }
         const targetId = interaction.options.getString('objetivo', true).trim();
-        if (!discordIdPattern.test(targetId)) {
+        if (!isDiscordUserId(targetId)) {
             await interaction.reply({ content: 'Selecciona a la persona en las sugerencias o escribe un ID de Discord válido.', flags: MessageFlags.Ephemeral });
             return;
         }
@@ -53,54 +137,10 @@ export const banCommand = {
             return;
         }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        let botMember;
-        try {
-            botMember = await guild.members.fetchMe();
-        }
-        catch {
-            await interaction.editReply('No pude comprobar los permisos de Manzanita en este servidor.');
-            return;
-        }
-        if (!botMember.permissions.has(PermissionFlagsBits.BanMembers)) {
-            await interaction.editReply('Manzanita necesita el permiso **Banear miembros** para ejecutar el ban.');
-            return;
-        }
-        if (targetId === guild.ownerId) {
-            await interaction.editReply('No se puede banear a la persona propietaria del servidor.');
-            return;
-        }
-        if (targetId === interaction.client.user.id) {
-            await interaction.editReply('No puedo banear a Manzanita.');
-            return;
-        }
-        if (targetId === interaction.user.id) {
-            await interaction.editReply('No puedes banearte a ti mismo.');
-            return;
-        }
-        let targetMember;
-        try {
-            targetMember = await guild.members.fetch({ user: targetId, force: true });
-        }
-        catch (error) {
-            if (discordErrorCode(error) !== 10007) {
-                await interaction.editReply('No pude validar a esa persona en el servidor; no se aplicó el ban.');
-                return;
-            }
-            targetMember = null;
-        }
-        if (targetMember && targetMember.roles.highest.position >= botMember.roles.highest.position) {
-            await interaction.editReply('El rol más alto de esa persona debe estar por debajo del rol más alto de Manzanita.');
-            return;
-        }
         const reason = interaction.options.getString('razon')?.trim();
-        try {
-            await guild.members.ban(targetId, reason ? { reason } : {});
-        }
-        catch (error) {
-            const message = discordErrorCode(error) === 50013
-                ? 'Discord rechazó el ban. Revisa los permisos y la jerarquía de roles de Manzanita.'
-                : 'No se pudo completar el ban. Comprueba que el ID sea correcto y vuelve a intentarlo.';
-            await interaction.editReply(message);
+        const result = await banGuildUser(guild, interaction.user.id, targetId, reason ?? undefined);
+        if (!result.ok) {
+            await interaction.editReply(banFailureMessage(result.reason));
             return;
         }
         await interaction.editReply({

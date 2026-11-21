@@ -16,6 +16,7 @@ import { giveReputation, recordChatActivity, recordReceivedRpgReaction } from '.
 import { findSavedWordResponse } from '../services/word-responses.js';
 import { getSavedWordResponses, removeWordResponse, saveWordResponse } from '../services/word-responses.js';
 import { businessInvitePanel, businessPanel } from '../ui/business-panel.js';
+import { banFailureMessage, banGuildUser, isDiscordUserId, resolveBanTarget } from '../commands/moderation.js';
 const PREFIX = 'a!';
 const money = new Intl.NumberFormat('es-MX');
 const adminActionAliases = {
@@ -104,6 +105,10 @@ async function routeMessage(message) {
         return;
     }
     const guildId = message.guildId;
+    if (command === 'ban') {
+        await prefixBanCommand(message, args);
+        return;
+    }
     if (['bitacora', 'bitácora', 'log', 'logs'].includes(command)) {
         await sendPanel(message, await expeditionLogPanel(guildId, userId));
         return;
@@ -796,6 +801,43 @@ async function routeMessage(message) {
         return say(message, 'Subcomandos: `panel`, `bitacora`, `adopt elemento [nombre]`, `name`, `alimentar [comida]`, `cuidar`, `explore [zona]`, `fight`, `train stat`, `mochila`, `shop`, `buy objeto`, `use objeto`, `quests`, `rank`, `challenge @persona`, `attacks`.');
     }
     return say(message, `No conozco el comando ${PREFIX}${command}. Usa a!help para ver abreviaturas.`);
+}
+async function prefixBanCommand(message, args) {
+    const guild = message.guild;
+    if (!guild) {
+        await say(message, 'Este comando funciona dentro de un servidor.');
+        return;
+    }
+    if (!message.member?.permissions.has(PermissionFlagsBits.BanMembers)) {
+        await say(message, 'Necesitas el permiso **Banear miembros** para usar este comando.');
+        return;
+    }
+    const firstArgument = args[0] ?? '';
+    const directTarget = isDiscordUserId(firstArgument) || /^<@!?\d{17,20}>$/.test(firstArgument);
+    const targetInput = directTarget ? firstArgument : args.join(' ');
+    const target = await resolveBanTarget(guild, targetInput);
+    if (!target.ok) {
+        const messageText = target.reason === 'empty' ? 'Uso: `a!ban <nick, mención o ID de Discord> [motivo]`.'
+            : target.reason === 'ambiguous' ? 'Encontré varias personas con ese nick. Usa una mención o su ID de Discord.'
+                : target.reason === 'search_failed' ? 'No pude buscar ese nick ahora. Intenta con una mención o un ID de Discord.'
+                    : 'No encontré a esa persona. Revisa el nick o usa una mención o ID de Discord.';
+        await say(message, messageText);
+        return;
+    }
+    const reason = directTarget ? args.slice(1).join(' ').trim() || undefined : undefined;
+    if (reason && Array.from(reason).length > 512) {
+        await say(message, 'El motivo no puede superar los 512 caracteres.');
+        return;
+    }
+    const result = await banGuildUser(guild, message.author.id, target.id, reason);
+    if (!result.ok) {
+        await say(message, banFailureMessage(result.reason));
+        return;
+    }
+    await message.reply({
+        content: `🚫 Se baneó la cuenta con ID \`${target.id}\`.`,
+        allowedMentions: { parse: [] },
+    });
 }
 async function relayMessageCommand(message, command) {
     if (!message.channel.isSendable()) {
