@@ -13,6 +13,7 @@ import { assignProfileBackground, buyProfileItem, equipProfileItem, updateProfil
 import { profileShopItems } from '../data/profile-shop.js';
 import { findStoreProduct, purchaseStoreProduct } from '../services/store.js';
 import { businessInviteResultPanel, businessPanel, businessSaleConfirmPanel } from '../ui/business-panel.js';
+import { banAutocomplete } from '../commands/moderation.js';
 export function registerInteractionHandler(client) {
     client.on('interactionCreate', async (interaction) => {
         try {
@@ -56,6 +57,14 @@ export function registerInteractionHandler(client) {
                                     .map((item) => ({ name: `${item.emoji} ${item.name} ×${quantities.get(item.id)}`, value: item.id }))
                                 : [];
                     await interaction.respond(candidates.filter((choice) => choice.name.toLocaleLowerCase().includes(query) || choice.value.includes(query)).slice(0, 25));
+                }
+                else if (interaction.commandName === 'ban') {
+                    if (!interaction.guild) {
+                        await interaction.respond([]);
+                        return;
+                    }
+                    const query = interaction.options.getFocused();
+                    await interaction.respond(await banAutocomplete(interaction.guild, query));
                 }
                 else
                     await interaction.respond([]);
